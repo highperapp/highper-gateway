@@ -1,0 +1,6 @@
+apiVersion: v2
+name: loadtest-do
+description: Load testing stack for DigitalOcean - backends and generators
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

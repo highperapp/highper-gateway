@@ -1,0 +1,39 @@
+# Prometheus Configuration for Rust Reverse Proxy
+# Place this file in your Prometheus directory and start with:
+# ./prometheus --config.file=prometheus.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'production'
+    environment: 'prod'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+
+# Load alert rules
+rule_files:
+  - "highper_gateway_alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Rust Reverse Proxy
+  - job_name: 'highper-gateway'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'proxy-01'
+          datacenter: 'us-east-1'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

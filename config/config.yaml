@@ -1,0 +1,98 @@
+# Highper Gateway Configuration
+# Example basic reverse proxy configuration
+
+server:
+  # HTTP bind addresses
+  bind:
+    - "0.0.0.0:8080"
+
+  # HTTPS bind addresses
+  tls_bind:
+    - "0.0.0.0:8443"
+
+  # Worker threads (auto = number of CPU cores)
+  workers: "auto"
+
+  # Protocols
+  protocols:
+    - http1
+    - http2
+
+  # Graceful shutdown timeout
+  shutdown_timeout: 30s
+
+  # Performance tuning
+  performance:
+    read_buffer_size: 16384
+    write_buffer_size: 16384
+    max_connections: 100000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 30s
+    idle_timeout: 90s
+
+# Upstream backends
+upstreams:
+  - name: "example_backend"
+    servers:
+      - url: "http://localhost:3000"
+        weight: 1
+        max_conns: 100
+
+    load_balancing:
+      algorithm: "round_robin"
+
+    connection:
+      timeout: 5s
+      keepalive: 60s
+      pool_size: 50
+      tcp_nodelay: true
+
+    health_check:
+      active:
+        enabled: false
+        path: "/health"
+        interval: 10s
+        timeout: 5s
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+
+# Routes
+routes:
+  - name: "default"
+    match:
+      hosts: []
+      paths:
+        - "/*"
+      methods: []
+    upstream: "example_backend"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"  # Metrics server bind address
+    endpoint: "/metrics"
+    port: 9090
+
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+
+# TLS Configuration
+tls:
+  auto: false  # Automatic HTTPS with ACME disabled for now
+
+  # Manual certificates
+  certificates:
+    - domain: "localhost"
+      cert_file: "certs/cert.pem"
+      key_file: "certs/key.pem"
+
+  min_version: "1.2"
+
+  session_cache:
+    enabled: true
+    size: 10000
+    ttl: 3600s

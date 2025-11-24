@@ -1,0 +1,92 @@
+[package]
+name = "admin-api"
+version = "0.1.0"
+edition = "2021"
+authors = ["Highper Gateway Team"]
+description = "Admin API and dashboard for highper-gateway with authenticated encryption"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros", "multipart"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-full"] }
+
+# WebSocket with authenticated encryption
+tokio-tungstenite = "0.24"
+tungstenite = "0.24"
+
+# gRPC support
+tonic = "0.12"
+prost = "0.13"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "macros", "migrate", "chrono", "uuid"] }
+
+# Redis for caching and pub/sub
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager", "aio"] }
+
+# Authentication
+jsonwebtoken = "9.3"
+argon2 = "0.5"
+
+# Cryptography for authenticated encryption
+# Symmetric encryption
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+
+# Asymmetric encryption
+rsa = "0.9"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+
+# HMAC for message authentication
+hmac = "0.12"
+sha2 = "0.10"
+
+# Key derivation
+hkdf = "0.12"
+
+# Random number generation
+rand = "0.8"
+
+# Encoding
+base64 = "0.22"
+hex = "0.4"
+
+# HTTP client for proxy communication
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Data structures
+dashmap = { workspace = true }
+bytes = { workspace = true }
+
+# Configuration
+config = "0.14"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[build-dependencies]
+tonic-build = "0.12"

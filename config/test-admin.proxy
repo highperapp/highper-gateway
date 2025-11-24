@@ -1,0 +1,7 @@
+log info
+admin :9000
+https://0.0.0.0:8443 {
+    /* {
+        proxy httpbin.org
+    }
+}

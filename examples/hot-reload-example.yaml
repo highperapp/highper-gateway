@@ -1,0 +1,127 @@
+# Example configuration demonstrating hot reload capability
+#
+# This configuration can be modified while the proxy is running.
+# Changes will be automatically detected and applied without downtime.
+#
+# To manually trigger reload: kill -HUP <proxy_pid>
+# To disable hot reload: run with --hot-reload=false
+
+server:
+  # HTTP bind addresses
+  bind:
+    - "0.0.0.0:8080"
+
+  # Number of worker threads (auto = CPU count)
+  workers: "auto"
+
+  # Supported protocols
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings
+  performance:
+    max_connections: 10000
+    connection_timeout: 30s
+    request_timeout: 60s
+    keepalive_timeout: 65s
+
+  # Graceful shutdown timeout
+  shutdown_timeout: 30s
+
+# Upstreams (backend servers)
+upstreams:
+  - name: example_service
+    servers:
+      - address: "127.0.0.1:3000"
+        weight: 1
+      - address: "127.0.0.1:3001"
+        weight: 1
+
+    # Load balancing algorithm
+    load_balancer:
+      algorithm: round_robin
+
+    # Health checks
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 5s
+      healthy_threshold: 2
+      unhealthy_threshold: 3
+      path: "/health"
+
+    # Connection pool
+    connection_pool:
+      max_idle_per_host: 32
+      idle_timeout: 90s
+
+# Routes
+routes:
+  - path: "/api"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: example_service
+
+    # Request/response transformations
+    transform:
+      strip_path_prefix: false
+      add_headers:
+        X-Proxy: "highper-gateway"
+        X-Request-ID: "${request_id}"
+
+    # Timeouts
+    timeout: 30s
+
+    # Retry policy
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      retry_on:
+        - connection_error
+        - timeout
+        - 5xx
+
+  - path: "/health"
+    methods: ["GET"]
+    upstream: example_service
+    timeout: 5s
+
+# Observability
+observability:
+  # Metrics
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+
+  # Access logging
+  logging:
+    enabled: true
+    format: json
+    fields:
+      - timestamp
+      - method
+      - path
+      - status
+      - duration
+      - bytes_sent
+      - user_agent
+
+# Optional: TLS configuration
+# tls:
+#   enabled: false
+#   cert_path: "/path/to/cert.pem"
+#   key_path: "/path/to/key.pem"
+#   protocols:
+#     - TLSv1.2
+#     - TLSv1.3
+
+# Optional: WebSocket configuration
+websocket:
+  enabled: true
+  ping_interval: 30s
+  ping_timeout: 10s
+
+# Optional: gRPC configuration
+grpc:
+  enabled: true
+  max_message_size: 4194304  # 4MB

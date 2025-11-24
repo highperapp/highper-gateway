@@ -1,0 +1,30 @@
+# Load Balancing Examples
+# Distribute traffic across multiple backend servers
+
+# Simple round-robin load balancing (default)
+example.com proxy server1:3000 server2:3000 server3:3000
+
+# Least connections load balancing
+api.example.com {
+    proxy server1:8080 server2:8080 server3:8080
+    lb least_conn
+}
+
+# IP hash for session persistence
+app.example.com {
+    proxy server1:3000 server2:3000
+    lb ip_hash
+}
+
+# Weighted load balancing
+# (Note: weights would be specified in advanced config)
+backend.example.com {
+    proxy primary:8080 secondary:8080
+    lb weighted
+}
+
+# Consistent hash for cache distribution
+cache.example.com {
+    proxy cache1:6379 cache2:6379 cache3:6379
+    lb consistent_hash
+}

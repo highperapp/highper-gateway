@@ -1,0 +1,383 @@
+groups:
+  - name: request_metrics
+    interval: 30s
+    rules:
+      # ============================================
+      # HIGH PRIORITY ALERTS (P1 - Immediate Action)
+      # ============================================
+
+      - alert: HighGlobalErrorRate
+        expr: |
+          (
+            rate(proxy_requests_by_status{status="5xx"}[5m])
+            / rate(proxy_requests_total[5m])
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+        annotations:
+          summary: "High global error rate detected"
+          description: "Global 5xx error rate is {{ $value | humanizePercentage }} (threshold: 10%) over the last 5 minutes"
+          runbook: "https://docs.example.com/runbooks/high-error-rate"
+          dashboard: "https://grafana.example.com/d/request-metrics"
+
+      - alert: CriticalRouteErrorRate
+        expr: |
+          (
+            sum(rate(proxy_route_requests_by_status{status="5xx"}[5m])) by (route)
+            / sum(rate(proxy_route_requests_total[5m])) by (route)
+          ) > 0.25
+        for: 3m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Critical error rate on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} has {{ $value | humanizePercentage }} error rate (threshold: 25%)"
+          runbook: "https://docs.example.com/runbooks/route-errors"
+          route: "{{ $labels.route }}"
+
+      - alert: BackendCompletelyDown
+        expr: |
+          proxy_backend_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Backend {{ $labels.backend }} is completely down"
+          description: "Backend {{ $labels.backend }} (upstream: {{ $labels.upstream }}) has been down for 2 minutes"
+          runbook: "https://docs.example.com/runbooks/backend-down"
+          backend: "{{ $labels.backend }}"
+          upstream: "{{ $labels.upstream }}"
+
+      - alert: CriticalBackendErrorRate
+        expr: |
+          proxy_backend_error_rate > 0.30
+        for: 3m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Critical error rate on backend {{ $labels.backend }}"
+          description: "Backend {{ $labels.backend }} has {{ $value | humanizePercentage }} error rate (threshold: 30%)"
+          runbook: "https://docs.example.com/runbooks/backend-errors"
+          backend: "{{ $labels.backend }}"
+
+      - alert: NoHealthyBackends
+        expr: |
+          count(proxy_backend_up == 1) by (upstream) == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+        annotations:
+          summary: "No healthy backends available for upstream {{ $labels.upstream }}"
+          description: "All backends for upstream {{ $labels.upstream }} are down"
+          runbook: "https://docs.example.com/runbooks/no-backends"
+          upstream: "{{ $labels.upstream }}"
+
+      # ============================================
+      # MEDIUM PRIORITY ALERTS (P2 - Investigation)
+      # ============================================
+
+      - alert: HighRouteLatencyP99
+        expr: |
+          proxy_route_response_time_seconds{quantile="0.99"} > 2.0
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "High P99 latency on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} P99 latency is {{ $value }}s (threshold: 2s)"
+          runbook: "https://docs.example.com/runbooks/high-latency"
+          route: "{{ $labels.route }}"
+
+      - alert: HighRouteLatencyP95
+        expr: |
+          proxy_route_response_time_seconds{quantile="0.95"} > 1.0
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "High P95 latency on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} P95 latency is {{ $value }}s (threshold: 1s)"
+          runbook: "https://docs.example.com/runbooks/high-latency"
+          route: "{{ $labels.route }}"
+
+      - alert: HighBackendLatencyP95
+        expr: |
+          proxy_backend_response_time_seconds{quantile="0.95"} > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "High P95 latency on backend {{ $labels.backend }}"
+          description: "Backend {{ $labels.backend }} P95 latency is {{ $value }}s (threshold: 500ms)"
+          runbook: "https://docs.example.com/runbooks/backend-latency"
+          backend: "{{ $labels.backend }}"
+
+      - alert: ModerateRouteErrorRate
+        expr: |
+          (
+            sum(rate(proxy_route_requests_by_status{status="5xx"}[5m])) by (route)
+            / sum(rate(proxy_route_requests_total[5m])) by (route)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Moderate error rate on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} has {{ $value | humanizePercentage }} error rate (threshold: 5%)"
+          runbook: "https://docs.example.com/runbooks/route-errors"
+          route: "{{ $labels.route }}"
+
+      - alert: ModerateBackendErrorRate
+        expr: |
+          proxy_backend_error_rate > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Moderate error rate on backend {{ $labels.backend }}"
+          description: "Backend {{ $labels.backend }} has {{ $value | humanizePercentage }} error rate (threshold: 10%)"
+          runbook: "https://docs.example.com/runbooks/backend-errors"
+          backend: "{{ $labels.backend }}"
+
+      - alert: HighClientErrorRate
+        expr: |
+          (
+            sum(rate(proxy_route_requests_by_status{status="4xx"}[5m])) by (route)
+            / sum(rate(proxy_route_requests_total[5m])) by (route)
+          ) > 0.20
+        for: 10m
+        labels:
+          severity: warning
+          team: application
+          component: proxy
+        annotations:
+          summary: "High 4xx error rate on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} has {{ $value | humanizePercentage }} 4xx error rate (threshold: 20%)"
+          runbook: "https://docs.example.com/runbooks/client-errors"
+          route: "{{ $labels.route }}"
+
+      # ============================================
+      # LOW PRIORITY ALERTS (P3 - Information)
+      # ============================================
+
+      - alert: RouteTrafficSpike
+        expr: |
+          (
+            rate(proxy_route_requests_total[5m])
+            / rate(proxy_route_requests_total[5m] offset 1h)
+          ) > 3.0
+        for: 5m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Traffic spike detected on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} traffic is {{ $value }}x normal (3x threshold)"
+          runbook: "https://docs.example.com/runbooks/traffic-spike"
+          route: "{{ $labels.route }}"
+
+      - alert: RouteTrafficDrop
+        expr: |
+          (
+            rate(proxy_route_requests_total[5m])
+            / rate(proxy_route_requests_total[5m] offset 1h)
+          ) < 0.25
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Traffic drop detected on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} traffic is {{ $value }}x normal (0.25x threshold)"
+          runbook: "https://docs.example.com/runbooks/traffic-drop"
+          route: "{{ $labels.route }}"
+
+      - alert: BackendDegraded
+        expr: |
+          proxy_backend_error_rate > 0.02 and proxy_backend_error_rate <= 0.10
+        for: 15m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Backend {{ $labels.backend }} is degraded"
+          description: "Backend {{ $labels.backend }} has {{ $value | humanizePercentage }} error rate"
+          runbook: "https://docs.example.com/runbooks/backend-degraded"
+          backend: "{{ $labels.backend }}"
+
+      - alert: HighBandwidthUsage
+        expr: |
+          sum(rate(proxy_route_bytes_sent_total[5m])) by (route) > 100000000
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "High bandwidth usage on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} is sending {{ $value | humanize }}B/s (100MB/s threshold)"
+          runbook: "https://docs.example.com/runbooks/high-bandwidth"
+          route: "{{ $labels.route }}"
+
+      # ============================================
+      # SLA VIOLATION ALERTS
+      # ============================================
+
+      - alert: SLAViolationP99Latency
+        expr: |
+          proxy_route_response_time_seconds{quantile="0.99"} > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+          sla: "true"
+        annotations:
+          summary: "SLA violation: P99 latency on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} P99 latency {{ $value }}s exceeds 1s SLA"
+          runbook: "https://docs.example.com/runbooks/sla-violation"
+          route: "{{ $labels.route }}"
+          sla_threshold: "1s"
+
+      - alert: SLAViolationErrorRate
+        expr: |
+          (
+            sum(rate(proxy_route_requests_by_status{status="5xx"}[5m])) by (route)
+            / sum(rate(proxy_route_requests_total[5m])) by (route)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+          sla: "true"
+        annotations:
+          summary: "SLA violation: Error rate on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} error rate {{ $value | humanizePercentage }} exceeds 1% SLA"
+          runbook: "https://docs.example.com/runbooks/sla-violation"
+          route: "{{ $labels.route }}"
+          sla_threshold: "1%"
+
+      - alert: SLAViolationAvailability
+        expr: |
+          (
+            sum(rate(proxy_requests_by_status{status="2xx"}[5m])) +
+            sum(rate(proxy_requests_by_status{status="3xx"}[5m]))
+          ) / sum(rate(proxy_requests_total[5m])) < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          component: proxy
+          sla: "true"
+        annotations:
+          summary: "SLA violation: Availability below 99.9%"
+          description: "Global availability is {{ $value | humanizePercentage }} (SLA: 99.9%)"
+          runbook: "https://docs.example.com/runbooks/availability-sla"
+          sla_threshold: "99.9%"
+
+      # ============================================
+      # CAPACITY PLANNING ALERTS
+      # ============================================
+
+      - alert: BackendNearCapacity
+        expr: |
+          (
+            rate(proxy_backend_requests_total[5m])
+            / 1000
+          ) > 0.80
+        for: 15m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Backend {{ $labels.backend }} near capacity"
+          description: "Backend {{ $labels.backend }} is handling {{ $value }}% of estimated capacity"
+          runbook: "https://docs.example.com/runbooks/capacity-planning"
+          backend: "{{ $labels.backend }}"
+
+      - alert: NewRouteDetected
+        expr: |
+          (time() - timestamp(proxy_route_requests_total)) < 300
+        for: 1m
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "New route detected: {{ $labels.route }}"
+          description: "Route {{ $labels.route }} started receiving traffic"
+          route: "{{ $labels.route }}"
+
+      # ============================================
+      # ANOMALY DETECTION ALERTS
+      # ============================================
+
+      - alert: AbnormalResponseTimeVariance
+        expr: |
+          (
+            proxy_route_response_time_seconds{quantile="0.99"}
+            / proxy_route_response_time_seconds{quantile="0.5"}
+          ) > 10
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Abnormal response time variance on route {{ $labels.route }}"
+          description: "Route {{ $labels.route }} has high variance (P99/P50 ratio: {{ $value }})"
+          runbook: "https://docs.example.com/runbooks/response-variance"
+          route: "{{ $labels.route }}"
+
+      - alert: BackendFlapping
+        expr: |
+          changes(proxy_backend_up[10m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Backend {{ $labels.backend }} is flapping"
+          description: "Backend {{ $labels.backend }} changed state {{ $value }} times in 10 minutes"
+          runbook: "https://docs.example.com/runbooks/backend-flapping"
+          backend: "{{ $labels.backend }}"
+
+      - alert: ZeroTrafficRoute
+        expr: |
+          rate(proxy_route_requests_total[30m]) == 0
+        for: 1h
+        labels:
+          severity: info
+          team: platform
+          component: proxy
+        annotations:
+          summary: "Route {{ $labels.route }} has zero traffic"
+          description: "Route {{ $labels.route }} has not received any requests in 1 hour"
+          route: "{{ $labels.route }}"

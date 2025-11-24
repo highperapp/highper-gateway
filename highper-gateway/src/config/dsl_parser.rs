@@ -1,0 +1,745 @@
+//! DSL Parser
+//!
+//! Parses the Caddy-like DSL into an AST using pest.
+
+use pest::Parser;
+use pest_derive::Parser;
+use anyhow::{anyhow, Context, Result};
+use std::time::Duration;
+
+use super::dsl_ast::*;
+
+#[derive(Parser)]
+#[grammar = "config/dsl.pest"]
+pub struct DslParser;
+
+/// Parse DSL configuration from string
+pub fn parse_dsl(input: &str) -> Result<Config> {
+    let mut pairs = DslParser::parse(Rule::config, input)
+        .context("Failed to parse DSL configuration")?;
+
+    let mut config = Config::default();
+
+    // Get the config rule pair
+    if let Some(config_pair) = pairs.next() {
+        // Iterate through inner rules (global_directive, site, etc.)
+        for pair in config_pair.into_inner() {
+            match pair.as_rule() {
+                Rule::global_directive => {
+                    parse_global_directive(&mut config.global, pair)?;
+                }
+                Rule::site => {
+                    let site = parse_site(pair)?;
+                    config.sites.push(site);
+                }
+                Rule::EOI => {} // End of input
+                _ => {}
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn parse_global_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair<Rule>) -> Result<()> {
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::log_directive => {
+                for log_pair in inner.into_inner() {
+                    if let Rule::log_level = log_pair.as_rule() {
+                        global.log_level = Some(parse_log_level(log_pair.as_str())?);
+                    }
+                }
+            }
+            Rule::admin_directive => {
+                for admin_pair in inner.into_inner() {
+                    if let Rule::admin_address = admin_pair.as_rule() {
+                        global.admin_address = Some(admin_pair.as_str().to_string());
+                    }
+                }
+            }
+            Rule::metrics_directive => {
+                // Check if "off" is specified
+                let text = inner.as_str();
+                global.metrics_enabled = !text.contains("off");
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn parse_log_level(s: &str) -> Result<LogLevel> {
+    match s {
+        "debug" => Ok(LogLevel::Debug),
+        "info" => Ok(LogLevel::Info),
+        "warn" => Ok(LogLevel::Warn),
+        "error" => Ok(LogLevel::Error),
+        _ => Err(anyhow!("Invalid log level: {}", s)),
+    }
+}
+
+fn parse_site(pair: pest::iterators::Pair<Rule>) -> Result<Site> {
+    let mut address = None;
+    let mut routes = Vec::new();
+    let mut directives = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::site_address => {
+                address = Some(parse_site_address(inner)?);
+            }
+            Rule::simple_proxy => {
+                let backends = parse_simple_proxy(inner)?;
+                directives.push(Directive::Proxy(backends));
+            }
+            Rule::site_block => {
+                let (block_routes, block_directives) = parse_site_block(inner)?;
+                routes.extend(block_routes);
+                directives.extend(block_directives);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Site {
+        address: address.ok_or_else(|| anyhow!("Site missing address"))?,
+        routes,
+        directives,
+    })
+}
+
+fn parse_site_address(pair: pest::iterators::Pair<Rule>) -> Result<SiteAddress> {
+    let mut scheme = None;
+    let mut domain = None;
+    let mut port = None;
+    let mut path = None;
+    let mut tcp_protocol = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::scheme => {
+                scheme = Some(parse_scheme(inner.as_str())?);
+            }
+            Rule::domain => {
+                domain = Some(inner.as_str().to_string());
+            }
+            Rule::port => {
+                port = Some(inner.as_str().parse()?);
+            }
+            Rule::path => {
+                path = Some(inner.as_str().to_string());
+            }
+            Rule::tcp_protocol => {
+                tcp_protocol = Some(parse_tcp_protocol(inner.as_str())?);
+            }
+            _ => {}
+        }
+    }
+
+    // TCP-only (port without domain)
+    if domain.is_none() && port.is_some() {
+        return Ok(SiteAddress::Tcp {
+            port: port.unwrap(),
+            protocol: tcp_protocol.unwrap_or(TcpProtocol::Generic),
+        });
+    }
+
+    // HTTP/HTTPS site
+    Ok(SiteAddress::Http {
+        scheme: scheme.unwrap_or(Scheme::Http),
+        domain: domain.ok_or_else(|| anyhow!("Missing domain"))?,
+        port,
+        base_path: path,
+    })
+}
+
+fn parse_scheme(s: &str) -> Result<Scheme> {
+    match s {
+        "http://" => Ok(Scheme::Http),
+        "https://" => Ok(Scheme::Https),
+        "grpc://" => Ok(Scheme::Grpc),
+        _ => Err(anyhow!("Invalid scheme: {}", s)),
+    }
+}
+
+fn parse_tcp_protocol(s: &str) -> Result<TcpProtocol> {
+    match s {
+        "mysql" => Ok(TcpProtocol::Mysql),
+        "postgres" => Ok(TcpProtocol::Postgres),
+        "redis" => Ok(TcpProtocol::Redis),
+        "tcp" => Ok(TcpProtocol::Generic),
+        _ => Err(anyhow!("Invalid TCP protocol: {}", s)),
+    }
+}
+
+fn parse_simple_proxy(pair: pest::iterators::Pair<Rule>) -> Result<Vec<Backend>> {
+    let mut backends = Vec::new();
+
+    for inner in pair.into_inner() {
+        if let Rule::backend = inner.as_rule() {
+            backends.push(parse_backend(inner)?);
+        }
+    }
+
+    Ok(backends)
+}
+
+fn parse_backend(pair: pest::iterators::Pair<Rule>) -> Result<Backend> {
+    let mut address = None;
+    let mut port = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::domain | Rule::ip_address => {
+                address = Some(inner.as_str().to_string());
+            }
+            Rule::port => {
+                port = Some(inner.as_str().parse()?);
+            }
+            Rule::scheme => {
+                // Ignore scheme in backend for now
+            }
+            _ => {}
+        }
+    }
+
+    let mut backend = Backend::new(address.ok_or_else(|| anyhow!("Backend missing address"))?);
+    if let Some(p) = port {
+        backend = backend.with_port(p);
+    }
+
+    Ok(backend)
+}
+
+fn parse_site_block(pair: pest::iterators::Pair<Rule>) -> Result<(Vec<Route>, Vec<Directive>)> {
+    let mut routes = Vec::new();
+    let mut directives = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::route => {
+                routes.push(parse_route(inner)?);
+            }
+            Rule::directive => {
+                if let Some(dir) = parse_directive(inner)? {
+                    directives.push(dir);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok((routes, directives))
+}
+
+fn parse_route(pair: pest::iterators::Pair<Rule>) -> Result<Route> {
+    let mut path = None;
+    let mut route_directives = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::path => {
+                path = Some(inner.as_str().to_string());
+            }
+            Rule::simple_proxy => {
+                let backends = parse_simple_proxy(inner)?;
+                route_directives.push(Directive::Proxy(backends));
+            }
+            Rule::route_block => {
+                for block_inner in inner.into_inner() {
+                    if let Rule::directive = block_inner.as_rule() {
+                        if let Some(dir) = parse_directive(block_inner)? {
+                            route_directives.push(dir);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Route {
+        path: path.ok_or_else(|| anyhow!("Route missing path"))?,
+        directives: route_directives,
+    })
+}
+
+fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive>> {
+    for inner in pair.into_inner() {
+        return match inner.as_rule() {
+            Rule::proxy_directive => {
+                let backends = parse_proxy_directive(inner)?;
+                Ok(Some(Directive::Proxy(backends)))
+            }
+            Rule::lb_directive => {
+                Ok(Some(parse_lb_directive(inner)?))
+            }
+            Rule::pool_directive => {
+                Ok(Some(Directive::Pool(parse_pool_directive(inner)?)))
+            }
+            Rule::health_directive => {
+                Ok(Some(Directive::HealthCheck(parse_health_directive(inner)?)))
+            }
+            Rule::tls_directive => {
+                Ok(Some(Directive::Tls(parse_tls_directive(inner)?)))
+            }
+            Rule::cors_directive => {
+                Ok(Some(Directive::Cors(parse_cors_directive(inner)?)))
+            }
+            Rule::websocket_directive => {
+                Ok(Some(Directive::WebSocket))
+            }
+            Rule::grpc_directive => {
+                Ok(Some(Directive::Grpc))
+            }
+            Rule::compress_directive => {
+                Ok(Some(parse_compress_directive(inner)?))
+            }
+            Rule::rate_limit_directive => {
+                Ok(Some(parse_rate_limit_directive(inner)?))
+            }
+            Rule::timeout_directive => {
+                Ok(Some(parse_timeout_directive(inner)?))
+            }
+            Rule::headers_directive => {
+                Ok(Some(parse_headers_directive(inner)?))
+            }
+            Rule::tls_passthrough_directive => {
+                Ok(Some(parse_tls_passthrough_directive(inner)?))
+            }
+            _ => Ok(None),
+        };
+    }
+    Ok(None)
+}
+
+fn parse_proxy_directive(pair: pest::iterators::Pair<Rule>) -> Result<Vec<Backend>> {
+    let mut backends = Vec::new();
+
+    for inner in pair.into_inner() {
+        if let Rule::backend = inner.as_rule() {
+            backends.push(parse_backend(inner)?);
+        }
+    }
+
+    Ok(backends)
+}
+
+fn parse_lb_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::lb_algorithm = inner.as_rule() {
+            let algo = match inner.as_str() {
+                "round_robin" => LoadBalancingAlgorithm::RoundRobin,
+                "least_conn" => LoadBalancingAlgorithm::LeastConnections,
+                "ip_hash" => LoadBalancingAlgorithm::IpHash,
+                "random" => LoadBalancingAlgorithm::Random,
+                "weighted" => LoadBalancingAlgorithm::Weighted,
+                "consistent_hash" => LoadBalancingAlgorithm::ConsistentHash,
+                _ => return Err(anyhow!("Invalid load balancing algorithm")),
+            };
+            return Ok(Directive::LoadBalancing(algo));
+        }
+    }
+    Err(anyhow!("Missing load balancing algorithm"))
+}
+
+fn parse_pool_directive(pair: pest::iterators::Pair<Rule>) -> Result<PoolConfig> {
+    let mut config = PoolConfig::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::pool_option = inner.as_rule() {
+            let opt_str = inner.as_str();
+            if let Some(value) = opt_str.strip_prefix("max=") {
+                config.max_size = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("min=") {
+                config.min_idle = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("lifetime=") {
+                config.max_lifetime = Some(parse_duration(value)?);
+            } else if let Some(value) = opt_str.strip_prefix("idle=") {
+                config.idle_timeout = Some(parse_duration(value)?);
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn parse_health_directive(pair: pest::iterators::Pair<Rule>) -> Result<HealthCheckConfig> {
+    let mut config = HealthCheckConfig::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::health_option = inner.as_rule() {
+            let opt_str = inner.as_str();
+            if let Some(value) = opt_str.strip_prefix("interval=") {
+                config.interval = Some(parse_duration(value)?);
+            } else if let Some(value) = opt_str.strip_prefix("timeout=") {
+                config.timeout = Some(parse_duration(value)?);
+            } else if let Some(value) = opt_str.strip_prefix("path=") {
+                config.path = Some(value.trim_matches('"').to_string());
+            } else if let Some(value) = opt_str.strip_prefix("healthy=") {
+                config.healthy_threshold = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("unhealthy=") {
+                config.unhealthy_threshold = Some(value.parse()?);
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn parse_tls_directive(pair: pest::iterators::Pair<Rule>) -> Result<TlsConfig> {
+    for inner in pair.into_inner() {
+        match inner.as_str() {
+            "internal" => return Ok(TlsConfig::Internal),
+            s if s.contains('@') => {
+                return Ok(TlsConfig::Auto {
+                    email: Some(s.to_string()),
+                });
+            }
+            _ => {
+                // Try to parse as cert/key files
+                let parts: Vec<&str> = inner.as_str().split_whitespace().collect();
+                if parts.len() == 2 {
+                    return Ok(TlsConfig::Manual {
+                        cert_file: parts[0].trim_matches('"').to_string(),
+                        key_file: parts[1].trim_matches('"').to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Default: Auto TLS without email
+    Ok(TlsConfig::Auto { email: None })
+}
+
+fn parse_cors_directive(pair: pest::iterators::Pair<Rule>) -> Result<CorsConfig> {
+    let mut config = CorsConfig::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::cors_option = inner.as_rule() {
+            let opt_str = inner.as_str();
+            if let Some(value) = opt_str.strip_prefix("origins=") {
+                config.origins = Some(vec![value.trim_matches('"').to_string()]);
+            } else if let Some(value) = opt_str.strip_prefix("methods=") {
+                config.methods = Some(value.trim_matches('"').split(',').map(|s| s.trim().to_string()).collect());
+            } else if let Some(value) = opt_str.strip_prefix("headers=") {
+                config.headers = Some(value.trim_matches('"').split(',').map(|s| s.trim().to_string()).collect());
+            } else if opt_str == "credentials" {
+                config.credentials = true;
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn parse_compress_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut algorithms = Vec::new();
+
+    for inner in pair.into_inner() {
+        if let Rule::compression_algo = inner.as_rule() {
+            let algo = match inner.as_str() {
+                "gzip" => CompressionAlgorithm::Gzip,
+                "br" => CompressionAlgorithm::Brotli,
+                "deflate" => CompressionAlgorithm::Deflate,
+                "zstd" => CompressionAlgorithm::Zstd,
+                _ => continue,
+            };
+            algorithms.push(algo);
+        }
+    }
+
+    // Default to gzip if no algorithms specified
+    if algorithms.is_empty() {
+        algorithms.push(CompressionAlgorithm::Gzip);
+    }
+
+    Ok(Directive::Compress(algorithms))
+}
+
+fn parse_rate_limit_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut rate = None;
+    let mut per = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::number => {
+                if rate.is_none() {
+                    rate = Some(inner.as_str().parse()?);
+                }
+            }
+            Rule::duration => {
+                per = Some(parse_duration(inner.as_str())?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::RateLimit {
+        rate: rate.ok_or_else(|| anyhow!("Rate limit missing rate"))?,
+        per,
+    })
+}
+
+fn parse_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::Timeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("Timeout directive missing duration"))
+}
+
+fn parse_headers_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut direction = None;
+    let mut name = None;
+    let mut value = None;
+
+    let text = pair.as_str();
+    direction = if text.starts_with("header_up") {
+        Some(HeaderDirection::Up)
+    } else {
+        Some(HeaderDirection::Down)
+    };
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::header_name => {
+                name = Some(inner.as_str().to_string());
+            }
+            Rule::header_value => {
+                value = Some(inner.as_str().trim_matches('"').to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::Header {
+        direction: direction.unwrap(),
+        name: name.ok_or_else(|| anyhow!("Header missing name"))?,
+        value: value.ok_or_else(|| anyhow!("Header missing value"))?,
+    })
+}
+
+fn parse_tls_passthrough_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut server_name = None;
+    let mut backend = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::domain => {
+                server_name = Some(inner.as_str().to_string());
+            }
+            Rule::backend => {
+                backend = Some(parse_backend(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::TlsPassthrough {
+        server_name: server_name.ok_or_else(|| anyhow!("TLS passthrough missing server name"))?,
+        backend: backend.ok_or_else(|| anyhow!("TLS passthrough missing backend"))?,
+    })
+}
+
+fn parse_duration(s: &str) -> Result<Duration> {
+    let s = s.trim();
+
+    // Parse number and unit
+    let (num_str, unit) = if s.ends_with("ms") {
+        (&s[..s.len()-2], "ms")
+    } else if s.ends_with('s') {
+        (&s[..s.len()-1], "s")
+    } else if s.ends_with('m') {
+        (&s[..s.len()-1], "m")
+    } else if s.ends_with('h') {
+        (&s[..s.len()-1], "h")
+    } else if s.ends_with('d') {
+        (&s[..s.len()-1], "d")
+    } else {
+        return Err(anyhow!("Invalid duration format: {}", s));
+    };
+
+    let num: u64 = num_str.parse()
+        .with_context(|| format!("Invalid duration number: {}", num_str))?;
+
+    let duration = match unit {
+        "ms" => Duration::from_millis(num),
+        "s" => Duration::from_secs(num),
+        "m" => Duration::from_secs(num * 60),
+        "h" => Duration::from_secs(num * 3600),
+        "d" => Duration::from_secs(num * 86400),
+        _ => return Err(anyhow!("Invalid duration unit: {}", unit)),
+    };
+
+    Ok(duration)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_duration() {
+        assert_eq!(parse_duration("100ms").unwrap(), Duration::from_millis(100));
+        assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration("5m").unwrap(), Duration::from_secs(300));
+        assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(parse_duration("2d").unwrap(), Duration::from_secs(172800));
+    }
+
+    #[test]
+    fn test_parse_simple_proxy() {
+        let input = "localhost:8080 proxy backend:3000\n";
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+        assert_eq!(config.sites[0].directives.len(), 1);
+
+        if let Directive::Proxy(backends) = &config.sites[0].directives[0] {
+            assert_eq!(backends.len(), 1);
+            assert_eq!(backends[0].address, "backend");
+            assert_eq!(backends[0].port, Some(3000));
+        } else {
+            panic!("Expected Proxy directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_https_site() {
+        let input = "https://example.com proxy localhost:3000\n";
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        if let SiteAddress::Http { scheme, domain, .. } = &config.sites[0].address {
+            assert_eq!(*scheme, Scheme::Https);
+            assert_eq!(domain, "example.com");
+        } else {
+            panic!("Expected HTTP site address");
+        }
+    }
+
+    #[test]
+    fn test_parse_tcp_proxy() {
+        let input = ":3306 mysql proxy db1:3306 db2:3306\n";
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        if let SiteAddress::Tcp { port, protocol } = &config.sites[0].address {
+            assert_eq!(*port, 3306);
+            assert_eq!(*protocol, TcpProtocol::Mysql);
+        } else {
+            panic!("Expected TCP site address");
+        }
+
+        if let Directive::Proxy(backends) = &config.sites[0].directives[0] {
+            assert_eq!(backends.len(), 2);
+        } else {
+            panic!("Expected Proxy directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_load_balancing() {
+        let input = r#"
+example.com {
+    proxy server1:8080 server2:8080
+    lb least_conn
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+        assert_eq!(config.sites[0].directives.len(), 2);
+
+        if let Directive::LoadBalancing(algo) = &config.sites[0].directives[1] {
+            assert_eq!(*algo, LoadBalancingAlgorithm::LeastConnections);
+        } else {
+            panic!("Expected LoadBalancing directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_global_log_directive() {
+        let input = "log debug\nlocalhost:8080 proxy backend:3000\n";
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.global.log_level, Some(LogLevel::Debug));
+    }
+
+    #[test]
+    fn test_parse_pool_config() {
+        let input = r#"
+:5432 postgres {
+    proxy pg1:5432
+    pool max=500 min=20 lifetime=1h
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        if let Directive::Pool(pool) = &config.sites[0].directives[1] {
+            assert_eq!(pool.max_size, Some(500));
+            assert_eq!(pool.min_idle, Some(20));
+            assert_eq!(pool.max_lifetime, Some(Duration::from_secs(3600)));
+        } else {
+            panic!("Expected Pool directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_cors() {
+        let input = r#"
+example.com {
+    proxy backend:8080
+    cors
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        if let Directive::Cors(_) = &config.sites[0].directives[1] {
+            // Success
+        } else {
+            panic!("Expected CORS directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_websocket() {
+        let input = r#"
+ws.example.com {
+    websocket
+    proxy ws:8081
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        if let Directive::WebSocket = &config.sites[0].directives[0] {
+            // Success
+        } else {
+            panic!("Expected WebSocket directive");
+        }
+    }
+
+    #[test]
+    fn test_parse_rate_limit() {
+        let input = r#"
+api.example.com {
+    proxy api:8080
+    rate_limit 100 per 1s
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        if let Directive::RateLimit { rate, per } = &config.sites[0].directives[1] {
+            assert_eq!(*rate, 100);
+            assert_eq!(*per, Some(Duration::from_secs(1)));
+        } else {
+            panic!("Expected RateLimit directive");
+        }
+    }
+}

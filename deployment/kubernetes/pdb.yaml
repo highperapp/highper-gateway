@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: highper-gateway-pdb
+  namespace: default
+  labels:
+    app: highper-gateway
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: highper-gateway
+  unhealthyPodEvictionPolicy: AlwaysAllow

@@ -1,0 +1,101 @@
+# Integrated Configuration Example
+# Demonstrates WebSocket, gRPC, and TLS Passthrough
+
+server:
+  bind:
+    - "0.0.0.0:8080"     # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"     # HTTPS (TLS termination)
+  workers: "auto"
+  protocols:
+    - http1
+    - http2              # Required for gRPC
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domains: ["localhost"]
+      cert_file: "certs/cert.pem"
+      key_file: "certs/key.pem"
+
+  # TLS Passthrough (separate port for SNI-based routing)
+  passthrough:
+    enabled: true
+    bind: ["0.0.0.0:9443"]  # Different port from TLS termination
+    routes:
+      - server_name: "backend1.example.com"
+        upstream: "127.0.0.1:10443"
+        enabled: true
+      - server_name: "backend2.example.com"
+        upstream: "127.0.0.1:10444"
+        enabled: true
+      - server_name: "*.internal.example.com"  # Wildcard support
+        upstream: "127.0.0.1:10445"
+        enabled: true
+    default_backend: "127.0.0.1:10446"  # Optional fallback
+    timeout: 60s
+
+# WebSocket Configuration
+websocket:
+  enabled: true
+  max_message_size: 16777216  # 16 MB
+  ping_interval: 30
+  timeout: 300
+
+# gRPC Configuration
+grpc:
+  enabled: true
+  max_message_size: 4194304  # 4 MB
+  timeout_seconds: 30
+  health_check_enabled: false  # Health checks stubbed for now
+  health_check_interval: 10
+
+# Upstream Backends
+upstreams:
+  - name: "http_backend"
+    servers:
+      - url: "http://localhost:3000"
+    load_balancing:
+      algorithm: "round_robin"
+
+  - name: "websocket_backend"
+    servers:
+      - url: "http://localhost:3001"
+    load_balancing:
+      algorithm: "least_conn"
+
+  - name: "grpc_backend"
+    servers:
+      - url: "http://localhost:50051"
+    load_balancing:
+      algorithm: "least_conn"  # Best for gRPC streaming
+
+# Routes
+routes:
+  - name: "http_route"
+    match:
+      paths: ["/api/*"]
+    upstream: "http_backend"
+
+  - name: "websocket_route"
+    match:
+      paths: ["/ws", "/websocket"]
+    upstream: "websocket_backend"
+
+  - name: "grpc_route"
+    match:
+      paths:
+        - "/grpc.health.v1.Health/*"
+        - "/myapp.UserService/*"
+        - "/myapp.OrderService/*"
+    upstream: "grpc_backend"
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "pretty"
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"

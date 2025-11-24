@@ -1,0 +1,12 @@
+Load Test Summary
+=================
+Timestamp: 20251123-114924
+Target RPS: 600000
+Duration: 60s
+Generators: 3
+
+Results:
+--------
+Total Requests: 0
+Actual RPS: 0
+Success Rate: 0%

@@ -1,0 +1,67 @@
+# Minimal Test Configuration
+# For testing compilation and startup
+
+server:
+  bind:
+    - "0.0.0.0:8080"     # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"     # HTTPS (TLS termination)
+  workers: "2"
+  protocols:
+    - http1
+    - http2
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domains: ["localhost"]
+      cert_file: "certs/cert.pem"
+      key_file: "certs/key.pem"
+
+  # TLS Passthrough (separate port)
+  passthrough:
+    enabled: true
+    bind: ["0.0.0.0:9443"]
+    routes:
+      - server_name: "test.example.com"
+        upstream: "127.0.0.1:10443"
+        enabled: true
+    timeout: 60s
+
+# WebSocket Configuration
+websocket:
+  enabled: true
+  max_message_size: 16777216
+  ping_interval: 30
+  timeout: 300
+
+# gRPC Configuration
+grpc:
+  enabled: true
+  max_message_size: 4194304
+  timeout_seconds: 30
+  health_check_enabled: false
+
+# Simple upstream for testing
+upstreams:
+  - name: "test_backend"
+    servers:
+      - url: "http://httpbin.org"
+    load_balancing:
+      algorithm: "round_robin"
+
+# Simple route
+routes:
+  - name: "test_route"
+    match:
+      paths: ["/"]
+    upstream: "test_backend"
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "pretty"
+  metrics:
+    enabled: false

@@ -1,0 +1,109 @@
+# Admin API Configuration Example
+#
+# This example shows how to configure the Admin API for managing
+# the reverse proxy via REST API and optional web dashboard
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+
+  tls_bind:
+    - "0.0.0.0:8443"
+
+  workers: "auto"
+  protocols:
+    - http1
+    - http2
+
+# Admin API Configuration
+admin:
+  # Enable the Admin API
+  enabled: true
+
+  # Bind address with port (use 127.0.0.1:9000 for localhost only)
+  bind: "127.0.0.1:9000"
+
+  # Enable authentication (HIGHLY recommended for production)
+  auth_enabled: true
+
+  # API key authentication (simple but effective)
+  # Clients must include header: X-API-Key: your-secret-key-here
+  # You can have multiple API keys for different clients
+  api_keys:
+    - "your-secret-key-here"
+    - "another-api-key"
+
+  # JWT authentication (alternative to API key)
+  # Clients must include header: Authorization: Bearer <jwt-token>
+  jwt_secret: "your-jwt-secret-here-change-this-in-production"
+  jwt_expiration: "24h"
+
+  # Enable CORS for web dashboard
+  cors_enabled: true
+
+  # Allowed origins for CORS
+  cors_origins:
+    - "http://localhost:3000"     # Local development
+    - "https://admin.example.com" # Production dashboard
+
+  # Read-only mode (only allow GET requests)
+  read_only: false
+
+# TLS Configuration
+tls:
+  auto: false
+
+  certificates:
+    - domains:
+        - "example.com"
+        - "www.example.com"
+      cert_file: "/etc/certs/example.crt"
+      key_file: "/etc/certs/example.key"
+
+# Upstreams
+upstreams:
+  - name: "backend_api"
+    servers:
+      - url: "http://10.0.1.10:8080"
+        weight: 100
+      - url: "http://10.0.1.11:8080"
+        weight: 100
+
+    load_balancing:
+      policy: "round_robin"
+
+    health_checks:
+      active:
+        enabled: true
+        interval: "10s"
+        timeout: "5s"
+        path: "/health"
+
+# Routes
+routes:
+  - name: "api_v1"
+    match:
+      paths:
+        - "/api/v1/*"
+      methods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+    upstream: "backend_api"
+    enabled: true
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "json"
+
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9091"
+    prometheus:
+      enabled: true
+
+  tracing:
+    enabled: false

@@ -1,0 +1,485 @@
+# API Aggregation Example
+#
+# This configuration demonstrates how to use API aggregation to compose
+# responses from multiple backend services into a single unified API response.
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: "auto"
+  protocols:
+    - Http1
+    - Http2
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domain: "api.example.com"
+      cert_file: "/etc/certs/api.example.com.crt"
+      key_file: "/etc/certs/api.example.com.key"
+
+# Upstream services
+upstreams:
+  # User service - provides user profile data
+  - id: "user_service"
+    servers:
+      - address: "10.0.1.10:3000"
+      - address: "10.0.1.11:3000"
+    healthcheck:
+      enabled: true
+      path: "/health"
+      interval: 10
+
+  # Orders service - provides order history
+  - id: "orders_service"
+    servers:
+      - address: "10.0.2.10:4000"
+
+  # Recommendations service - provides product recommendations
+  - id: "recommendations_service"
+    servers:
+      - address: "10.0.3.10:5000"
+
+  # Analytics service - provides usage analytics
+  - id: "analytics_service"
+    servers:
+      - address: "10.0.4.10:6000"
+
+# Routes
+routes:
+  # ==========================================================================
+  # Example 1: User Profile Aggregation
+  # ==========================================================================
+  #
+  # Aggregates user data from multiple services:
+  # - User profile (user_service)
+  # - Recent orders (orders_service)
+  # - Personalized recommendations (recommendations_service)
+  # - Usage analytics (analytics_service - optional)
+  #
+  # Request: GET /api/users/{id}/profile
+  # Response: {
+  #   "user": { ... },
+  #   "orders": [ ... ],
+  #   "recommendations": [ ... ],
+  #   "analytics": { ... }
+  # }
+  #
+  - name: "user_profile_aggregation"
+    match:
+      paths: ["/api/users/*/profile"]
+      methods: ["GET"]
+    upstream: "user_service"  # Primary upstream (required for route)
+
+    # Aggregation configuration
+    aggregation:
+      # Execute these backend calls in parallel
+      parallel: true
+
+      # Timeout for all calls
+      timeout_ms: 5000
+
+      # Merge strategy: combine all responses into a JSON object
+      merge_strategy: object
+
+      # Error strategy: continue with partial results if optional backends fail
+      error_strategy: partial
+
+      # Backend calls to execute
+      backends:
+        # User profile (required)
+        - name: "user"
+          upstream: "user_service"
+          path: "/api/users/{id}"
+          method: "GET"
+          required: true
+
+        # Recent orders (required)
+        - name: "orders"
+          upstream: "orders_service"
+          path: "/api/orders?user_id={id}&limit=10"
+          method: "GET"
+          required: true
+
+        # Recommendations (optional)
+        - name: "recommendations"
+          upstream: "recommendations_service"
+          path: "/api/recommendations/{id}"
+          method: "GET"
+          required: false
+          fallback: []
+
+        # Analytics (optional)
+        - name: "analytics"
+          upstream: "analytics_service"
+          path: "/api/analytics/user/{id}"
+          method: "GET"
+          required: false
+          fallback: {"status": "unavailable"}
+
+  # ==========================================================================
+  # Example 2: Dashboard Data Aggregation with Array Merge
+  # ==========================================================================
+  #
+  # Combines data from multiple sources into a single array.
+  # Useful for aggregating similar data from different sources.
+  #
+  # Request: GET /api/dashboard/widgets
+  # Response: [
+  #   { "widget": "user_stats", "data": {...} },
+  #   { "widget": "order_stats", "data": {...} },
+  #   { "widget": "recommendations", "data": {...} }
+  # ]
+  #
+  - name: "dashboard_aggregation"
+    match:
+      paths: ["/api/dashboard/widgets"]
+      methods: ["GET"]
+    upstream: "user_service"
+
+    aggregation:
+      parallel: true
+      timeout_ms: 3000
+      merge_strategy: array
+      error_strategy: ignore
+
+      backends:
+        - name: "user_stats"
+          upstream: "user_service"
+          path: "/api/stats/users"
+          method: "GET"
+          required: false
+
+        - name: "order_stats"
+          upstream: "orders_service"
+          path: "/api/stats/orders"
+          method: "GET"
+          required: false
+
+        - name: "recommendation_stats"
+          upstream: "recommendations_service"
+          path: "/api/stats/recommendations"
+          method: "GET"
+          required: false
+
+  # ==========================================================================
+  # Example 3: First Successful Response (Failover)
+  # ==========================================================================
+  #
+  # Returns the first successful response from multiple backends.
+  # Useful for failover scenarios or when multiple sources have the same data.
+  #
+  # Request: GET /api/product/{id}
+  # Response: First successful response from any backend
+  #
+  - name: "product_failover"
+    match:
+      paths: ["/api/product/*"]
+      methods: ["GET"]
+    upstream: "user_service"
+
+    aggregation:
+      parallel: true
+      timeout_ms: 2000
+      merge_strategy: first
+      error_strategy: ignore
+
+      backends:
+        - name: "primary"
+          upstream: "user_service"
+          path: "/api/products/{id}"
+          method: "GET"
+          required: false
+
+        - name: "secondary"
+          upstream: "orders_service"
+          path: "/api/products/{id}"
+          method: "GET"
+          required: false
+
+        - name: "cache"
+          upstream: "recommendations_service"
+          path: "/api/cache/products/{id}"
+          method: "GET"
+          required: false
+
+  # ==========================================================================
+  # Example 4: Sequential Execution with Dependencies
+  # ==========================================================================
+  #
+  # Some requests need to be executed sequentially when there are dependencies.
+  # Set parallel: false to execute calls in order.
+  #
+  - name: "sequential_aggregation"
+    match:
+      paths: ["/api/reports/user/*"]
+      methods: ["GET"]
+    upstream: "user_service"
+
+    aggregation:
+      parallel: false  # Execute sequentially
+      timeout_ms: 10000
+      merge_strategy: object
+      error_strategy: failfast
+
+      backends:
+        - name: "user"
+          upstream: "user_service"
+          path: "/api/users/{id}"
+          method: "GET"
+          required: true
+
+        - name: "orders"
+          upstream: "orders_service"
+          path: "/api/orders?user_id={id}"
+          method: "GET"
+          required: true
+
+  # ==========================================================================
+  # Example 5: Include Errors in Response
+  # ==========================================================================
+  #
+  # Returns both successful responses and error information.
+  # Useful for debugging or showing partial data with error details.
+  #
+  - name: "diagnostic_aggregation"
+    match:
+      paths: ["/api/diagnostic/user/*"]
+      methods: ["GET"]
+    upstream: "user_service"
+
+    aggregation:
+      parallel: true
+      timeout_ms: 5000
+      merge_strategy: object
+      error_strategy: include  # Include errors in response
+
+      backends:
+        - name: "user"
+          upstream: "user_service"
+          path: "/api/users/{id}"
+          method: "GET"
+          required: false
+
+        - name: "orders"
+          upstream: "orders_service"
+          path: "/api/orders?user_id={id}"
+          method: "GET"
+          required: false
+
+        - name: "analytics"
+          upstream: "analytics_service"
+          path: "/api/analytics/user/{id}"
+          method: "GET"
+          required: false
+
+  # ==========================================================================
+  # Example 6: JSONPath Extraction
+  # ==========================================================================
+  #
+  # Extract specific fields from backend responses using JSONPath.
+  # Useful for reducing response size and selecting only needed data.
+  #
+  - name: "user_summary"
+    match:
+      paths: ["/api/users/*/summary"]
+      methods: ["GET"]
+    upstream: "user_service"
+
+    aggregation:
+      parallel: true
+      timeout_ms: 3000
+      merge_strategy: object
+      error_strategy: partial
+
+      backends:
+        - name: "name"
+          upstream: "user_service"
+          path: "/api/users/{id}"
+          method: "GET"
+          extract: "$.name"  # Extract only the name field
+          required: true
+
+        - name: "order_count"
+          upstream: "orders_service"
+          path: "/api/orders/count?user_id={id}"
+          method: "GET"
+          extract: "$.count"  # Extract only the count
+          required: false
+
+  # Regular non-aggregated route for comparison
+  - name: "user_service"
+    match:
+      paths: ["/api/users/*"]
+      methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: "user_service"
+
+# Observability Configuration
+observability:
+  # Metrics
+  metrics:
+    enabled: true
+    bind: "127.0.0.1:9100"
+    path: "/metrics"
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+
+  # Distributed Tracing
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    endpoint: "http://localhost:14268/api/traces"
+    sample_rate: 1.0
+    service_name: "api-aggregator"
+    resource_attributes:
+      environment: "production"
+      version: "0.1.0"
+
+# =============================================================================
+# How API Aggregation Works
+# =============================================================================
+#
+# 1. Request Flow:
+#    - Client sends: GET /api/users/123/profile
+#    - Proxy extracts path parameters: {id: "123"}
+#    - Proxy executes all configured backend calls in parallel
+#    - Proxy merges responses according to merge_strategy
+#    - Client receives single unified response
+#
+# 2. Merge Strategies:
+#
+#    a) object (default):
+#       {
+#         "user": { "id": 123, "name": "Alice" },
+#         "orders": [{ "id": 1 }],
+#         "recommendations": [{ "product_id": 5 }]
+#       }
+#
+#    b) array:
+#       [
+#         { "id": 123, "name": "Alice" },
+#         [{ "id": 1 }],
+#         [{ "product_id": 5 }]
+#       ]
+#
+#    c) first:
+#       { "id": 123, "name": "Alice" }  // First successful response
+#
+# 3. Error Strategies:
+#
+#    a) failfast (default):
+#       - Fails if any required backend fails
+#       - Returns 502 Bad Gateway
+#
+#    b) partial:
+#       - Continues if only optional backends fail
+#       - Returns 207 Multi-Status with partial data
+#
+#    c) include:
+#       - Includes error information in response
+#       - Returns 207 Multi-Status
+#       - Example: { "user": {...}, "orders": {"error": "timeout", "status": 504} }
+#
+#    d) ignore:
+#       - Ignores all errors
+#       - Returns 200 OK with available data only
+#
+# 4. Path Parameter Interpolation:
+#    - Request path: /api/users/123/profile
+#    - Extracted: {id: "123"}
+#    - Backend path: /api/users/{id} → /api/users/123
+#    - Backend path: /api/orders?user_id={id} → /api/orders?user_id=123
+#
+# 5. Timeouts:
+#    - timeout_ms applies to each individual backend call
+#    - If a backend times out, it's treated as a failure
+#    - Use fallback values for graceful degradation
+#
+# 6. Required vs Optional Backends:
+#    - required: true → failure causes whole request to fail (unless error_strategy = ignore)
+#    - required: false → failure doesn't affect other backends
+#    - Use fallback values for optional backends
+#
+# =============================================================================
+# Performance Considerations
+# =============================================================================
+#
+# 1. Parallel Execution:
+#    - parallel: true → All calls execute simultaneously (default)
+#    - parallel: false → Calls execute in order
+#    - Parallel is faster but uses more resources
+#
+# 2. Timeouts:
+#    - Set reasonable timeouts for each backend
+#    - Total request time ≈ slowest backend (parallel) or sum (sequential)
+#    - Default: 5000ms (5 seconds)
+#
+# 3. Caching:
+#    - Consider caching aggregated responses
+#    - Reduces load on backend services
+#    - Improves response times
+#
+# 4. Connection Pooling:
+#    - Proxy maintains connection pools to each upstream
+#    - Reuses connections for better performance
+#
+# =============================================================================
+# Testing API Aggregation
+# =============================================================================
+#
+# 1. Test user profile aggregation:
+#    curl http://localhost:8080/api/users/123/profile
+#
+# 2. Test with missing optional service:
+#    # Stop analytics_service
+#    curl http://localhost:8080/api/users/123/profile
+#    # Should still return user, orders, recommendations
+#
+# 3. Test error handling:
+#    curl http://localhost:8080/api/diagnostic/user/123
+#    # Should include error details in response
+#
+# 4. Test failover:
+#    curl http://localhost:8080/api/product/456
+#    # Returns first successful response
+#
+# 5. Monitor metrics:
+#    curl http://localhost:9100/metrics | grep aggregation
+#
+# =============================================================================
+# Troubleshooting
+# =============================================================================
+#
+# Problem: All backends fail
+# Solution:
+#   - Check upstream health: curl http://backend:port/health
+#   - Check network connectivity
+#   - Review timeout settings
+#   - Check logs for specific errors
+#
+# Problem: Slow aggregation responses
+# Solution:
+#   - Enable parallel execution
+#   - Reduce timeout values
+#   - Add caching for frequently accessed data
+#   - Check backend service performance
+#
+# Problem: Partial data returned
+# Solution:
+#   - Check which backends are failing in logs
+#   - Verify error_strategy is set correctly
+#   - Add fallback values for optional backends
+#
+# Problem: Path parameter not interpolated
+# Solution:
+#   - Ensure path contains {parameter_name}
+#   - Check that parameter exists in request path
+#   - Example: /api/users/*/profile extracts id from second segment
+#
+# =============================================================================

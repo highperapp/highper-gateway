@@ -1,0 +1,410 @@
+# Geographic Load Balancing Example
+#
+# This configuration demonstrates how to route requests to the nearest
+# backend server based on client IP geolocation.
+#
+# Supports two GeoIP providers:
+# - MaxMind GeoLite2/GeoIP2 (default)
+# - IP2Location
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: "auto"
+  protocols:
+    - Http1
+    - Http2
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domain: "global.example.com"
+      cert_file: "/etc/certs/global.example.com.crt"
+      key_file: "/etc/certs/global.example.com.key"
+
+# Geographic Upstream - Routes to nearest data center
+upstreams:
+  - id: "global_service"
+
+    # Geographic load balancing configuration
+    load_balancing:
+      algorithm: geographic
+
+      # GeoIP provider: "maxmind" or "ip2location"
+      geoip_provider: maxmind
+
+      # Path to GeoIP database file
+      # MaxMind: Download from https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb
+      # IP2Location: Download from https://lite.ip2location.com/database/ip-country-region-city-latitude-longitude
+      geoip_db_path: "/usr/share/GeoIP/GeoLite2-City.mmdb"
+
+    # Backend servers with geographic locations
+    servers:
+      # US East (Virginia)
+      - url: "http://us-east-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "us-east-1"
+        location:
+          lat: 39.0481    # Washington, DC area
+          lon: -77.4728
+
+      # US West (California)
+      - url: "http://us-west-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "us-west-1"
+        location:
+          lat: 37.7749    # San Francisco
+          lon: -122.4194
+
+      # Europe West (Ireland)
+      - url: "http://eu-west-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "eu-west-1"
+        location:
+          lat: 53.3498    # Dublin
+          lon: -6.2603
+
+      # Europe Central (Germany)
+      - url: "http://eu-central-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "eu-central-1"
+        location:
+          lat: 50.1109    # Frankfurt
+          lon: 8.6821
+
+      # Asia Pacific South (India)
+      - url: "http://ap-south-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "ap-south-1"
+        location:
+          lat: 19.0760    # Mumbai
+          lon: 72.8777
+
+      # Asia Pacific Northeast (Japan)
+      - url: "http://ap-northeast-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "ap-northeast-1"
+        location:
+          lat: 35.6762    # Tokyo
+          lon: 139.6503
+
+      # Asia Pacific Southeast (Singapore)
+      - url: "http://ap-southeast-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "ap-southeast-1"
+        location:
+          lat: 1.3521     # Singapore
+          lon: 103.8198
+
+      # South America (Brazil)
+      - url: "http://sa-east-1.example.com:8000"
+        weight: 1
+        max_conns: 1000
+        region: "sa-east-1"
+        location:
+          lat: -23.5505   # São Paulo
+          lon: -46.6333
+
+    # Health checks
+    healthcheck:
+      enabled: true
+      path: "/health"
+      interval: 10
+      timeout: 5
+      healthy_threshold: 2
+      unhealthy_threshold: 3
+
+  # Comparison: Round-robin upstream (no geographic routing)
+  - id: "simple_service"
+    load_balancing:
+      algorithm: round_robin
+    servers:
+      - url: "http://backend-1.example.com:8000"
+      - url: "http://backend-2.example.com:8000"
+      - url: "http://backend-3.example.com:8000"
+
+# Routes
+routes:
+  # Route using geographic load balancing
+  - name: "api_geographic"
+    match:
+      paths: ["/api/*"]
+      methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: "global_service"
+
+  # Route using simple round-robin
+  - name: "simple_route"
+    match:
+      paths: ["/simple/*"]
+    upstream: "simple_service"
+
+# Observability
+observability:
+  # Metrics
+  metrics:
+    enabled: true
+    bind: "127.0.0.1:9100"
+    path: "/metrics"
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+
+  # Distributed Tracing
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 0.1
+    service_name: "geo-proxy"
+
+# =============================================================================
+# How Geographic Load Balancing Works
+# =============================================================================
+#
+# 1. Client Request Flow:
+#    - Client sends request from IP 203.0.113.42 (example: Sydney, Australia)
+#    - Proxy extracts client IP from X-Forwarded-For or X-Real-IP headers
+#    - Proxy looks up IP in GeoLite2 database → coordinates (-33.8688, 151.2093)
+#    - Proxy calculates distance to all backend servers using Haversine formula
+#    - Proxy selects nearest server (ap-southeast-1, Singapore, ~6300 km away)
+#    - Request routed to http://ap-southeast-1.example.com:8000
+#
+# 2. Distance Calculation (Haversine Formula):
+#    - Calculates great-circle distance between two points on Earth
+#    - Accounts for Earth's curvature
+#    - Returns distance in kilometers
+#    - Examples:
+#      * New York → London: ~5,570 km
+#      * Sydney → Tokyo: ~7,800 km
+#      * Paris → Berlin: ~878 km
+#
+# 3. Fallback Behavior:
+#    - If GeoIP database is not found → falls back to round-robin
+#    - If client IP cannot be determined → falls back to round-robin
+#    - If GeoIP lookup fails → falls back to round-robin
+#    - If no servers have location configured → falls back to round-robin
+#
+# 4. Server Selection Priority:
+#    - Primary: Geographic proximity (nearest server)
+#    - Fallback: Round-robin (if geographic selection fails)
+#    - Health check: Unhealthy servers are excluded from selection
+#
+# =============================================================================
+# GeoIP Database Setup
+# =============================================================================
+#
+# Option 1: MaxMind GeoLite2/GeoIP2 (Default)
+# =============================================================================
+#
+# Free Download (Recommended for Testing):
+#
+# wget https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb \
+#   -O /tmp/GeoLite2-City.mmdb
+#
+# sudo mkdir -p /usr/share/GeoIP
+# sudo mv /tmp/GeoLite2-City.mmdb /usr/share/GeoIP/
+#
+# Configuration:
+#   load_balancing:
+#     algorithm: geographic
+#     geoip_provider: maxmind
+#     geoip_db_path: "/usr/share/GeoIP/GeoLite2-City.mmdb"
+#
+# Option 2: Official MaxMind Account (Recommended for Production)
+#
+# 1. Sign up for free account: https://www.maxmind.com/en/geolite2/signup
+# 2. Download GeoLite2-City database (MMDB format)
+# 3. Place in /usr/share/GeoIP/GeoLite2-City.mmdb
+# 4. Update monthly for accuracy (MaxMind releases updates monthly)
+#
+# Database Update Script (cron job):
+# ```bash
+# #!/bin/bash
+# # Update GeoLite2 database monthly
+# cd /usr/share/GeoIP
+# wget https://download.maxmind.com/... -O GeoLite2-City.mmdb.new
+# mv GeoLite2-City.mmdb.new GeoLite2-City.mmdb
+# # Proxy automatically reloads on file change (if hot reload is enabled)
+# ```
+#
+# =============================================================================
+# Option 2: IP2Location
+# =============================================================================
+#
+# IP2Location offers an alternative GeoIP database with different features.
+#
+# Free LITE Database:
+#
+# 1. Visit: https://lite.ip2location.com/database/ip-country-region-city-latitude-longitude
+# 2. Download IP2Location LITE DB5 or higher (includes lat/lon)
+# 3. Extract the BIN file
+# 4. Place in /usr/share/GeoIP/IP2LOCATION-LITE-DB5.BIN
+#
+# Configuration:
+#   load_balancing:
+#     algorithm: geographic
+#     geoip_provider: ip2location
+#     geoip_db_path: "/usr/share/GeoIP/IP2LOCATION-LITE-DB5.BIN"
+#
+# Note: IP2Location support is experimental. Ensure you download a database
+# package that includes latitude/longitude data (DB5, DB9, DB11, or commercial).
+#
+# Comparison: MaxMind vs IP2Location
+#
+# MaxMind GeoLite2:
+#   + Default provider, well-tested
+#   + Free tier available
+#   + Automatic updates via API
+#   + MMDB format (memory-mapped)
+#   + Better Rust ecosystem support
+#
+# IP2Location:
+#   + Alternative for those who prefer it
+#   + Different pricing model
+#   + May have different accuracy in certain regions
+#   + BIN format
+#   - Experimental support in this proxy
+#   - Requires manual database package selection
+#
+#
+# =============================================================================
+# Testing Geographic Load Balancing
+# =============================================================================
+#
+# 1. Test with different client IPs:
+#
+#    # US client
+#    curl -H "X-Forwarded-For: 8.8.8.8" http://localhost:8080/api/test
+#    # Should route to us-east-1 or us-west-1
+#
+#    # European client
+#    curl -H "X-Forwarded-For: 2.16.0.0" http://localhost:8080/api/test
+#    # Should route to eu-west-1 or eu-central-1
+#
+#    # Asian client
+#    curl -H "X-Forwarded-For: 202.12.27.33" http://localhost:8080/api/test
+#    # Should route to ap-south-1, ap-northeast-1, or ap-southeast-1
+#
+# 2. View routing metrics:
+#    curl http://localhost:9100/metrics | grep upstream_requests
+#    # Shows request distribution across regions
+#
+# 3. Check logs for geographic selection:
+#    tail -f /var/log/highper-gateway.log | grep "Client IP.*located at"
+#    # Shows client location and selected server
+#
+# =============================================================================
+# Performance Considerations
+# =============================================================================
+#
+# 1. GeoIP Lookup Performance:
+#    - Lookup time: < 1ms per request
+#    - Memory-mapped database: efficient even with high traffic
+#    - No external API calls: all lookups are local
+#
+# 2. Distance Calculation:
+#    - Haversine formula: < 0.01ms per calculation
+#    - Cached at connection level
+#    - Minimal CPU overhead
+#
+# 3. Database Size:
+#    - GeoLite2-City: ~70 MB
+#    - Loads into memory on startup
+#    - One-time memory cost
+#
+# 4. Accuracy:
+#    - City-level accuracy: ~90%
+#    - Country-level accuracy: ~99%
+#    - Update monthly for best accuracy
+#
+# =============================================================================
+# Use Cases
+# =============================================================================
+#
+# 1. Global API Services:
+#    - Route users to nearest API endpoint
+#    - Reduce latency for international users
+#    - Example: CDN API, gaming APIs, financial services
+#
+# 2. Content Delivery:
+#    - Serve static content from nearest edge location
+#    - Reduce data transfer costs
+#    - Improve page load times
+#
+# 3. Data Compliance:
+#    - Route EU users to EU servers (GDPR)
+#    - Route China users to China servers (data residency)
+#    - Regional data sovereignty requirements
+#
+# 4. Multi-Region High Availability:
+#    - Automatic failover to next nearest region
+#    - Health checks ensure only healthy regions are used
+#    - Seamless user experience during regional outages
+#
+# =============================================================================
+# Troubleshooting
+# =============================================================================
+#
+# Problem: Requests not routing to nearest server
+# Solution:
+#   - Check GeoIP database is loaded: look for "GeoIP database loaded" in logs
+#   - Verify client IP is being extracted: check X-Forwarded-For header
+#   - Ensure servers have location configured in YAML
+#   - Test with known IPs: use X-Forwarded-For header
+#
+# Problem: All requests go to same server
+# Solution:
+#   - Check if GeoIP database path is correct
+#   - Verify database file exists and is readable
+#   - Look for "Geographic load balancing disabled" warning in logs
+#   - Check if all clients are from same geographic region
+#
+# Problem: GeoIP database not found
+# Solution:
+#   - Verify path in configuration matches actual file location
+#   - Check file permissions (proxy must have read access)
+#   - Download database from MaxMind or GitHub mirror
+#   - Update geoip_db_path in configuration
+#
+# Problem: Fallback to round-robin
+# Solution:
+#   - Expected behavior when GeoIP fails
+#   - Check logs for reason (database missing, IP lookup failed, etc.)
+#   - Verify client IP format is valid
+#   - Ensure at least one server has location configured
+#
+# =============================================================================
+# Monitoring
+# =============================================================================
+#
+# Key metrics to monitor:
+#
+# 1. Geographic distribution:
+#    - upstream_requests_total{region="us-east-1"}
+#    - upstream_requests_total{region="eu-west-1"}
+#    - upstream_requests_total{region="ap-south-1"}
+#
+# 2. Response times by region:
+#    - upstream_request_duration_seconds{region="us-east-1"}
+#    - Shows if geographic routing improves latency
+#
+# 3. Fallback rate:
+#    - Count of "fallback to round-robin" log entries
+#    - High rate may indicate GeoIP issues
+#
+# 4. Health check status:
+#    - upstream_health_status{region="*"}
+#    - Ensure all regions are healthy
+#
+# =============================================================================

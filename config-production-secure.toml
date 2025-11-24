@@ -1,0 +1,339 @@
+# Production-Secure Configuration
+# Rust Reverse Proxy - Security Hardened
+#
+# This configuration enables all security features with production-ready settings:
+# - Security headers (HSTS, CSP, X-Frame-Options, etc.)
+# - Request size limits
+# - Rate limiting
+# - Circuit breaker
+# - Health checks
+# - TLS 1.2+ only
+# - WAF (optional, commented out)
+#
+# Last Updated: November 17, 2025
+
+[server]
+# Bind to HTTPS only in production
+bind = ["0.0.0.0:443"]
+
+# Worker threads (auto = number of CPU cores)
+workers = "auto"
+
+# Protocols: HTTP/1.1 and HTTP/2
+protocols = ["http1", "http2"]
+
+[server.performance]
+# Connection limits
+max_connections = 20000
+backlog = 2048
+
+# Timeouts
+request_timeout = "30s"
+keepalive_timeout = "75s"
+
+# Buffer sizes
+read_buffer_size = 16384   # 16 KB
+write_buffer_size = 16384  # 16 KB
+
+# ═══════════════════════════════════════════════════════════════
+# TLS/HTTPS Configuration
+# ═══════════════════════════════════════════════════════════════
+
+[server.tls]
+# Certificate and key paths
+cert = "/etc/ssl/certs/server.crt"
+key = "/etc/ssl/private/server.key"
+
+# TLS version: 1.2+ only (no SSL, TLS 1.0, TLS 1.1)
+min_version = "1.2"
+
+# Strong cipher suites only
+cipher_suites = [
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_CHACHA20_POLY1305_SHA256",
+]
+
+# OCSP stapling
+ocsp_stapling = true
+
+# ═══════════════════════════════════════════════════════════════
+# Security Headers Middleware
+# ═══════════════════════════════════════════════════════════════
+
+[middleware.security_headers]
+enabled = true
+
+# Preset: "default", "strict", or "relaxed"
+# "strict" provides maximum security
+preset = "strict"
+
+# Custom configuration (overrides preset)
+# Uncomment to customize individual headers
+
+# [middleware.security_headers.custom]
+# x_content_type_options = true
+# x_frame_options = "DENY"  # or "SAMEORIGIN"
+# x_xss_protection = "1; mode=block"
+# hsts = "max-age=63072000; includeSubDomains; preload"  # 2 years
+# csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+# referrer_policy = "no-referrer"
+# permissions_policy = "geolocation=(), microphone=(), camera=()"
+
+# ═══════════════════════════════════════════════════════════════
+# Request Size Limit Middleware
+# ═══════════════════════════════════════════════════════════════
+
+[middleware.request_size_limit]
+enabled = true
+
+# Maximum request body size (10 MB default)
+# Adjust based on your application needs
+max_body_size = 10485760  # 10 MB
+
+# Custom error message (optional)
+# error_message = "Request too large. Maximum size is 10 MB."
+
+# ═══════════════════════════════════════════════════════════════
+# Rate Limiting Middleware
+# ═══════════════════════════════════════════════════════════════
+
+[middleware.rate_limit]
+enabled = true
+
+# Requests per second per IP
+requests_per_second = 100
+
+# Burst capacity (allows short bursts above the rate)
+burst = 20
+
+# Rate limit scope: "ip" or "global"
+scope = "ip"
+
+# ═══════════════════════════════════════════════════════════════
+# CORS Middleware (if needed for API)
+# ═══════════════════════════════════════════════════════════════
+
+[middleware.cors]
+# Enable CORS for API endpoints
+enabled = false  # Set to true if needed
+
+# Allowed origins (use specific domains in production)
+# allowed_origins = ["https://yourdomain.com", "https://app.yourdomain.com"]
+
+# Allowed methods
+# allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+
+# Allowed headers
+# allowed_headers = ["Content-Type", "Authorization"]
+
+# Allow credentials
+# allow_credentials = true
+
+# Max age for preflight cache
+# max_age = 3600  # 1 hour
+
+# ═══════════════════════════════════════════════════════════════
+# Web Application Firewall (WAF) - OPTIONAL
+# ═══════════════════════════════════════════════════════════════
+
+# Uncomment to enable WAF protection
+
+# [middleware.waf]
+# enabled = true
+#
+# # WAF mode: "custom", "coraza", "modsecurity", or "aws"
+# mode = "coraza"  # OWASP Core Rule Set
+#
+# # Block mode (true) or log-only mode (false)
+# block_mode = true
+#
+# # Maximum request body size to inspect
+# max_body_size = 1048576  # 1 MB
+#
+# # Coraza configuration (OWASP CRS)
+# [middleware.waf.coraza]
+# rules_path = "/etc/highper-gateway/waf/coreruleset"
+# paranoia_level = 2  # 1=basic, 2=moderate, 3=strict, 4=paranoid
+#
+# # IP allowlist (trusted IPs bypass WAF)
+# allowlist = [
+#     "10.0.0.0/8",      # Internal network
+#     "172.16.0.0/12",   # Private network
+#     "192.168.0.0/16",  # Local network
+# ]
+#
+# # IP blocklist (always blocked)
+# blocklist = [
+#     # Add known malicious IPs here
+# ]
+
+# ═══════════════════════════════════════════════════════════════
+# Upstream Configuration
+# ═══════════════════════════════════════════════════════════════
+
+[[upstreams]]
+name = "backend"
+
+# Backend servers
+servers = [
+    { url = "http://10.0.1.10:8080", weight = 1 },
+    { url = "http://10.0.1.11:8080", weight = 1 },
+    { url = "http://10.0.1.12:8080", weight = 1 },
+]
+
+# Load balancing algorithm
+[upstreams.load_balancing]
+algorithm = "round_robin"  # or "least_conn", "ip_hash", "weighted"
+
+# Health checks
+[upstreams.health_check]
+enabled = true
+interval = "5s"
+timeout = "2s"
+path = "/health"
+healthy_threshold = 2
+unhealthy_threshold = 3
+
+# Connection pool settings (optimized from Week 1)
+[upstreams.connection]
+max_connections_per_upstream = 500
+min_idle_connections = 50
+connection_timeout = "5s"
+idle_timeout = "90s"
+max_connection_lifetime = "300s"
+tcp_nodelay = true
+tcp_keepalive = true
+keepalive_interval = "30s"
+
+# Connection pool configuration
+[upstreams.connection.connection_pool]
+max_idle_per_host = 200
+min_idle_per_host = 50
+idle_timeout = "90s"
+prewarm = true
+metrics_enabled = true
+
+# Circuit breaker (resilience from Week 1)
+circuit_breaker_enabled = true
+circuit_breaker_threshold = 5        # Open after 5 failures
+circuit_breaker_timeout = "30s"      # Try to close after 30s
+
+# Retry policy
+[upstreams.retry]
+max_retries = 2
+retry_on = ["timeout", "connection_error"]
+retry_timeout = "10s"
+
+# ═══════════════════════════════════════════════════════════════
+# Routes Configuration
+# ═══════════════════════════════════════════════════════════════
+
+[[routes]]
+name = "api"
+upstream = "backend"
+
+[routes.match]
+# Match API paths
+paths = ["/api/*"]
+methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
+
+# Route-specific rate limiting (stricter for API)
+[routes.rate_limit]
+enabled = true
+requests_per_second = 50
+burst = 10
+
+# ═══════════════════════════════════════════════════════════════
+# Observability Configuration
+# ═══════════════════════════════════════════════════════════════
+
+[observability]
+# Log level: "error", "warn", "info", "debug", "trace"
+log_level = "info"
+
+# Access log
+access_log = true
+access_log_format = "combined"  # or "json", "custom"
+
+# Metrics
+metrics_enabled = true
+metrics_port = 9090
+
+# Tracing (optional)
+# tracing_enabled = false
+# tracing_endpoint = "http://jaeger:14268/api/traces"
+
+# ═══════════════════════════════════════════════════════════════
+# Admin API Configuration
+# ═══════════════════════════════════════════════════════════════
+
+[admin]
+# IMPORTANT: Bind to localhost only or behind authentication proxy
+bind = "127.0.0.1:9090"  # localhost only for security
+
+# Admin API endpoints:
+# - GET  /health         - Health check
+# - GET  /metrics        - Prometheus metrics
+# - GET  /config         - Current configuration
+# - POST /reload         - Reload configuration
+# - GET  /upstreams      - List upstreams
+# - GET  /routes         - List routes
+
+# For production, use one of these options:
+# 1. Bind to localhost and access via SSH tunnel
+# 2. Use a reverse proxy with authentication
+# 3. Use firewall rules to restrict access
+
+# ═══════════════════════════════════════════════════════════════
+# Optional: Redirect HTTP to HTTPS
+# ═══════════════════════════════════════════════════════════════
+
+# Uncomment to enable automatic HTTP -> HTTPS redirect
+
+# [[server.redirects]]
+# from = "http://yourdomain.com"
+# to = "https://yourdomain.com"
+# permanent = true  # 301 Moved Permanently
+
+# ═══════════════════════════════════════════════════════════════
+# Optional: mTLS for Backend Connections
+# ═══════════════════════════════════════════════════════════════
+
+# Uncomment to enable mutual TLS for backend connections
+
+# [upstreams.tls]
+# enabled = true
+# client_cert = "/etc/ssl/certs/client.crt"
+# client_key = "/etc/ssl/private/client.key"
+# ca_cert = "/etc/ssl/certs/ca.crt"
+# verify_server = true
+
+# ═══════════════════════════════════════════════════════════════
+# Production Deployment Checklist
+# ═══════════════════════════════════════════════════════════════
+
+# Before deploying to production, ensure:
+#
+# ✅ 1. TLS certificates are valid and not expiring soon
+# ✅ 2. Security headers are enabled (preset = "strict")
+# ✅ 3. Request size limits are configured appropriately
+# ✅ 4. Rate limiting is enabled and tuned for your traffic
+# ✅ 5. Circuit breaker is enabled (circuit_breaker_enabled = true)
+# ✅ 6. Health checks are configured for all upstreams
+# ✅ 7. Admin API is bound to localhost or protected by auth
+# ✅ 8. Observability is enabled (logs, metrics)
+# ✅ 9. WAF is enabled (optional but recommended)
+# ✅ 10. Connection pool is sized appropriately (from Week 1 optimization)
+#
+# Security Validation:
+# Run: ./load-tests/security-validation.sh
+#
+# Performance Validation:
+# Run: ./load-tests/chaos-testing.sh
+#
+# For more information:
+# - Security Guide: SECURITY_HARDENING_GUIDE.md
+# - OWASP Audit: SECURITY_AUDIT_OWASP.md
+# - Week 2 Summary: WEEK2_SECURITY_FEATURES_SUMMARY.md
+#

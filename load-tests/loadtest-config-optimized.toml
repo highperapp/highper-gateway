@@ -1,0 +1,73 @@
+# Optimized configuration for load testing (addressing p99 latency issue)
+
+[server]
+bind = ["127.0.0.1:8080"]
+workers = "auto"
+protocols = ["http1", "http2"]
+shutdown_timeout = "30s"
+
+[server.performance]
+max_connections = 20000  # Increased for high load
+backlog = 2048          # Increased connection backlog
+tcp_nodelay = true
+tcp_keepalive = true
+keepalive_timeout = "75s"  # Match backend keepalive
+
+# Connection pool settings
+read_buffer_size = 16384
+write_buffer_size = 16384
+
+[[upstreams]]
+name = "test-backend"
+servers = [
+    { url = "http://127.0.0.1:9000", weight = 1, max_conns = 1000 }
+]
+
+[upstreams.health_check]
+enabled = false  # Disable for load testing
+
+[upstreams.load_balancing]
+algorithm = "round_robin"
+
+[upstreams.connection]
+# OPTIMIZED CONNECTION POOL SETTINGS
+max_connections_per_upstream = 500  # Increased from default 100
+min_idle_connections = 50           # Pre-warm connections
+connection_timeout = "5s"
+idle_timeout = "90s"
+max_connection_lifetime = "300s"    # Recycle connections every 5 minutes
+tcp_nodelay = true
+tcp_keepalive = true
+keepalive_timeout = "75s"
+
+# HTTP/2 specific
+http2_max_concurrent_streams = 100
+
+# Disable for clean metrics
+circuit_breaker_enabled = false
+retry_max_attempts = 0
+
+[upstreams.connection.connection_pool]
+max_idle_per_host = 200
+min_idle_per_host = 50
+idle_timeout = "90s"
+prewarm = true           # Enable connection pre-warming
+metrics_enabled = true
+
+[[routes]]
+name = "default"
+upstream = "test-backend"
+
+[routes.match]
+paths = ["/"]
+
+[observability]
+log_level = "warn"  # Reduce logging overhead
+access_log = false  # Disable access logging for max performance
+
+[observability.metrics]
+enabled = true
+bind = "127.0.0.1:9090"
+
+[observability.tracing]
+enabled = false  # Disable tracing for load testing

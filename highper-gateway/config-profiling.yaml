@@ -1,0 +1,33 @@
+# Minimal profiling configuration
+server:
+  bind: ["127.0.0.1:8080"]
+  workers: "4"
+
+# Upstream backend definitions
+upstreams:
+  - name: "backend"
+    servers:
+      - url: "http://127.0.0.1:8081"
+
+# Route definitions
+routes:
+  - name: "catch-all"
+    match:
+      paths: ["/"]
+    upstream: "backend"
+
+# Observability settings
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+  logging:
+    level: "warn"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  port: 8888
+  auth:
+    enabled: false

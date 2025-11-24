@@ -1,0 +1,63 @@
+---
+# Ingress with nginx ingress controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: highper-gateway-ingress
+  namespace: default
+  labels:
+    app: highper-gateway
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+spec:
+  tls:
+    - hosts:
+        - api.example.com
+      secretName: highper-gateway-tls-secret
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: highper-gateway
+                port:
+                  number: 80
+
+---
+# Alternative: AWS ALB Ingress
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: highper-gateway-alb
+#   namespace: default
+#   annotations:
+#     kubernetes.io/ingress.class: "alb"
+#     alb.ingress.kubernetes.io/scheme: "internet-facing"
+#     alb.ingress.kubernetes.io/target-type: "ip"
+#     alb.ingress.kubernetes.io/healthcheck-path: "/health"
+#     alb.ingress.kubernetes.io/healthcheck-port: "9090"
+#     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+#     alb.ingress.kubernetes.io/ssl-redirect: '443'
+# spec:
+#   rules:
+#     - host: api.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: highper-gateway
+#                 port:
+#                   number: 80

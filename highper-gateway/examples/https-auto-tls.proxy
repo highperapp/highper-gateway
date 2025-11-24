@@ -1,0 +1,14 @@
+# HTTPS with Automatic TLS Certificate Provisioning
+# Using Let's Encrypt ACME protocol for automatic SSL certificates
+
+# Simple HTTPS - auto-provisions certificate via Let's Encrypt
+https://example.com proxy backend:3000
+
+# HTTPS with custom email for Let's Encrypt notifications
+https://api.example.com {
+    proxy backend:8080
+    tls admin@example.com
+}
+
+# HTTP will automatically redirect to HTTPS
+# No additional configuration needed!

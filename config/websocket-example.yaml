@@ -1,0 +1,111 @@
+# WebSocket Proxying Example Configuration
+#
+# This example shows how to proxy WebSocket connections with ws:// and wss://
+# The proxy automatically detects WebSocket upgrade requests and handles bidirectional frame proxying
+
+server:
+  # HTTP listener (for ws://)
+  bind:
+    - "0.0.0.0:8080"
+
+  # HTTPS listener (for wss://)
+  tls_bind:
+    - "0.0.0.0:8443"
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+# TLS configuration for wss://
+tls:
+  certificates:
+    - domains: ["example.com", "*.example.com"]
+      # Use Let's Encrypt for automatic certificates
+      acme:
+        provider: letsencrypt
+        email: admin@example.com
+        challenge_type: http-01
+
+      # Or use manual certificates
+      # cert_file: /path/to/cert.pem
+      # key_file: /path/to/key.pem
+
+# WebSocket global configuration
+websocket:
+  enabled: true
+  max_message_size: 16777216  # 16 MB
+  ping_interval: 30            # Send ping every 30 seconds
+  timeout: 300                 # Connection timeout (5 minutes)
+
+# Upstream backends
+upstreams:
+  - name: "websocket_backend"
+    servers:
+      - url: "http://localhost:3000"
+        weight: 1
+
+  - name: "chat_backend"
+    servers:
+      - url: "http://localhost:4000"
+        weight: 1
+      - url: "http://localhost:4001"
+        weight: 1
+    load_balancing:
+      algorithm: "ip_hash"  # Keep same client on same backend for WebSocket
+
+# Routes
+routes:
+  # WebSocket route example 1: Chat application
+  - name: "chat_websocket"
+    match:
+      paths:
+        - "/ws/chat"
+        - "/ws/chat/*"
+      # WebSocket upgrade is detected automatically
+    upstream: "chat_backend"
+
+  # WebSocket route example 2: Real-time data
+  - name: "data_websocket"
+    match:
+      paths:
+        - "/ws/data"
+    upstream: "websocket_backend"
+
+  # Regular HTTP route (non-WebSocket)
+  - name: "api"
+    match:
+      paths:
+        - "/api/*"
+    upstream: "websocket_backend"
+
+# Usage:
+#
+# 1. HTTP WebSocket (ws://)
+#    ws://localhost:8080/ws/chat
+#
+# 2. Secure WebSocket (wss://)
+#    wss://example.com:8443/ws/chat
+#
+# JavaScript Client Example:
+#
+#   const ws = new WebSocket('wss://example.com:8443/ws/chat');
+#
+#   ws.onopen = () => {
+#     console.log('Connected');
+#     ws.send(JSON.stringify({ action: 'join', room: 'general' }));
+#   };
+#
+#   ws.onmessage = (event) => {
+#     const data = JSON.parse(event.data);
+#     console.log('Received:', data);
+#   };
+#
+#   ws.onerror = (error) => {
+#     console.error('WebSocket error:', error);
+#   };
+#
+#   ws.onclose = () => {
+#     console.log('Disconnected');
+#   };

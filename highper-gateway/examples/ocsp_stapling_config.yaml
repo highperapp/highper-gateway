@@ -1,0 +1,93 @@
+# OCSP Stapling Configuration Example
+#
+# This example demonstrates how to enable OCSP stapling for your TLS certificates.
+# OCSP (Online Certificate Status Protocol) stapling improves TLS handshake performance
+# and privacy by having the server cache certificate revocation status.
+
+server:
+  host: "0.0.0.0"
+  port: 443
+  workers: 4
+
+# TLS Configuration with OCSP Stapling
+tls:
+  # Manual certificate configuration
+  certificates:
+    - domain: "example.com"
+      cert_file: "/path/to/example.com/fullchain.pem"
+      key_file: "/path/to/example.com/privkey.pem"
+
+    - domain: "api.example.com"
+      cert_file: "/path/to/api.example.com/fullchain.pem"
+      key_file: "/path/to/api.example.com/privkey.pem"
+
+  # OCSP Stapling Configuration
+  ocsp_stapling:
+    # Enable OCSP stapling
+    enabled: true
+
+    # Optional: Override OCSP responder URL
+    # If not set, the URL is extracted from the certificate's AIA extension
+    # responder_url: "http://ocsp.example.com"
+
+    # How often to refresh OCSP responses (in seconds)
+    # Default: 21600 (6 hours)
+    # OCSP responses are typically valid for 24 hours
+    refresh_interval: 21600
+
+    # Timeout for OCSP requests (in seconds)
+    # Default: 10 seconds
+    timeout: 10
+
+  # Optional: mTLS configuration can be used alongside OCSP stapling
+  # mtls:
+  #   enabled: false
+  #   verification_mode: Required
+  #   ca_cert_path: "/path/to/ca-cert.pem"
+
+# Routes Configuration
+routes:
+  - path: "/"
+    backends:
+      - url: "http://localhost:8080"
+        weight: 100
+
+# Observability
+observability:
+  logging:
+    level: "info"
+
+  metrics:
+    enabled: true
+    port: 9090
+
+  # Monitor OCSP cache hit rates and response times
+  tracing:
+    enabled: false
+
+# How OCSP Stapling Works:
+#
+# 1. When TLS manager loads, it initializes an OCSP cache and fetcher
+# 2. For each certificate, the server:
+#    - Extracts the OCSP responder URL from the certificate's AIA extension
+#    - Fetches the OCSP response from the responder
+#    - Caches the response with the configured TTL
+# 3. During TLS handshake:
+#    - Server looks up cached OCSP response by certificate fingerprint
+#    - If available, staples it to the ServerHello message
+#    - Client verifies the certificate is not revoked without additional OCSP query
+# 4. Background refresh task:
+#    - Checks cached responses every refresh_interval/4
+#    - Refreshes responses when 75% of TTL has elapsed
+#    - Ensures OCSP responses are always fresh
+#
+# Benefits:
+# - Faster TLS handshakes (no client-side OCSP query needed)
+# - Better privacy (OCSP responder doesn't see client IP)
+# - Reduced OCSP responder load
+# - Improved reliability (works even if OCSP responder is temporarily down)
+#
+# Note: The current implementation has limitations:
+# - OCSP request building requires proper ASN.1 encoding (not fully implemented)
+# - OCSP response validation is basic (full validation requires ASN.1 parsing)
+# - Consider using a dedicated OCSP library for production use

@@ -1,0 +1,168 @@
+# TLS Passthrough Configuration Example
+#
+# This example demonstrates TLS passthrough where the reverse proxy
+# routes encrypted traffic based on SNI (Server Name Indication) without
+# terminating TLS. The backend servers handle TLS termination themselves.
+
+server:
+  # Regular HTTP traffic
+  bind:
+    - "0.0.0.0:8080"
+
+  # TLS termination (optional - can coexist with passthrough)
+  tls_bind:
+    - "0.0.0.0:8443"
+
+  workers: "auto"
+  protocols:
+    - http1
+    - http2
+
+# TLS Configuration
+tls:
+  # TLS Termination (optional)
+  auto: false
+
+  certificates:
+    - domains:
+        - "admin.example.com"
+      cert_file: "/etc/certs/admin.crt"
+      key_file: "/etc/certs/admin.key"
+
+  # TLS Passthrough Configuration
+  passthrough:
+    enabled: true
+
+    # Separate bind address for TLS passthrough
+    # This is different from tls_bind which is used for TLS termination
+    bind:
+      - "0.0.0.0:9443"
+
+    # Connection timeout for passthrough connections
+    timeout: "60s"
+
+    # Default backend when SNI is not provided or doesn't match any route
+    # If not specified, connections without matching SNI will be rejected
+    default_backend: "default_https_backend"
+
+    # SNI-based routing rules
+    routes:
+      # Route for api.example.com
+      - server_name: "api.example.com"
+        upstream: "api_backend"
+        enabled: true
+
+      # Route for app.example.com
+      - server_name: "app.example.com"
+        upstream: "app_backend"
+        enabled: true
+
+      # Route for grafana.example.com
+      - server_name: "grafana.example.com"
+        upstream: "grafana_backend"
+        enabled: true
+
+      # Wildcard route for *.internal.example.com
+      - server_name: "*.internal.example.com"
+        upstream: "internal_services"
+        enabled: true
+
+# Upstream Backends
+upstreams:
+  # API Backend (handles its own TLS)
+  - name: "api_backend"
+    servers:
+      - url: "https://10.0.1.10:8443"
+        weight: 100
+      - url: "https://10.0.1.11:8443"
+        weight: 100
+
+    load_balancing:
+      policy: "round_robin"
+
+    health_checks:
+      active:
+        enabled: true
+        interval: "10s"
+        timeout: "5s"
+        path: "/health"
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+
+  # App Backend (handles its own TLS)
+  - name: "app_backend"
+    servers:
+      - url: "https://10.0.2.10:443"
+      - url: "https://10.0.2.11:443"
+
+    load_balancing:
+      policy: "least_conn"
+
+  # Grafana Backend (handles its own TLS)
+  - name: "grafana_backend"
+    servers:
+      - url: "https://10.0.3.10:3000"
+
+    load_balancing:
+      policy: "round_robin"
+
+  # Internal Services (handles its own TLS)
+  - name: "internal_services"
+    servers:
+      - url: "https://10.0.4.10:443"
+      - url: "https://10.0.4.11:443"
+      - url: "https://10.0.4.12:443"
+
+    load_balancing:
+      policy: "ip_hash"
+
+  # Default HTTPS Backend (fallback)
+  - name: "default_https_backend"
+    servers:
+      - url: "https://10.0.5.10:443"
+
+# Regular Routes (for TLS termination on port 8443)
+routes:
+  - name: "admin_dashboard"
+    match:
+      hosts:
+        - "admin.example.com"
+      paths:
+        - "/*"
+    upstream: "admin_backend"
+    enabled: true
+
+# Additional upstream for terminated TLS traffic
+upstreams:
+  - name: "admin_backend"
+    servers:
+      - url: "http://10.0.6.10:8080"
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "json"
+
+  metrics:
+    enabled: true
+    prometheus:
+      enabled: true
+      port: 9090
+
+  tracing:
+    enabled: true
+    jaeger:
+      enabled: true
+      endpoint: "http://localhost:14268/api/traces"
+
+# Performance Tuning
+server:
+  performance:
+    tcp_nodelay: true
+    tcp_fastopen: true
+    keepalive: true
+    keepalive_timeout: "65s"
+    max_concurrent_streams: 128
+    initial_window_size: 65535
+    max_frame_size: 16384

@@ -1,0 +1,54 @@
+# Load Test Configuration
+loadtest:
+  # Target RPS per generator
+  rpsPerGenerator: 12500
+  # Number of vegeta generator replicas
+  generatorReplicas: 4
+  # Test duration in seconds
+  duration: 60
+  # Timeout per request
+  timeout: 10s
+  # Max connections per generator
+  maxConnections: 100
+
+# Proxy configuration
+proxy:
+  image: highper-gateway
+  tag: loadtest
+  replicas: 3
+  resources:
+    limits:
+      cpu: "3"
+      memory: 2Gi
+    requests:
+      cpu: "1"
+      memory: 512Mi
+  port: 8080
+  metricsPort: 9090
+
+# Backend configuration (Rust)
+backend:
+  image: rust-backend
+  tag: loadtest
+  replicas: 3
+  resources:
+    limits:
+      cpu: "2"
+      memory: 1Gi
+    requests:
+      cpu: "500m"
+      memory: 256Mi
+  port: 80
+
+# Vegeta load generator
+vegeta:
+  image: peterevans/vegeta
+  tag: latest
+  replicas: 4
+  resources:
+    limits:
+      cpu: "2"
+      memory: 2Gi
+    requests:
+      cpu: "500m"
+      memory: 512Mi

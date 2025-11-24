@@ -1,0 +1,29 @@
+# Development Environment Configuration
+# Simple setup for local development with hot reload support
+
+# Frontend dev server (Vite/React)
+localhost:3000 proxy localhost:5173
+
+# Backend API server
+localhost:3001 proxy localhost:8080
+
+# Documentation site
+localhost:3002 proxy localhost:4000
+
+# Database admin tools
+localhost:3003 proxy localhost:5050  # pgAdmin
+
+# Local HTTPS for testing
+local.dev {
+    tls internal  # Self-signed certificate
+    proxy localhost:3000
+}
+
+# WebSocket for HMR (Hot Module Replacement)
+ws.local.dev {
+    websocket
+    proxy localhost:5173
+}
+
+# Simple logging for debugging
+log debug

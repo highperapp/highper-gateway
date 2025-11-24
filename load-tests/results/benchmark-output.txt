@@ -1,0 +1,119 @@
+========================================
+  Rust Reverse Proxy - Baseline Benchmark
+========================================
+
+[0;34m[INFO][0m Starting backend server on port 9000...
+[0;32m[SUCCESS][0m Backend server started (PID: 130021)
+[0;32m[SUCCESS][0m Backend server is ready
+[0;34m[INFO][0m Starting Rust proxy...
+[0;32m[SUCCESS][0m Proxy started (PID: 130064)
+[0;34m[INFO][0m Waiting for proxy to be ready...
+[0;32m[SUCCESS][0m Proxy is ready!
+
+========================================
+  Running Load Tests
+========================================
+
+[0;34m[INFO][0m Test 1: vegeta @ 1000 req/s for 10 seconds
+Requests      [total, rate, throughput]         10000, 1000.05, 1000.01
+Duration      [total, attack, wait]             10s, 10s, 346.346µs
+Latencies     [min, mean, 50, 90, 95, 99, max]  226.51µs, 473.341µs, 443.689µs, 630.02µs, 719.006µs, 985.381µs, 2.185ms
+Bytes In      [total, mean]                     730000, 73.00
+Bytes Out     [total, mean]                     0, 0.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:10000  
+Error Set:
+[0;32m[SUCCESS][0m Test 1 complete
+
+[0;34m[INFO][0m Test 2: vegeta @ 5000 req/s for 10 seconds
+Requests      [total, rate, throughput]         50000, 5000.10, 4999.91
+Duration      [total, attack, wait]             10s, 10s, 381.255µs
+Latencies     [min, mean, 50, 90, 95, 99, max]  149.526µs, 618.92µs, 502.708µs, 1.064ms, 1.311ms, 2.026ms, 4.787ms
+Bytes In      [total, mean]                     3650000, 73.00
+Bytes Out     [total, mean]                     0, 0.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:50000  
+Error Set:
+[0;32m[SUCCESS][0m Test 2 complete
+
+[0;34m[INFO][0m Test 3: vegeta @ 10000 req/s for 10 seconds
+Requests      [total, rate, throughput]         99999, 9999.46, 9998.75
+Duration      [total, attack, wait]             10.001s, 10s, 708.245µs
+Latencies     [min, mean, 50, 90, 95, 99, max]  119.449µs, 4.716ms, 1.321ms, 4.453ms, 8.603ms, 89.021ms, 312.904ms
+Bytes In      [total, mean]                     7299927, 73.00
+Bytes Out     [total, mean]                     0, 0.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:99999  
+Error Set:
+[0;32m[SUCCESS][0m Test 3 complete
+
+[0;34m[INFO][0m Test 4: k6 simple HTTP test (30 seconds)
+time="2025-11-17T04:44:17Z" level=error msg="TypeError: Cannot read property 'toFixed' of undefined or null\n\tat textSummary (file:///home/infy/reverse_proxy/load-tests/scripts/k6-http-simple.js:75:56(81))\n\tat handleSummary (file:///home/infy/reverse_proxy/load-tests/scripts/k6-http-simple.js:57:26(10))\n" hint="script exception"
+
+     ✓ status is 200
+     ✓ response time < 200ms
+
+     checks.........................: 100.00% ✓ 58200     ✗ 0    
+     data_received..................: 6.6 MB  221 kB/s
+     data_sent......................: 2.3 MB  78 kB/s
+     http_req_blocked...............: avg=6.51µs   min=613ns    med=4.27µs   max=3.21ms   p(90)=8.69µs   p(95)=10.39µs 
+     http_req_connecting............: avg=765ns    min=0s       med=0s       max=1.48ms   p(90)=0s       p(95)=0s      
+   ✓ http_req_duration..............: avg=2.37ms   min=199.35µs med=1.96ms   max=21.39ms  p(90)=4.35ms   p(95)=5.57ms  
+       { expected_response:true }...: avg=2.37ms   min=199.35µs med=1.96ms   max=21.39ms  p(90)=4.35ms   p(95)=5.57ms  
+   ✓ http_req_failed................: 0.00%   ✓ 0         ✗ 29100
+     http_req_receiving.............: avg=78.4µs   min=6.43µs   med=49.85µs  max=9.43ms   p(90)=128.83µs p(95)=201.7µs 
+     http_req_sending...............: avg=36.14µs  min=2.44µs   med=14.27µs  max=13.1ms   p(90)=39.93µs  p(95)=107.79µs
+     http_req_tls_handshaking.......: avg=0s       min=0s       med=0s       max=0s       p(90)=0s       p(95)=0s      
+     http_req_waiting...............: avg=2.25ms   min=171.87µs med=1.85ms   max=18.77ms  p(90)=4.16ms   p(95)=5.36ms  
+     http_reqs......................: 29100   969.01427/s
+     iteration_duration.............: avg=103.12ms min=100.29ms med=102.74ms max=122.01ms p(90)=105.31ms p(95)=106.61ms
+     iterations.....................: 29100   969.01427/s
+     request_count..................: 29100   969.01427/s
+     request_duration...............: avg=2.372785 min=0.199352 med=1.967817 max=21.3946  p(90)=4.350777 p(95)=5.574619
+   ✓ success_rate...................: 100.00% ✓ 29100     ✗ 0    
+     vus............................: 100     min=100     max=100
+     vus_max........................: 100     min=100     max=100
+
+[0;32m[SUCCESS][0m Test 4 complete
+
+========================================
+  Benchmark Results Summary
+========================================
+
+vegeta @ 1000 req/s:
+Requests      [total, rate, throughput]         10000, 1000.05, 1000.01
+Latencies     [min, mean, 50, 90, 95, 99, max]  226.51µs, 473.341µs, 443.689µs, 630.02µs, 719.006µs, 985.381µs, 2.185ms
+Success       [ratio]                           100.00%
+
+vegeta @ 5000 req/s:
+Requests      [total, rate, throughput]         50000, 5000.10, 4999.91
+Latencies     [min, mean, 50, 90, 95, 99, max]  149.526µs, 618.92µs, 502.708µs, 1.064ms, 1.311ms, 2.026ms, 4.787ms
+Success       [ratio]                           100.00%
+
+vegeta @ 10000 req/s:
+Requests      [total, rate, throughput]         99999, 9999.46, 9998.75
+Latencies     [min, mean, 50, 90, 95, 99, max]  119.449µs, 4.716ms, 1.321ms, 4.453ms, 8.603ms, 89.021ms, 312.904ms
+Success       [ratio]                           100.00%
+
+========================================
+  Results Location
+========================================
+All results saved to: /home/infy/reverse_proxy/load-tests/results/baseline/
+
+Files:
+total 152M
+-rw-r--r-- 1 infy infy   62 Nov 17 04:43 backend.log
+-rw-r--r-- 1 infy infy 110M Nov 17 04:44 k6-simple.json
+-rw-r--r-- 1 infy infy    0 Nov 17 04:43 proxy.log
+-rw-r--r-- 1 infy infy  27M Nov 17 04:43 vegeta-10000rps.bin
+-rw-r--r-- 1 infy infy  507 Nov 17 04:43 vegeta-10000rps.txt
+-rw-r--r-- 1 infy infy 2.7M Nov 17 04:43 vegeta-1000rps.bin
+-rw-r--r-- 1 infy infy  512 Nov 17 04:43 vegeta-1000rps.txt
+-rw-r--r-- 1 infy infy  14M Nov 17 04:43 vegeta-5000rps.bin
+-rw-r--r-- 1 infy infy  505 Nov 17 04:43 vegeta-5000rps.txt
+
+[0;32m[SUCCESS][0m Baseline benchmarking complete!
+[0;34m[INFO][0m Cleaning up...
+[0;34m[INFO][0m Stopping backend server (PID: 130021)
+[0;34m[INFO][0m Stopping proxy server (PID: 130064)
+[0;32m[SUCCESS][0m Cleanup complete

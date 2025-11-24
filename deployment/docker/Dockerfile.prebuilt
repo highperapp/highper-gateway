@@ -1,0 +1,29 @@
+# Simple Dockerfile using pre-built binary
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 1000 -m highper-gateway
+
+# Copy pre-built binary
+COPY target/release/highper-gateway /usr/local/bin/
+
+# Create directories
+RUN mkdir -p /etc/highper-gateway /var/log/highper-gateway /var/lib/highper-gateway \
+    && chown -R highper-gateway:highper-gateway /var/log/highper-gateway /var/lib/highper-gateway
+
+# Switch to non-root user
+USER highper-gateway
+
+# Expose ports
+EXPOSE 8080 8443 9090
+
+# Set working directory
+WORKDIR /etc/highper-gateway
+
+# Run the proxy
+ENTRYPOINT ["/usr/local/bin/highper-gateway"]
+CMD ["start", "--config", "/etc/highper-gateway/config.toml"]

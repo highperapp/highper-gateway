@@ -1,0 +1,143 @@
+# gRPC Proxying Example Configuration
+#
+# This example shows how to proxy gRPC services with HTTP/2
+
+server:
+  # HTTP/2 is required for gRPC
+  bind:
+    - "0.0.0.0:8080"  # HTTP (for development)
+
+  # For production, use TLS (gRPC over TLS)
+  tls_bind:
+    - "0.0.0.0:8443"
+
+  workers: "auto"
+
+  # Enable HTTP/2 (required for gRPC)
+  protocols:
+    - http2
+
+# TLS configuration (recommended for production)
+tls:
+  certificates:
+    - domains: ["grpc.example.com", "*.grpc.example.com"]
+      acme:
+        provider: letsencrypt
+        email: admin@example.com
+
+# gRPC global configuration
+grpc:
+  enabled: true
+  max_message_size: 4194304      # 4 MB (default for gRPC)
+  timeout_seconds: 30             # Default timeout
+  health_check_enabled: true      # Enable gRPC health checks
+  health_check_interval: 10       # Check every 10 seconds
+  health_check_service: ""        # Empty = check overall server health
+  reflection_enabled: false       # Disable reflection by default
+
+  load_balancing:
+    policy: round_robin           # round_robin, least_request, random, power_of_two, consistent_hash
+    enable_affinity: false        # Sticky connections
+    affinity_key: null            # Header to use for affinity
+
+# Upstream backends
+upstreams:
+  # User service (gRPC)
+  - name: "user_service"
+    servers:
+      - url: "http://localhost:50051"
+        weight: 1
+      - url: "http://localhost:50052"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+    health_checks:
+      active:
+        enabled: true
+        interval: 10
+        timeout: 5
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        # For gRPC services, use gRPC health check
+        grpc:
+          enabled: true
+          service_name: "user.v1.UserService"
+
+  # Order service (gRPC)
+  - name: "order_service"
+    servers:
+      - url: "http://localhost:50053"
+    load_balancing:
+      algorithm: "least_conn"  # Good for gRPC streaming
+    health_checks:
+      active:
+        enabled: true
+        grpc:
+          enabled: true
+
+  # Mixed HTTP + gRPC backend
+  - name: "api_service"
+    servers:
+      - url: "http://localhost:3000"
+
+# Routes
+routes:
+  # gRPC route for user service
+  - name: "user_grpc"
+    match:
+      paths:
+        - "/user.v1.UserService/*"  # gRPC service path
+      # Content-Type check is automatic for gRPC
+    upstream: "user_service"
+    middleware:
+      - name: "grpc_metadata"
+        config:
+          # Add custom metadata to all requests
+          add_metadata:
+            x-proxy-version: "1.0"
+            x-environment: "production"
+
+  # gRPC route for order service
+  - name: "order_grpc"
+    match:
+      paths:
+        - "/order.v1.OrderService/*"
+    upstream: "order_service"
+    timeout: 60  # Longer timeout for order processing
+
+  # Catch-all for other gRPC services
+  - name: "grpc_catchall"
+    match:
+      paths:
+        - "/*"
+      headers:
+        content-type: "application/grpc*"
+    upstream: "api_service"
+
+  # Regular HTTP route (non-gRPC)
+  - name: "http_api"
+    match:
+      paths:
+        - "/api/*"
+    upstream: "api_service"
+
+# Example client usage:
+#
+# Go client:
+#   conn, err := grpc.Dial("grpc.example.com:8443",
+#       grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+#   client := user.NewUserServiceClient(conn)
+#   resp, err := client.GetUser(ctx, &user.GetUserRequest{Id: "123"})
+#
+# Python client:
+#   channel = grpc.secure_channel('grpc.example.com:8443',
+#       grpc.ssl_channel_credentials())
+#   client = user_pb2_grpc.UserServiceStub(channel)
+#   response = client.GetUser(user_pb2.GetUserRequest(id='123'))
+#
+# Node.js client:
+#   const client = new UserServiceClient('grpc.example.com:8443',
+#       grpc.credentials.createSsl());
+#   client.getUser({id: '123'}, (err, response) => {
+#       console.log(response);
+#   });

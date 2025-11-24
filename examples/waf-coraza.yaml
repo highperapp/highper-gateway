@@ -1,0 +1,72 @@
+# WAF Configuration Example - Coraza Engine (OWASP CRS)
+#
+# The Coraza engine provides OWASP Core Rule Set compatibility with
+# advanced threat detection using anomaly scoring.
+# Best for: Production applications requiring comprehensive security.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# WAF Configuration
+waf:
+  enabled: true
+  mode: coraza
+  block_mode: true
+  max_body_size: 1048576  # 1 MB
+
+  # Coraza engine specific configuration
+  coraza:
+    # Enable OWASP Core Rule Set
+    enable_crs: true
+
+    # Paranoia level (1-4)
+    # Level 1: Basic protection, minimal false positives (recommended for production)
+    # Level 2: Enhanced protection (recommended)
+    # Level 3: Strict protection, may cause false positives
+    # Level 4: Maximum protection, high false positive rate
+    paranoia_level: 2
+
+    # Anomaly score threshold for blocking
+    # Requests scoring above this value are blocked
+    # Default: 5 (lower = stricter, higher = more tolerant)
+    anomaly_threshold: 5
+
+    # Enable/disable specific rule categories
+    # SQL Injection detection (CRS 942xxx)
+    sql_injection_rules: true
+
+    # Cross-Site Scripting (XSS) detection (CRS 941xxx)
+    xss_rules: true
+
+    # Remote Code Execution (RCE) detection (CRS 932xxx)
+    rce_rules: true
+
+    # Local File Inclusion (LFI) detection (CRS 930xxx)
+    lfi_rules: true
+
+    # Remote File Inclusion (RFI) detection (CRS 931xxx)
+    rfi_rules: true
+
+    # Session fixation detection (CRS 943xxx)
+    session_fixation_rules: true
+
+    # Protocol attack detection (CRS 920xxx)
+    protocol_attack_rules: true
+
+    # Path to custom rules file (optional)
+    # custom_rules_path: /etc/waf/custom-rules.conf
+
+# Backend servers
+backends:
+  - host: localhost
+    port: 3000
+    weight: 1
+
+# Logging configuration (recommended for WAF)
+logging:
+  level: info
+  format: json
+  # Log all WAF blocks for security monitoring
+  filters:
+    - waf

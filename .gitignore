@@ -1,0 +1,27 @@
+# Build artifacts
+target/
+*.bin
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local config
+config-local.yaml
+config-local.toml
+*.pem
+*.key
+*.crt
+
+# Test results
+load-tests/results/*.bin

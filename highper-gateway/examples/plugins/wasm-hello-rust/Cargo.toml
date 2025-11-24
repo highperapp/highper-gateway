@@ -1,0 +1,17 @@
+[package]
+name = "wasm-hello-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# WASI support
+wit-bindgen = "0.35"
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce parallel codegen for better optimization
+strip = true        # Strip symbols

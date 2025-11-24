@@ -1,0 +1,49 @@
+# Minimal configuration for load testing
+# Simple HTTP proxy forwarding to backend on port 9000
+
+[server]
+bind = ["127.0.0.1:8080"]
+workers = "auto"
+protocols = ["http1", "http2"]
+shutdown_timeout = "30s"
+
+[server.performance]
+max_connections = 10000
+backlog = 1024
+tcp_nodelay = true
+tcp_keepalive = true
+keepalive_timeout = "60s"
+
+[[upstreams]]
+name = "test-backend"
+servers = [
+    { url = "http://127.0.0.1:9000", weight = 1 }
+]
+
+[upstreams.health_check]
+enabled = false  # Disable for load testing
+
+[upstreams.load_balancing]
+algorithm = "round_robin"
+
+[upstreams.connection]
+circuit_breaker_enabled = false  # Disable circuit breaker for load testing
+retry_max_attempts = 0  # Disable retries for cleaner metrics
+
+[[routes]]
+name = "default"
+upstream = "test-backend"
+
+[routes.match]
+paths = ["/"]
+
+[observability]
+log_level = "warn"  # Reduce logging overhead during load testing
+access_log = false  # Disable access logging for max performance
+
+[observability.metrics]
+enabled = true
+bind = "127.0.0.1:9090"
+
+[observability.tracing]
+enabled = false  # Disable tracing for load testing

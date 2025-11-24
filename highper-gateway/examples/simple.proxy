@@ -1,0 +1,4 @@
+# Simple HTTP Reverse Proxy
+# This is the minimal configuration - just proxy requests to a backend
+
+localhost:8080 proxy backend:3000

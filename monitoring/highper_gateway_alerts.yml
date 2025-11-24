@@ -1,0 +1,42 @@
+# Alert Rules for Rust Reverse Proxy
+# Load this file in prometheus.yml under rule_files
+
+groups:
+  - name: highper_gateway_critical
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: (rate(http_requests_errors_total[5m]) / rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      - alert: CriticalP99Latency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2.0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical P99 latency"
+          description: "P99 latency is {{ $value | humanizeDuration }}"
+
+      - alert: High5xxRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate"
+          description: "5xx error rate is {{ $value | humanizePercentage }}"
+
+      - alert: UpstreamErrors
+        expr: rate(upstream_requests_errors_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High upstream error rate"
+          description: "Upstream {{ $labels.upstream }} error rate: {{ $value }} errors/sec"

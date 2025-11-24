@@ -1,0 +1,160 @@
+[Unit]
+Description=Rust High-Performance Reverse Proxy & API Gateway
+Documentation=https://github.com/yourusername/highper-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=highper-gateway
+Group=highper-gateway
+
+# Binary location
+ExecStart=/usr/local/bin/highper-gateway --config /etc/highper-gateway/config.yaml
+
+# Restart policy
+Restart=always
+RestartSec=5s
+StartLimitInterval=0
+
+# Resource Limits
+# ========================================
+
+# File Descriptors - CRITICAL for high concurrency
+# Allows 65,535 concurrent connections
+LimitNOFILE=65535
+
+# Process Limits
+LimitNPROC=65535
+
+# Core dumps (disable in production, enable for debugging)
+LimitCORE=0
+
+# Memory limits (optional, adjust based on available RAM)
+# MemoryMax=4G
+# MemoryHigh=3G
+
+# CPU limits (optional)
+# CPUQuota=200%  # 2 cores
+
+# ========================================
+# Security Hardening
+# ========================================
+
+# Prevent privilege escalation
+NoNewPrivileges=true
+
+# Private /tmp directory
+PrivateTmp=true
+
+# Protect system directories
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/highper-gateway /var/log/highper-gateway
+
+# Protect kernel tunables
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Restrict namespaces
+RestrictNamespaces=true
+
+# Restrict realtime
+RestrictRealtime=true
+
+# Restrict SUID
+RestrictSUIDSGID=true
+
+# Syscall filtering (optional, may need adjustment)
+# SystemCallFilter=@system-service
+# SystemCallErrorNumber=EPERM
+
+# Lock down personality
+LockPersonality=true
+
+# Remove write permission for binaries
+ProtectKernelLogs=true
+
+# Address space layout randomization
+PrivateMounts=true
+
+# ========================================
+# Capabilities (minimal required)
+# ========================================
+
+# Allow binding to privileged ports (80, 443)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Alternative: Use CAP_NET_RAW for raw sockets if needed
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+
+# ========================================
+# Working Directory & Paths
+# ========================================
+
+WorkingDirectory=/var/lib/highper-gateway
+
+# Configuration directory
+Environment="CONFIG_DIR=/etc/highper-gateway"
+
+# Log directory
+Environment="LOG_DIR=/var/log/highper-gateway"
+
+# Data directory (for certs, cache, etc.)
+Environment="DATA_DIR=/var/lib/highper-gateway"
+
+# ========================================
+# Logging
+# ========================================
+
+# Standard output/error to journal
+StandardOutput=journal
+StandardError=journal
+
+# Syslog identifier
+SyslogIdentifier=highper-gateway
+
+# Log level (can be overridden in config file)
+Environment="RUST_LOG=info"
+
+# ========================================
+# Performance Tuning
+# ========================================
+
+# Use io_uring if available (Linux 5.1+)
+# No specific setting needed, handled by application
+
+# Nice level (priority: -20 to 19, lower = higher priority)
+Nice=-5
+
+# IO scheduling class (0=none, 1=realtime, 2=best-effort, 3=idle)
+IOSchedulingClass=2
+IOSchedulingPriority=0
+
+# ========================================
+# Graceful Shutdown
+# ========================================
+
+# Send SIGTERM first, then SIGKILL after timeout
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# For graceful reload (SIGHUP)
+ExecReload=/bin/kill -HUP $MAINPID
+
+# ========================================
+# Health Check (optional)
+# ========================================
+
+# Restart if process exits with error
+RestartPreventExitStatus=0
+
+# Watchdog (optional, requires application support)
+# WatchdogSec=30s
+# NotifyAccess=main
+
+[Install]
+WantedBy=multi-user.target

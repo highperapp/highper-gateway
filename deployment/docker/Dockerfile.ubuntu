@@ -1,0 +1,62 @@
+# Multi-stage build for Rust Reverse Proxy (Ubuntu-based)
+# Use this for better compatibility or when Alpine has issues
+FROM rust:1.75-bookworm AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy manifests
+COPY highper-gateway/Cargo.toml highper-gateway/Cargo.lock ./
+
+# Copy source code
+COPY highper-gateway/src ./src
+COPY highper-gateway/benches ./benches
+COPY highper-gateway/examples ./examples
+
+# Build for release
+RUN cargo build --release
+
+# Stage 2: Create runtime image
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 1000 -s /bin/false highper-gateway
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/highper-gateway /usr/local/bin/
+
+# Create directories
+RUN mkdir -p /etc/highper-gateway /var/log/highper-gateway /var/lib/highper-gateway \
+    && chown -R highper-gateway:highper-gateway /var/log/highper-gateway /var/lib/highper-gateway
+
+# Copy default configuration (optional)
+# COPY config-production-secure.toml /etc/highper-gateway/config.toml
+
+# Switch to non-root user
+USER highper-gateway
+
+# Expose ports
+EXPOSE 8080 8443 9090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:9090/health || exit 1
+
+# Set working directory
+WORKDIR /etc/highper-gateway
+
+# Run the proxy
+ENTRYPOINT ["/usr/local/bin/highper-gateway"]
+CMD ["start", "--config", "/etc/highper-gateway/config.toml"]

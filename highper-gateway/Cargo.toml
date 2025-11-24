@@ -1,0 +1,213 @@
+[package]
+name = "highper-gateway"
+version = "0.1.0"
+edition = "2021"
+authors = ["Highper Gateway Team"]
+description = "High-performance reverse proxy and API gateway with io_uring"
+license = "MIT"
+repository = "https://github.com/yourusername/highper-gateway"
+
+[dependencies]
+# Async runtime - we'll use tokio-uring for io_uring support
+tokio = { workspace = true }
+tokio-uring = "0.5"
+
+# io_uring support (Linux-specific, Week 2 optimization)
+io-uring = { version = "0.7", optional = true }
+
+# HTTP protocol support
+hyper = { version = "1.5", features = ["http1", "http2", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "client", "client-legacy", "http1", "http2"] }
+http-body-util = "0.1"
+http-body = "1.0"
+tokio-util = { version = "0.7", features = ["io"] }
+percent-encoding = "2.3"
+httpdate = "1.0"
+
+# gRPC support
+tonic = "0.12"
+prost = "0.13"
+
+# HTTP/3 support with QUIC
+# Using Cloudflare's quiche for superior performance (+25% throughput, 2x faster)
+# See docs/HTTP3_QUICHE_MIGRATION.md for migration details
+quiche = "0.24"
+
+# TLS support
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2.2"
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+ocsp-stapler = "0.4"
+
+# ACME for automatic certificates
+instant-acme = "0.7"
+rcgen = "0.13"
+
+# Configuration
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+toml = "0.8"
+notify = "6.1"  # File system watching for hot reload
+
+# High-performance data structures
+dashmap = { workspace = true }
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# Fast hashing
+ahash = "0.8"
+
+# Compression
+zstd = "0.13"
+brotli = "7.0"
+flate2 = "1.0"
+
+# DNS resolution
+hickory-resolver = "0.24"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+
+# OpenTelemetry tracing
+opentelemetry = { version = "0.22", features = ["trace", "metrics"] }
+opentelemetry-jaeger = { version = "0.21", features = ["rt-tokio", "collector_client", "reqwest_collector_client"] }
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace"] }
+opentelemetry-stdout = { version = "0.3", features = ["trace"] }
+tracing-opentelemetry = "0.23"
+url = "2.5"
+
+# Utilities
+bytes = { workspace = true }
+futures = "0.3"
+futures-util = { version = "0.3", features = ["sink"] }
+pin-project = "1.1"
+tower = "0.5"
+socket2 = { version = "0.5", features = ["all"] }
+libc = "0.2"
+async-trait = "0.1"
+urlencoding = "2.1"
+bincode = "1.3"
+rand = "0.8"
+uuid = { version = "1.10", features = ["v7", "serde"] }
+
+# WebSocket support
+tokio-tungstenite = "0.21"
+
+# Time utilities
+humantime = "2.1"
+humantime-serde = "1.1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# System info
+num_cpus = "1.16"
+
+# Signal handling for SIGHUP reload
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+# JWT authentication
+jsonwebtoken = "9.3"
+base64 = "0.22"
+sha1 = "0.10"
+
+# Password hashing
+bcrypt = "0.15"
+argon2 = "0.5"
+
+# SQLite database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# OAuth2 and OIDC
+oauth2 = "4.4"
+openidconnect = "3.5"
+
+# X.509 certificate parsing for mTLS
+x509-parser = "0.16"
+sha2 = "0.10"
+hex = "0.4"
+
+# Redis for distributed state
+redis = { version = "0.32", features = ["tokio-comp", "connection-manager", "cluster", "aio"] }
+bb8-redis = "0.15"
+
+# GeoIP for geographic load balancing
+maxminddb = "0.24"
+ip2location = "0.4"
+
+# GraphQL support
+async-graphql = "7.0"
+async-graphql-parser = "7.0"
+
+# Service discovery
+consul = { version = "0.4", optional = true }
+etcd-client = { version = "0.14", optional = true }
+
+# Memory allocator - jemalloc for better performance
+tikv-jemallocator = { version = "0.6", optional = true }
+pest = "2.8.3"
+pest_derive = "2.8.3"
+once_cell = "1.21.3"
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
+
+# WAF engines
+regex = "1.10"
+# Note: Coraza Rust bindings are not yet available, using pure Rust implementation
+# AWS SDK for WAF integration
+aws-config = { version = "1.5", optional = true }
+aws-sdk-wafv2 = { version = "1.50", optional = true }
+
+# Plugin system
+# WASM runtime with WASI support
+wasmtime = { version = "27.0", optional = true, features = ["async", "component-model"] }
+wasmtime-wasi = { version = "27.0", optional = true }
+# FFI plugin loading
+libloading = { version = "0.8", optional = true }
+
+[features]
+default = ["jemalloc"]
+jemalloc = ["tikv-jemallocator"]
+# Week 2 optimization: io_uring hybrid integration (Linux-only)
+io-uring = ["dep:io-uring"]
+# WAF engine features
+waf-aws = ["aws-config", "aws-sdk-wafv2"]
+# Plugin system features
+plugin-wasm = ["wasmtime", "wasmtime-wasi"]
+plugin-ffi = ["libloading"]
+plugin-hot-reload = []  # Uses notify which is already in dependencies
+plugin-full = ["plugin-wasm", "plugin-ffi", "plugin-hot-reload"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio-test = "0.4"
+tempfile = "3.14"
+
+[[bench]]
+name = "proxy_bench"
+harness = false
+
+[[bench]]
+name = "tcp_bench"
+harness = false
+
+
+[[bench]]
+name = "optimization_bench"
+harness = false
+
+[[bench]]
+name = "buffer_pool_steady_state"
+harness = false
+[build-dependencies]
+chrono = "0.4"

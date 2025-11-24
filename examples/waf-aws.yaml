@@ -1,0 +1,98 @@
+# WAF Configuration Example - AWS WAF Engine
+#
+# Integration with AWS WAF v2 for cloud-native security.
+# Best for: AWS-hosted applications or using AWS security infrastructure.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# WAF Configuration
+waf:
+  enabled: true
+  mode: aws
+  block_mode: true
+  max_body_size: 1048576  # 1 MB
+
+  # AWS WAF engine specific configuration
+  aws:
+    # Enable AWS WAF integration
+    enabled: true
+
+    # AWS region
+    region: us-east-1
+
+    # Web ACL ARN (Amazon Resource Name)
+    # Format: arn:aws:wafv2:region:account-id:regional/webacl/name/id
+    web_acl_arn: arn:aws:wafv2:us-east-1:123456789012:regional/webacl/my-web-acl/a1b2c3d4-5678-90ab-cdef-example11111
+
+    # Alternative: Web ACL ID (if not using ARN)
+    # web_acl_id: a1b2c3d4-5678-90ab-cdef-example11111
+
+    # AWS Managed Rule Groups to enable
+    managed_rule_groups:
+      # Core rule set - fundamental protections
+      - aws_common_rules
+
+      # Known bad inputs - protects against known vulnerabilities
+      - aws_known_bad_inputs
+
+      # SQL database protection
+      - aws_sql_database
+
+      # Linux operating system protection
+      # - aws_linux_operating_system
+
+      # POSIX operating system protection
+      # - aws_posix_operating_system
+
+      # Windows operating system protection
+      # - aws_windows_operating_system
+
+      # PHP application protection
+      # - aws_php_application
+
+      # WordPress application protection
+      # - aws_wordpress_application
+
+    # Use local cache for WAF decisions (improves performance)
+    use_local_cache: true
+
+    # Cache TTL in seconds
+    cache_ttl_secs: 300  # 5 minutes
+
+    # Fallback action when AWS WAF is unavailable
+    # - allow: Allow requests (high availability, lower security)
+    # - block: Block requests (high security, lower availability)
+    fallback_action: allow
+
+# Backend servers
+backends:
+  - host: localhost
+    port: 3000
+    weight: 1
+
+# AWS credentials configuration
+# Option 1: Use environment variables
+# AWS_ACCESS_KEY_ID=your_access_key
+# AWS_SECRET_ACCESS_KEY=your_secret_key
+# AWS_REGION=us-east-1
+
+# Option 2: Use IAM role (recommended for EC2/ECS)
+# No credentials needed if running on AWS with proper IAM role
+
+# Option 3: Use AWS credentials file
+# ~/.aws/credentials
+
+# Logging configuration
+logging:
+  level: info
+  format: json
+
+# Health check configuration
+health_check:
+  enabled: true
+  path: /health
+  interval: 10
+  timeout: 5
+  unhealthy_threshold: 3

@@ -1,0 +1,387 @@
+# Mutual TLS (mTLS) Example Configuration
+#
+# This configuration demonstrates how to enable client certificate authentication
+# for secure mutual TLS connections.
+#
+# mTLS provides two-way authentication where both the server and client verify
+# each other's identity using X.509 certificates.
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS with mTLS
+  workers: "auto"
+  protocols:
+    - Http1
+    - Http2
+
+# TLS Configuration with mTLS
+tls:
+  auto: false
+
+  # Server certificates
+  certificates:
+    - domain: "api.example.com"
+      cert_file: "/etc/certs/server.crt"
+      key_file: "/etc/certs/server.key"
+
+  # Mutual TLS Configuration
+  mtls:
+    # Enable mTLS
+    enabled: true
+
+    # Path to CA certificate(s) that will be used to verify client certificates
+    # This can be a single file or a bundle containing multiple CA certificates
+    ca_cert_path: "/etc/certs/client-ca.crt"
+
+    # Client certificate verification mode
+    # Options:
+    #   - required: Client MUST present a valid certificate (connection fails without it)
+    #   - optional: Client certificate is requested but connection allowed without it
+    #   - optional_no_ca: Accept any client certificate without CA verification
+    verification_mode: required
+
+    # Optional: Certificate Revocation List (CRL) for checking revoked certificates
+    # crl_path: "/etc/certs/crl.pem"
+
+    # Optional: OCSP (Online Certificate Status Protocol) configuration
+    # ocsp:
+    #   enabled: true
+    #   responder_url: "http://ocsp.example.com"  # Override OCSP responder URL
+    #   timeout: 5s
+    #   fail_open: true  # Allow connection if OCSP check fails (for availability)
+
+    # Optional: Additional CA certificates for multi-CA environments
+    # additional_cas:
+    #   - "/etc/certs/partner-ca-1.crt"
+    #   - "/etc/certs/partner-ca-2.crt"
+
+  # Minimum TLS version
+  min_version: "1.2"
+
+  # Session cache for performance
+  session_cache:
+    enabled: true
+    size: 10000
+    ttl: 1h
+
+# Upstreams
+upstreams:
+  # Upstream for internal services (requires client cert)
+  - id: "internal_api"
+    servers:
+      - url: "http://internal-api:8000"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    healthcheck:
+      enabled: true
+      path: "/health"
+      interval: 10
+      timeout: 5
+
+  # Upstream for partner services (optional client cert)
+  - id: "partner_api"
+    servers:
+      - url: "http://partner-api:8000"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+
+  # Upstream for public services (no client cert required)
+  - id: "public_api"
+    servers:
+      - url: "http://public-api:8000"
+        weight: 1
+
+# Routes with per-route mTLS policies
+routes:
+  # Route 1: Internal API - Requires specific client certificates
+  - name: "internal_api"
+    match:
+      paths: ["/internal/*"]
+      methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: "internal_api"
+
+    # Per-route mTLS policy (overrides global)
+    mtls:
+      # Require specific client certificate subjects (Distinguished Names)
+      allowed_subjects:
+        - "CN=internal-client.example.com,O=Example Corp,C=US"
+        - "CN=admin.example.com,O=Example Corp,C=US"
+
+      # Optional: Restrict by issuer CA
+      # allowed_issuers:
+      #   - "CN=Example Internal CA,O=Example Corp,C=US"
+
+      # Optional: Whitelist specific certificate serial numbers
+      # allowed_serials:
+      #   - "1234567890ABCDEF"
+      #   - "FEDCBA0987654321"
+
+  # Route 2: Partner API - Optional client certificate
+  - name: "partner_api"
+    match:
+      paths: ["/partner/*"]
+    upstream: "partner_api"
+
+    mtls:
+      # Override verification mode for this route
+      verification_mode: optional
+
+      # Allow certificates from specific partner organizations
+      allowed_subjects:
+        - "CN=partner-*.example.com,O=Partner Corp,C=US"  # Wildcard support
+
+  # Route 3: Public API - No client certificate required
+  - name: "public_api"
+    match:
+      paths: ["/public/*"]
+    upstream: "public_api"
+    # No mtls section = uses global mTLS settings
+    # In this case, global requires certificate, but you could override it
+
+  # Route 4: Admin API - Strict certificate requirements
+  - name: "admin_api"
+    match:
+      paths: ["/admin/*"]
+      methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: "internal_api"
+
+    mtls:
+      verification_mode: required
+
+      # Only specific admin certificates allowed
+      allowed_subjects:
+        - "CN=admin.example.com,O=Example Corp,C=US"
+
+      allowed_issuers:
+        - "CN=Example Root CA,O=Example Corp,C=US"
+
+# Observability
+observability:
+  # Metrics
+  metrics:
+    enabled: true
+    bind: "127.0.0.1:9100"
+    path: "/metrics"
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+
+  # Tracing
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 0.1
+
+# =============================================================================
+# How mTLS Works
+# =============================================================================
+#
+# 1. TLS Handshake with Client Certificate Request:
+#    ┌──────────┐                                 ┌──────────┐
+#    │  Client  │                                 │  Server  │
+#    └────┬─────┘                                 └────┬─────┘
+#         │                                            │
+#         │  1. ClientHello                            │
+#         │───────────────────────────────────────────>│
+#         │                                            │
+#         │  2. ServerHello + Certificate              │
+#         │  3. CertificateRequest (CA list)           │
+#         │<───────────────────────────────────────────│
+#         │                                            │
+#         │  4. Certificate (client cert)              │
+#         │  5. CertificateVerify (signature)          │
+#         │───────────────────────────────────────────>│
+#         │                                            │
+#         │  6. Server verifies client certificate     │
+#         │     - Check signature                      │
+#         │     - Verify chain to trusted CA           │
+#         │     - Check expiration                     │
+#         │     - Check revocation (CRL/OCSP)          │
+#         │     - Check per-route policy               │
+#         │                                            │
+#         │  7. Finished                               │
+#         │<──────────────────────────────────────────>│
+#         │                                            │
+#         │  8. Encrypted application data             │
+#         │<══════════════════════════════════════════>│
+#
+# 2. Certificate Information Passed to Backend:
+#    The proxy extracts client certificate information and passes it to
+#    the backend via HTTP headers:
+#
+#    X-Client-Cert-Subject: CN=client.example.com,O=Example Corp,C=US
+#    X-Client-Cert-Issuer: CN=Example CA,O=Example Corp,C=US
+#    X-Client-Cert-Serial: 1234567890ABCDEF
+#    X-Client-Cert-Fingerprint: a1b2c3d4e5f6...
+#    X-Client-Cert-CN: client.example.com
+#    X-Client-Cert-Not-Before: 1609459200
+#    X-Client-Cert-Not-After: 1672531200
+#
+# =============================================================================
+# Verification Modes Explained
+# =============================================================================
+#
+# 1. REQUIRED (verification_mode: required)
+#    - Client MUST present a certificate
+#    - Certificate MUST be valid and signed by trusted CA
+#    - Connection is rejected if certificate is invalid or missing
+#    - Use case: Internal APIs, admin interfaces, high-security endpoints
+#
+# 2. OPTIONAL (verification_mode: optional)
+#    - Client certificate is requested but not required
+#    - If presented, certificate MUST be valid
+#    - Connection allowed even without certificate
+#    - Use case: Mixed environments, gradual mTLS rollout, partner APIs
+#
+# 3. OPTIONAL_NO_CA (verification_mode: optional_no_ca)
+#    - Client certificate is requested but not verified against CA
+#    - Any certificate is accepted (self-signed, expired, etc.)
+#    - Certificate info is still extracted and passed to backend
+#    - Use case: Testing, development, certificate-based routing without trust
+#
+# =============================================================================
+# Generating Test Certificates
+# =============================================================================
+#
+# 1. Generate CA certificate (Certificate Authority):
+#
+# openssl req -x509 -newkey rsa:4096 -days 365 -nodes \
+#   -keyout ca.key -out ca.crt \
+#   -subj "/C=US/O=Example Corp/CN=Example Root CA"
+#
+# 2. Generate server certificate:
+#
+# # Generate server private key
+# openssl genrsa -out server.key 4096
+#
+# # Create certificate signing request
+# openssl req -new -key server.key -out server.csr \
+#   -subj "/C=US/O=Example Corp/CN=api.example.com"
+#
+# # Sign with CA
+# openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+#   -CAcreateserial -out server.crt -days 365
+#
+# 3. Generate client certificate:
+#
+# # Generate client private key
+# openssl genrsa -out client.key 4096
+#
+# # Create certificate signing request
+# openssl req -new -key client.key -out client.csr \
+#   -subj "/C=US/O=Example Corp/CN=client.example.com"
+#
+# # Sign with CA
+# openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
+#   -CAcreateserial -out client.crt -days 365
+#
+# 4. Verify certificates:
+#
+# # Verify server certificate
+# openssl verify -CAfile ca.crt server.crt
+#
+# # Verify client certificate
+# openssl verify -CAfile ca.crt client.crt
+#
+# # View certificate details
+# openssl x509 -in client.crt -text -noout
+#
+# =============================================================================
+# Testing mTLS
+# =============================================================================
+#
+# 1. Test with client certificate (curl):
+#
+# curl --cert client.crt --key client.key --cacert ca.crt \
+#   https://api.example.com:8443/internal/test
+#
+# 2. Test without client certificate (should fail with required mode):
+#
+# curl --cacert ca.crt https://api.example.com:8443/internal/test
+# # Expected: SSL certificate problem: unable to get local issuer certificate
+#
+# 3. Test with invalid client certificate:
+#
+# curl --cert invalid.crt --key invalid.key --cacert ca.crt \
+#   https://api.example.com:8443/internal/test
+# # Expected: SSL peer certificate or SSH remote key was not OK
+#
+# 4. View metrics:
+#
+# curl http://localhost:9100/metrics | grep mtls
+# # Shows mTLS verification metrics
+#
+# =============================================================================
+# Security Best Practices
+# =============================================================================
+#
+# 1. Certificate Management:
+#    - Use strong keys (RSA 4096 or EC P-384)
+#    - Set reasonable certificate expiration (1 year)
+#    - Implement certificate rotation before expiration
+#    - Store private keys securely (encrypted, restricted permissions)
+#    - Never commit certificates/keys to version control
+#
+# 2. CA Security:
+#    - Keep CA private key offline and secure
+#    - Use intermediate CAs for issuing certificates
+#    - Implement proper CA key backup and recovery
+#    - Monitor CA certificate expiration
+#
+# 3. Revocation:
+#    - Implement CRL or OCSP for revocation checking
+#    - Update CRLs regularly
+#    - Have a process for emergency certificate revocation
+#    - Test revocation process periodically
+#
+# 4. Monitoring:
+#    - Monitor certificate expiration dates
+#    - Alert on failed client certificate verifications
+#    - Track mTLS connection metrics
+#    - Log certificate subject/issuer for audit trails
+#
+# 5. Per-Route Policies:
+#    - Use principle of least privilege
+#    - Restrict sensitive endpoints with strict allowed_subjects
+#    - Regularly audit and review allowed certificates
+#    - Remove revoked certificates from whitelists
+#
+# =============================================================================
+# Troubleshooting
+# =============================================================================
+#
+# Problem: Client connection fails with "SSL certificate problem"
+# Solution:
+#   - Verify client certificate is signed by trusted CA
+#   - Check ca_cert_path contains correct CA certificate
+#   - Ensure client certificate is not expired
+#   - Verify certificate chain is complete
+#
+# Problem: Client connection accepted but rejected at route level
+# Solution:
+#   - Check allowed_subjects matches client certificate DN exactly
+#   - Review allowed_issuers and allowed_serials lists
+#   - Check logs for detailed rejection reason
+#   - Use wildcard matching if appropriate (CN=*.example.com)
+#
+# Problem: Performance degradation with mTLS
+# Solution:
+#   - Enable session cache to avoid repeated handshakes
+#   - Disable OCSP if causing delays (set fail_open: true)
+#   - Consider using CRL instead of OCSP
+#   - Monitor certificate verification duration in metrics
+#
+# Problem: Certificate rotation issues
+# Solution:
+#   - Implement certificate watching with automatic reload
+#   - Test new certificates before deploying
+#   - Have rollback plan for certificate updates
+#   - Monitor logs during certificate rotation
+#
+# =============================================================================

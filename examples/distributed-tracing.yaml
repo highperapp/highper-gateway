@@ -1,0 +1,220 @@
+# Distributed Tracing with OpenTelemetry Example
+#
+# This configuration demonstrates how to enable distributed tracing
+# for request tracking across microservices.
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: "auto"
+  protocols:
+    - Http1
+    - Http2
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domain: "example.com"
+      cert_file: "/etc/certs/example.com.crt"
+      key_file: "/etc/certs/example.com.key"
+
+# Upstream services
+upstreams:
+  - id: "api_service"
+    servers:
+      - address: "10.0.1.10:3000"
+      - address: "10.0.1.11:3000"
+    healthcheck:
+      enabled: true
+      path: "/health"
+      interval: 10
+
+  - id: "user_service"
+    servers:
+      - address: "10.0.1.20:4000"
+
+# Routes
+routes:
+  - path: "/api"
+    upstream: "api_service"
+    match_type: "prefix"
+
+  - path: "/users"
+    upstream: "user_service"
+    match_type: "prefix"
+
+# Observability Configuration
+observability:
+  # Metrics
+  metrics:
+    enabled: true
+    bind: "127.0.0.1:9100"
+    path: "/metrics"
+
+  # Logging
+  logging:
+    level: "info"
+    format: "json"
+
+  # Distributed Tracing with OpenTelemetry
+  tracing:
+    # Enable distributed tracing
+    enabled: true
+
+    # Exporter type: stdout (development), jaeger (production)
+    exporter: "stdout"
+
+    # Jaeger collector endpoint (when using jaeger exporter)
+    # For production, point to your Jaeger instance
+    endpoint: "http://localhost:14268/api/traces"
+
+    # Sample rate: 0.0 (none) to 1.0 (all requests)
+    # 1.0 = trace every request (good for development)
+    # 0.1 = trace 10% of requests (good for production)
+    sample_rate: 1.0
+
+    # Service name in distributed traces
+    service_name: "highper-gateway"
+
+    # Additional resource attributes for traces
+    resource_attributes:
+      environment: "production"
+      version: "0.1.0"
+      region: "us-east-1"
+      team: "platform"
+
+# =============================================================================
+# How Distributed Tracing Works
+# =============================================================================
+#
+# 1. Trace Context Propagation:
+#    - Extracts W3C traceparent header from incoming requests
+#    - Creates a new span for the proxy request
+#    - Injects traceparent header into upstream requests
+#    - All services in the chain share the same trace ID
+#
+# 2. Span Attributes:
+#    - http.method: GET, POST, etc.
+#    - http.target: /api/users
+#    - http.host: example.com
+#    - http.status_code: 200, 404, 500, etc.
+#    - http.response_time_ms: Duration in milliseconds
+#    - client.ip: Client IP address
+#
+# 3. Trace Export:
+#    - stdout: Prints traces to console (development)
+#    - jaeger: Sends to Jaeger collector (production)
+#
+# =============================================================================
+# Setting Up Jaeger (Optional)
+# =============================================================================
+#
+# 1. Run Jaeger All-in-One (Docker):
+#    docker run -d --name jaeger \
+#      -p 5775:5775/udp \
+#      -p 6831:6831/udp \
+#      -p 6832:6832/udp \
+#      -p 5778:5778 \
+#      -p 16686:16686 \
+#      -p 14268:14268 \
+#      -p 14250:14250 \
+#      -p 9411:9411 \
+#      jaegertracing/all-in-one:latest
+#
+# 2. Access Jaeger UI:
+#    http://localhost:16686
+#
+# 3. Update configuration:
+#    tracing:
+#      enabled: true
+#      exporter: "jaeger"
+#      endpoint: "http://localhost:14268/api/traces"
+#
+# =============================================================================
+# Viewing Traces
+# =============================================================================
+#
+# With stdout exporter:
+#   - Traces appear in proxy logs
+#   - Look for JSON objects with trace_id, span_id
+#
+# With Jaeger:
+#   1. Open Jaeger UI: http://localhost:16686
+#   2. Select service: "highper-gateway"
+#   3. Click "Find Traces"
+#   4. Click on a trace to see:
+#      - Full request path across services
+#      - Timing breakdown
+#      - Error spans (if any)
+#
+# =============================================================================
+# Trace Context Headers
+# =============================================================================
+#
+# The proxy uses W3C Trace Context standard:
+#
+# Incoming request with traceparent:
+#   GET /api/users HTTP/1.1
+#   traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
+#
+# Outgoing request to upstream:
+#   GET /users HTTP/1.1
+#   traceparent: 00-0af7651916cd43dd8448eb211c80319c-<new-span-id>-01
+#
+# Note: Same trace ID (0af765...), different span IDs
+#
+# =============================================================================
+# Sample Rates
+# =============================================================================
+#
+# Development:
+#   sample_rate: 1.0  # Trace everything
+#
+# Staging:
+#   sample_rate: 0.5  # Trace 50% of requests
+#
+# Production (low traffic):
+#   sample_rate: 1.0  # Trace everything
+#
+# Production (high traffic):
+#   sample_rate: 0.01  # Trace 1% of requests
+#
+# Important: Always trace errors (automatic)
+#
+# =============================================================================
+# Troubleshooting
+# =============================================================================
+#
+# No traces appearing?
+#
+# 1. Check tracing is enabled:
+#    observability.tracing.enabled: true
+#
+# 2. Verify sample rate:
+#    observability.tracing.sample_rate > 0
+#
+# 3. Check Jaeger is running:
+#    curl http://localhost:14268/api/traces
+#
+# 4. View proxy logs:
+#    tail -f /var/log/highper-gateway.log | grep trace
+#
+# 5. Test with traceparent header:
+#    curl -H "traceparent: 00-$(openssl rand -hex 16)-$(openssl rand -hex 8)-01" \
+#      http://localhost:8080/api/users
+#
+# =============================================================================
+# Performance Impact
+# =============================================================================
+#
+# - Overhead: < 1ms per request
+# - Memory: Minimal (spans buffered and batched)
+# - Network: ~500 bytes per span to Jaeger
+# - CPU: < 1% additional CPU usage
+#
+# Recommendation: Always enable in production with appropriate sample rate
+#
+# =============================================================================

@@ -1,0 +1,57 @@
+# Test Admin API Configuration
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: "2"
+  protocols:
+    - http1
+    - http2
+
+# Admin API Configuration
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "test-api-key-123"
+  jwt_secret: "my-secret-key-for-jwt"
+  cors_enabled: true
+  cors_origins: ["*"]
+  read_only: false
+
+# TLS Configuration
+tls:
+  auto: false
+  certificates:
+    - domain: "localhost"
+      cert_file: "certs/cert.pem"
+      key_file: "certs/key.pem"
+
+# Simple upstream for testing
+upstreams:
+  - name: "test_backend"
+    servers:
+      - url: "http://httpbin.org"
+    load_balancing:
+      algorithm: "round_robin"
+    health_check:
+      active:
+        enabled: false
+
+# Simple route
+routes:
+  - name: "test_route"
+    match:
+      paths: ["/"]
+    upstream: "test_backend"
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "pretty"
+  metrics:
+    enabled: false

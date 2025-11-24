@@ -1,0 +1,60 @@
+# WAF Configuration Example - ModSecurity Engine
+#
+# ModSecurity v3 compatible engine supporting SecRule syntax.
+# Best for: Organizations with existing ModSecurity rules.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# WAF Configuration
+waf:
+  enabled: true
+  mode: modsecurity
+  block_mode: true
+  max_body_size: 1048576  # 1 MB
+
+  # ModSecurity engine specific configuration
+  modsecurity:
+    # Enable ModSecurity engine
+    enabled: true
+
+    # Detection mode
+    # - on: Evaluate rules and block malicious requests
+    # - detectiononly: Log violations but don't block (testing mode)
+    # - off: Disable ModSecurity
+    detection_mode: on
+
+    # Enable request body inspection
+    request_body_access: true
+
+    # Enable response body inspection (may impact performance)
+    response_body_access: false
+
+    # Maximum request body size to inspect (bytes)
+    request_body_limit: 1048576  # 1 MB
+
+    # Path to ModSecurity rules file (optional)
+    # rules_file: /etc/modsecurity/modsecurity.conf
+
+    # Inline SecRule directives (optional)
+    inline_rules:
+      # Example: Block SQL injection in query parameters
+      - 'SecRule ARGS "@rx (union|select|insert|delete|drop)" "id:1001,phase:2,block,msg:SQL Injection Detected"'
+
+      # Example: Block XSS in request body
+      - 'SecRule REQUEST_BODY "@rx (<script|javascript:|onerror=)" "id:1002,phase:2,block,msg:XSS Detected"'
+
+      # Example: Block path traversal
+      - 'SecRule REQUEST_URI "@rx (\.\.\/|\.\.\\\\)" "id:1003,phase:1,block,msg:Path Traversal Detected"'
+
+# Backend servers
+backends:
+  - host: localhost
+    port: 3000
+    weight: 1
+
+# Logging configuration
+logging:
+  level: info
+  format: json

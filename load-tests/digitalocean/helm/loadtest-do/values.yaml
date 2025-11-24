@@ -1,0 +1,35 @@
+# Load Test Configuration for DigitalOcean
+# Target: 600k RPS
+
+# Proxy configuration (external droplet)
+proxy:
+  privateIP: "10.10.0.2"  # Will be set during deployment
+  port: 8080
+
+# Backend configuration
+backend:
+  replicas: 30
+  resources:
+    limits:
+      cpu: "500m"
+      memory: 256Mi
+    requests:
+      cpu: "100m"
+      memory: 64Mi
+  port: 80
+
+# Vegeta load generators
+vegeta:
+  replicas: 16
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: "500m"
+      memory: 512Mi
+  # Each generator targets ~40k RPS
+  rpsPerGenerator: 40000
+  duration: 60
+  timeout: 10s
+  maxConnections: 500

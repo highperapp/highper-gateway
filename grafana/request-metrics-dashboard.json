@@ -1,0 +1,547 @@
+{
+  "dashboard": {
+    "title": "Highper Gateway - Request Metrics",
+    "tags": ["highper-gateway", "request-metrics", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Global Request Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(proxy_requests_total[5m])",
+            "legendFormat": "Total Requests/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(proxy_requests_by_status{status=\"2xx\"}[5m])",
+            "legendFormat": "2xx/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(proxy_requests_by_status{status=\"4xx\"}[5m])",
+            "legendFormat": "4xx/sec",
+            "refId": "C"
+          },
+          {
+            "expr": "rate(proxy_requests_by_status{status=\"5xx\"}[5m])",
+            "legendFormat": "5xx/sec",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Global Response Time Percentiles",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "proxy_request_response_time_seconds_avg",
+            "legendFormat": "Average",
+            "refId": "A"
+          },
+          {
+            "expr": "proxy_request_response_time_seconds{quantile=\"0.5\"}",
+            "legendFormat": "P50",
+            "refId": "B"
+          },
+          {
+            "expr": "proxy_request_response_time_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "C"
+          },
+          {
+            "expr": "proxy_request_response_time_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Response Time"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Top 10 Routes by Request Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, rate(proxy_route_requests_total[5m]))",
+            "legendFormat": "{{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Top 10 Slowest Routes (P95)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, proxy_route_response_time_seconds{quantile=\"0.95\"})",
+            "legendFormat": "{{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "P95 Latency"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [0.5], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "60s",
+          "handler": 1,
+          "name": "High Route Latency",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      },
+      {
+        "id": 5,
+        "title": "Route Error Rate (%)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(proxy_route_requests_by_status{status=\"5xx\"}[5m])) by (route) / sum(rate(proxy_route_requests_total[5m])) by (route) * 100",
+            "legendFormat": "{{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Error Rate", "max": 100, "min": 0},
+          {"format": "short"}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [5], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "60s",
+          "handler": 1,
+          "name": "High Route Error Rate",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      },
+      {
+        "id": 6,
+        "title": "Status Code Distribution by Route",
+        "type": "bargauge",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(proxy_route_requests_by_status) by (route, status)",
+            "legendFormat": "{{route}} - {{status}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "displayMode": "gradient",
+          "orientation": "horizontal",
+          "showUnfilled": true
+        }
+      },
+      {
+        "id": 7,
+        "title": "Backend Request Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(proxy_backend_requests_total[5m])",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Backend Error Rate",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "proxy_backend_error_rate * 100",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Error Rate", "max": 100, "min": 0},
+          {"format": "short"}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [10], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "60s",
+          "handler": 1,
+          "name": "High Backend Error Rate",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      },
+      {
+        "id": 9,
+        "title": "Backend Response Time (P95)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "proxy_backend_response_time_seconds{quantile=\"0.95\"}",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "P95 Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Backend Health Status",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "proxy_backend_up",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "orientation": "auto",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "DOWN"},
+              {"type": "value", "value": "1", "text": "UP"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Route Bandwidth (Sent)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 40, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, rate(proxy_route_bytes_sent_total[5m]))",
+            "legendFormat": "{{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "label": "Bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Route Bandwidth (Received)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, rate(proxy_route_bytes_received_total[5m]))",
+            "legendFormat": "{{route}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "label": "Bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Backend Bandwidth (Sent)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 48, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(proxy_backend_bytes_sent_total[5m])",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "label": "Bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Backend Bandwidth (Received)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 48, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(proxy_backend_bytes_received_total[5m])",
+            "legendFormat": "{{backend}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "label": "Bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Route Response Time Heatmap",
+        "type": "heatmap",
+        "gridPos": {"x": 0, "y": 56, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(proxy_route_response_time_seconds[5m])) by (le, route)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "cellGap": 2,
+          "cellRadius": 0,
+          "color": {
+            "exponent": 0.5,
+            "fill": "dark-orange",
+            "mode": "scheme",
+            "scale": "exponential",
+            "scheme": "Spectral"
+          },
+          "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+          },
+          "yAxis": {
+            "decimals": 0,
+            "format": "s",
+            "logBase": 1
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Total Response Time Samples",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 64, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "proxy_request_response_time_samples_total",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "orientation": "auto",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        }
+      },
+      {
+        "id": 17,
+        "title": "Average Response Time",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 64, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "proxy_request_response_time_seconds_avg",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "orientation": "auto",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 0.1},
+                {"color": "orange", "value": 0.5},
+                {"color": "red", "value": 1}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 18,
+        "title": "Total Active Backends",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 64, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "count(proxy_backend_up == 1)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "orientation": "auto",
+          "textMode": "value",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 1},
+                {"color": "green", "value": 3}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 19,
+        "title": "Total Routes Tracked",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 64, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "count(proxy_route_requests_total)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "orientation": "auto",
+          "textMode": "value",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        }
+      },
+      {
+        "id": 20,
+        "title": "Backend Error Correlation Matrix",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 68, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "proxy_backend_error_rate",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          },
+          {
+            "expr": "proxy_backend_up",
+            "format": "table",
+            "instant": true,
+            "refId": "B"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          }
+        ],
+        "options": {
+          "showHeader": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "color-background"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 0.05},
+                {"color": "orange", "value": 0.1},
+                {"color": "red", "value": 0.2}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

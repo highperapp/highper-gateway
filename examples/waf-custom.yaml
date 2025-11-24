@@ -1,0 +1,51 @@
+# WAF Configuration Example - Custom Engine
+#
+# The Custom engine provides basic security with minimal overhead.
+# Best for: Development, simple applications, or first line of defense.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# WAF Configuration
+waf:
+  # Enable WAF protection
+  enabled: true
+
+  # Select WAF engine (custom, coraza, modsecurity, aws)
+  mode: custom
+
+  # Block mode: true = block requests, false = log only
+  block_mode: true
+
+  # Maximum request body size to inspect (bytes)
+  max_body_size: 1048576  # 1 MB
+
+  # Custom engine specific configuration
+  custom:
+    # Enable SQL injection protection
+    sql_injection_protection: true
+
+    # Enable XSS protection
+    xss_protection: true
+
+    # Enable path traversal protection
+    path_traversal_protection: true
+
+    # Enable user-agent filtering (blocks security scanners)
+    user_agent_filtering: true
+
+    # Enable IP-based rate limiting
+    rate_limit_enabled: true
+
+    # Maximum requests per IP
+    rate_limit_requests: 100
+
+    # Rate limit time window (seconds)
+    rate_limit_window_secs: 60
+
+# Backend servers
+backends:
+  - host: localhost
+    port: 3000
+    weight: 1

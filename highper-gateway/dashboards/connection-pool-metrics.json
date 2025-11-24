@@ -1,0 +1,515 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "connection-pool-metrics",
+    "title": "Highper Gateway - Connection Pool Metrics",
+    "tags": ["highper-gateway", "connection-pool", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "graph",
+        "title": "Connection Pool Overview",
+        "targets": [
+          {
+            "expr": "proxy_pool_connections_active",
+            "legendFormat": "Active Connections",
+            "refId": "A"
+          },
+          {
+            "expr": "proxy_pool_connections_idle",
+            "legendFormat": "Idle Connections",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Connections"},
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 2,
+        "linewidth": 2,
+        "pointradius": 2,
+        "points": false,
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 0, "value_type": "individual"}
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "gauge",
+        "title": "Connection Reuse Ratio",
+        "targets": [
+          {
+            "expr": "proxy_pool_reuse_ratio",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.5, "color": "yellow"},
+                {"value": 0.8, "color": "green"}
+              ]
+            },
+            "unit": "percentunit",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+        "type": "stat",
+        "title": "Total Connections Created",
+        "targets": [
+          {
+            "expr": "proxy_pool_connections_created_total",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+        "type": "stat",
+        "title": "Total Connections Reused",
+        "targets": [
+          {
+            "expr": "proxy_pool_connections_reused_total",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+        "type": "stat",
+        "title": "Pool Exhaustion Events",
+        "targets": [
+          {
+            "expr": "proxy_pool_exhausted_total",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "textMode": "auto"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "type": "graph",
+        "title": "Per-Host Active Connections",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_connections_active",
+            "legendFormat": "{{host}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Connections"},
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 2}
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "type": "graph",
+        "title": "Per-Host Idle Connections",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_connections_idle",
+            "legendFormat": "{{host}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Connections"},
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 2}
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "type": "graph",
+        "title": "Per-Host Reuse Ratio",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_reuse_ratio",
+            "legendFormat": "{{host}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Reuse Ratio",
+            "min": 0,
+            "max": 1
+          },
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 2}
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "type": "heatmap",
+        "title": "Pool Utilization Heatmap",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_utilization",
+            "legendFormat": "{{host}}",
+            "refId": "A",
+            "format": "time_series"
+          }
+        ],
+        "dataFormat": "timeseries",
+        "heatmap": {},
+        "cards": {
+          "cardPadding": 2,
+          "cardRound": 2
+        },
+        "color": {
+          "mode": "spectrum",
+          "colorScheme": "interpolateRdYlGn",
+          "exponent": 0.5,
+          "fillColor": "dark-orange"
+        },
+        "yAxis": {
+          "format": "short",
+          "decimals": 0,
+          "min": 0,
+          "max": 1
+        },
+        "tooltip": {
+          "show": true,
+          "showHistogram": true
+        },
+        "legend": {
+          "show": true
+        }
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "type": "graph",
+        "title": "Connection Errors",
+        "targets": [
+          {
+            "expr": "rate(proxy_pool_errors_total[5m])",
+            "legendFormat": "Global Error Rate",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(proxy_pool_host_errors_total[5m])",
+            "legendFormat": "{{host}}",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Errors/sec"},
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.1],
+                "type": "gt"
+              },
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "name": "Connection Pool Errors",
+          "noDataState": "no_data",
+          "notifications": []
+        },
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 2}
+      },
+      {
+        "id": 11,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "type": "graph",
+        "title": "Average Connection Lifetime",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_avg_lifetime_ms / 1000",
+            "legendFormat": "{{host}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Lifetime (seconds)"},
+          {"format": "short"}
+        ],
+        "xaxis": {"mode": "time"},
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "legend": {
+          "show": true,
+          "values": true,
+          "avg": true,
+          "current": true,
+          "alignAsTable": true
+        },
+        "tooltip": {"shared": true, "sort": 2}
+      },
+      {
+        "id": 12,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 40},
+        "type": "table",
+        "title": "Connection Pool Statistics (Per Host)",
+        "targets": [
+          {
+            "expr": "proxy_pool_host_connections_active",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          },
+          {
+            "expr": "proxy_pool_host_connections_idle",
+            "format": "table",
+            "instant": true,
+            "refId": "B"
+          },
+          {
+            "expr": "proxy_pool_host_reuse_ratio",
+            "format": "table",
+            "instant": true,
+            "refId": "C"
+          },
+          {
+            "expr": "proxy_pool_host_utilization",
+            "format": "table",
+            "instant": true,
+            "refId": "D"
+          },
+          {
+            "expr": "proxy_pool_host_errors_total",
+            "format": "table",
+            "instant": true,
+            "refId": "E"
+          },
+          {
+            "expr": "proxy_pool_host_exhausted_total",
+            "format": "table",
+            "instant": true,
+            "refId": "F"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "indexByName": {
+                "host": 0,
+                "Value #A": 1,
+                "Value #B": 2,
+                "Value #C": 3,
+                "Value #D": 4,
+                "Value #E": 5,
+                "Value #F": 6
+              },
+              "renameByName": {
+                "host": "Host",
+                "Value #A": "Active",
+                "Value #B": "Idle",
+                "Value #C": "Reuse Ratio",
+                "Value #D": "Utilization",
+                "Value #E": "Errors",
+                "Value #F": "Exhausted"
+              }
+            }
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "Active",
+              "desc": true
+            }
+          ]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Reuse Ratio"},
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percentunit"
+                },
+                {
+                  "id": "decimals",
+                  "value": 2
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Utilization"},
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percentunit"
+                },
+                {
+                  "id": "decimals",
+                  "value": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m"]
+    }
+  },
+  "overwrite": true
+}

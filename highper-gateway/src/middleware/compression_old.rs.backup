@@ -1,0 +1,297 @@
+//! Compression middleware for response compression
+//!
+//! Supports gzip, brotli, zstd, and deflate compression algorithms.
+//! Automatically negotiates compression based on Accept-Encoding header.
+
+use super::{Middleware, MiddlewareResult};
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::{header, Response};
+use std::future::Future;
+use std::io::Write;
+use std::pin::Pin;
+use tracing::{debug, warn};
+
+/// Compression algorithms
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionAlgorithm {
+    Gzip,
+    Br,      // Brotli
+    Zstd,
+    Deflate,
+}
+
+/// Compression configuration
+#[derive(Debug, Clone)]
+pub struct CompressionConfig {
+    /// Enabled algorithms in order of preference
+    pub algorithms: Vec<CompressionAlgorithm>,
+    /// Minimum size to compress (bytes)
+    pub min_size: usize,
+    /// Compression level (1-9, algorithm dependent)
+    pub level: u32,
+}
+
+impl Default for CompressionConfig {
+    fn default() -> Self {
+        Self {
+            algorithms: vec![
+                CompressionAlgorithm::Br,
+                CompressionAlgorithm::Gzip,
+                CompressionAlgorithm::Zstd,
+            ],
+            min_size: 1024, // 1KB
+            level: 6,
+        }
+    }
+}
+
+/// Compression middleware
+pub struct CompressionMiddleware {
+    config: CompressionConfig,
+}
+
+impl CompressionMiddleware {
+    /// Create a new compression middleware
+    pub fn new(config: CompressionConfig) -> Self {
+        Self { config }
+    }
+
+    /// Create with default config
+    pub fn default_compression() -> Self {
+        Self::new(CompressionConfig::default())
+    }
+
+    /// Select best compression algorithm based on Accept-Encoding header
+    fn select_algorithm(&self, accept_encoding: Option<&str>) -> Option<CompressionAlgorithm> {
+        let accept_encoding = accept_encoding?;
+
+        // Parse Accept-Encoding header
+        for algo in &self.config.algorithms {
+            let encoding_name = match algo {
+                CompressionAlgorithm::Gzip => "gzip",
+                CompressionAlgorithm::Br => "br",
+                CompressionAlgorithm::Zstd => "zstd",
+                CompressionAlgorithm::Deflate => "deflate",
+            };
+
+            if accept_encoding.contains(encoding_name) {
+                return Some(*algo);
+            }
+        }
+
+        None
+    }
+
+    /// Compress data using the specified algorithm
+    fn compress(&self, data: &[u8], algorithm: CompressionAlgorithm) -> Result<Vec<u8>, std::io::Error> {
+        match algorithm {
+            CompressionAlgorithm::Gzip => self.compress_gzip(data),
+            CompressionAlgorithm::Br => self.compress_brotli(data),
+            CompressionAlgorithm::Zstd => self.compress_zstd(data),
+            CompressionAlgorithm::Deflate => self.compress_deflate(data),
+        }
+    }
+
+    /// Compress using gzip
+    fn compress_gzip(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::new(self.config.level));
+        encoder.write_all(data)?;
+        encoder.finish()
+    }
+
+    /// Compress using brotli
+    fn compress_brotli(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+        let mut output = Vec::new();
+        let mut reader = std::io::Cursor::new(data);
+
+        brotli::BrotliCompress(
+            &mut reader,
+            &mut output,
+            &brotli::enc::BrotliEncoderParams {
+                quality: self.config.level as i32,
+                ..Default::default()
+            },
+        )?;
+
+        Ok(output)
+    }
+
+    /// Compress using zstd
+    fn compress_zstd(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+        zstd::encode_all(data, self.config.level as i32)
+    }
+
+    /// Compress using deflate
+    fn compress_deflate(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+        use flate2::write::DeflateEncoder;
+        use flate2::Compression;
+
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(self.config.level));
+        encoder.write_all(data)?;
+        encoder.finish()
+    }
+}
+
+impl Middleware for CompressionMiddleware {
+    fn name(&self) -> &str {
+        "compression"
+    }
+
+    fn process_response(
+        &self,
+        response: Response<Full<Bytes>>,
+    ) -> Pin<Box<dyn Future<Output = MiddlewareResult> + Send>> {
+        let config = self.config.clone();
+
+        Box::pin(async move {
+            // Get Accept-Encoding from original request (we'd need to pass this through)
+            // For now, we'll check if Content-Encoding already exists
+            if response.headers().contains_key(header::CONTENT_ENCODING) {
+                debug!("Response already compressed, skipping");
+                return Ok(response);
+            }
+
+            // Check if content type is compressible
+            let content_type = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+
+            if !Self::is_compressible(content_type) {
+                debug!("Content type {} not compressible", content_type);
+                return Ok(response);
+            }
+
+            // Get response body
+            let (parts, body) = response.into_parts();
+            let body_bytes = body.collect().await
+                .map_err(|_| anyhow::anyhow!("Failed to read body"))?
+                .to_bytes()
+                .to_vec();
+
+            // Check minimum size
+            if body_bytes.len() < config.min_size {
+                debug!("Body size {} below minimum {}, skipping compression", body_bytes.len(), config.min_size);
+                return Ok(Response::from_parts(parts, Full::new(Bytes::from(body_bytes))));
+            }
+
+            // For now, default to gzip (in production, we'd check Accept-Encoding)
+            let algorithm = CompressionAlgorithm::Gzip;
+            let encoding_name = "gzip";
+
+            // Compress the body
+            let middleware = CompressionMiddleware::new(config);
+            match middleware.compress(&body_bytes, algorithm) {
+                Ok(compressed) => {
+                    let original_size = body_bytes.len();
+                    let compressed_size = compressed.len();
+                    let ratio = (compressed_size as f64 / original_size as f64) * 100.0;
+
+                    debug!(
+                        "Compressed response: {} -> {} bytes ({:.1}% of original)",
+                        original_size, compressed_size, ratio
+                    );
+
+                    let mut response = Response::from_parts(parts, Full::new(Bytes::from(compressed)));
+                    response.headers_mut().insert(
+                        header::CONTENT_ENCODING,
+                        encoding_name.parse().unwrap(),
+                    );
+                    response.headers_mut().insert(
+                        header::CONTENT_LENGTH,
+                        compressed_size.to_string().parse().unwrap(),
+                    );
+
+                    Ok(response)
+                }
+                Err(e) => {
+                    warn!("Compression failed: {}, serving uncompressed", e);
+                    Ok(Response::from_parts(parts, Full::new(Bytes::from(body_bytes))))
+                }
+            }
+        })
+    }
+}
+
+impl CompressionMiddleware {
+    /// Check if content type is compressible
+    fn is_compressible(content_type: &str) -> bool {
+        // Text-based content types that benefit from compression
+        const COMPRESSIBLE_TYPES: &[&str] = &[
+            "text/",
+            "application/json",
+            "application/javascript",
+            "application/xml",
+            "application/xhtml",
+            "application/rss+xml",
+            "application/atom+xml",
+            "image/svg+xml",
+        ];
+
+        COMPRESSIBLE_TYPES.iter().any(|t| content_type.starts_with(t))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compression_config() {
+        let config = CompressionConfig::default();
+        assert_eq!(config.algorithms.len(), 3);
+        assert_eq!(config.min_size, 1024);
+        assert_eq!(config.level, 6);
+    }
+
+    #[test]
+    fn test_is_compressible() {
+        assert!(CompressionMiddleware::is_compressible("text/html"));
+        assert!(CompressionMiddleware::is_compressible("text/plain; charset=utf-8"));
+        assert!(CompressionMiddleware::is_compressible("application/json"));
+        assert!(CompressionMiddleware::is_compressible("application/javascript"));
+        assert!(!CompressionMiddleware::is_compressible("image/png"));
+        assert!(!CompressionMiddleware::is_compressible("video/mp4"));
+    }
+
+    #[test]
+    fn test_gzip_compression() {
+        let config = CompressionConfig::default();
+        let middleware = CompressionMiddleware::new(config);
+
+        let data = b"Hello, World! ".repeat(100);
+        let compressed = middleware.compress_gzip(&data).unwrap();
+
+        // Compressed should be smaller
+        assert!(compressed.len() < data.len());
+    }
+
+    #[test]
+    fn test_brotli_compression() {
+        let config = CompressionConfig::default();
+        let middleware = CompressionMiddleware::new(config);
+
+        let data = b"Hello, World! ".repeat(100);
+        let compressed = middleware.compress_brotli(&data).unwrap();
+
+        // Compressed should be smaller
+        assert!(compressed.len() < data.len());
+    }
+
+    #[test]
+    fn test_zstd_compression() {
+        let config = CompressionConfig::default();
+        let middleware = CompressionMiddleware::new(config);
+
+        let data = b"Hello, World! ".repeat(100);
+        let compressed = middleware.compress_zstd(&data).unwrap();
+
+        // Compressed should be smaller
+        assert!(compressed.len() < data.len());
+    }
+}

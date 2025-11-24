@@ -1,0 +1,277 @@
+# Example configuration demonstrating mTLS (Mutual TLS) support
+#
+# This configuration shows how to set up client certificate authentication
+# for secure machine-to-machine communication.
+
+server:
+  # HTTPS bind address (mTLS requires TLS)
+  bind:
+    - "0.0.0.0:8443"
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  performance:
+    max_connections: 10000
+    connection_timeout: 30s
+    request_timeout: 60s
+    keepalive_timeout: 65s
+
+  shutdown_timeout: 30s
+
+# TLS configuration with mTLS
+tls:
+  enabled: true
+
+  # Server certificate and key
+  cert_file: "/etc/highper-gateway/certs/server-cert.pem"
+  key_file: "/etc/highper-gateway/certs/server-key.pem"
+
+  # TLS protocols
+  protocols:
+    - TLSv1.2
+    - TLSv1.3
+
+  # mTLS configuration
+  mtls:
+    enabled: true
+
+    # Path to CA certificate(s) for verifying client certificates
+    ca_cert_path: "/etc/highper-gateway/certs/client-ca.pem"
+
+    # Global client certificate verification mode:
+    # - required: Client cert is mandatory (connections fail without it)
+    # - optional: Client cert is requested but not required
+    # - optional_no_ca: Client cert verified if provided, connection allowed if not
+    verification_mode: optional
+
+    # Optional: Additional CA certificates (e.g., for multiple trusted CAs)
+    additional_cas:
+      - "/etc/highper-gateway/certs/partner-ca.pem"
+      - "/etc/highper-gateway/certs/legacy-ca.pem"
+
+    # Optional: Certificate Revocation List (CRL)
+    # crl_path: "/etc/highper-gateway/certs/ca.crl"
+
+    # Optional: OCSP configuration (for real-time revocation checking)
+    ocsp:
+      enabled: false
+      # responder_url: "http://ocsp.example.com"
+
+# Upstream backend services
+upstreams:
+  # Public service (no client cert required)
+  - name: public_service
+    servers:
+      - address: "127.0.0.1:3000"
+        weight: 1
+      - address: "127.0.0.1:3001"
+        weight: 1
+
+    load_balancer:
+      algorithm: round_robin
+
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 5s
+      path: "/health"
+
+  # Admin service (requires client cert)
+  - name: admin_service
+    servers:
+      - address: "127.0.0.1:4000"
+        weight: 1
+
+    health_check:
+      enabled: true
+      interval: 10s
+      path: "/health"
+
+  # Internal service (specific clients only)
+  - name: internal_service
+    servers:
+      - address: "127.0.0.1:5000"
+        weight: 1
+
+    health_check:
+      enabled: true
+      interval: 10s
+      path: "/health"
+
+# Routes with different mTLS policies
+routes:
+  # Public API - No client certificate required
+  - path: "/public"
+    methods: ["GET", "POST"]
+    upstream: public_service
+    # No mtls config = uses global (optional)
+
+    timeout: 30s
+
+    transform:
+      add_headers:
+        X-Proxy: "highper-gateway"
+
+  # Authenticated API - Client certificate optional but encouraged
+  - path: "/api"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: public_service
+
+    # Client cert optional (but info forwarded if provided)
+    mtls:
+      verification_mode: optional
+
+    timeout: 30s
+
+    retry:
+      max_attempts: 3
+      backoff: exponential
+
+  # Admin API - Client certificate REQUIRED
+  - path: "/admin"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    upstream: admin_service
+
+    # Override global setting - require client cert for admin
+    mtls:
+      verification_mode: required
+
+      # Optional: Restrict to specific certificate subjects
+      allowed_subjects:
+        - "CN=admin.example.com"
+        - "CN=service-admin.example.com"
+
+      # Optional: Restrict to specific issuers
+      allowed_issuers:
+        - "CN=Internal Admin CA"
+
+    timeout: 60s
+
+  # Internal API - Specific clients only (fingerprint whitelist)
+  - path: "/internal"
+    methods: ["GET", "POST"]
+    upstream: internal_service
+
+    # Only allow specific known certificates
+    mtls:
+      verification_mode: required
+
+      # Whitelist of allowed certificate fingerprints (SHA-256, hex)
+      # To get fingerprint: openssl x509 -in cert.pem -noout -fingerprint -sha256
+      allowed_fingerprints:
+        # Service A's certificate
+        - "a1b2c3d4e5f6789012345678901234567890abcdef0123456789abcdef012345"
+        # Service B's certificate
+        - "b2c3d4e5f6a1789012345678901234567890abcdef0123456789abcdef012345"
+
+    timeout: 30s
+
+  # Partner API - Specific partner certificates
+  - path: "/partner"
+    methods: ["POST"]
+    upstream: public_service
+
+    mtls:
+      verification_mode: required
+
+      # Allow certificates from specific issuers
+      allowed_issuers:
+        - "CN=Partner CA,O=Partner Corp"
+
+      # And/or specific serial numbers
+      allowed_serials:
+        - "01234567890ABCDEF"
+        - "FEDCBA0987654321"
+
+    timeout: 30s
+
+  # Health check endpoint - No authentication
+  - path: "/health"
+    methods: ["GET"]
+    upstream: public_service
+    timeout: 5s
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+
+  logging:
+    enabled: true
+    format: json
+    fields:
+      - timestamp
+      - method
+      - path
+      - status
+      - duration
+      - bytes_sent
+      - user_agent
+      # Client certificate info (if provided)
+      - x-client-cert-cn
+      - x-client-cert-fingerprint
+
+# WebSocket support (also works with mTLS)
+websocket:
+  enabled: true
+  ping_interval: 30s
+  ping_timeout: 10s
+
+# gRPC support (also works with mTLS)
+grpc:
+  enabled: true
+  max_message_size: 4194304  # 4MB
+
+---
+
+# Certificate Generation Guide
+#
+# To use this configuration, generate certificates as follows:
+
+## 1. Generate CA Certificate (for signing client certs)
+# openssl genrsa -out client-ca-key.pem 4096
+# openssl req -new -x509 -key client-ca-key.pem -out client-ca.pem -days 3650 \
+#   -subj "/C=US/ST=State/L=City/O=MyOrg/CN=Client CA"
+
+## 2. Generate Server Certificate
+# openssl genrsa -out server-key.pem 4096
+# openssl req -new -key server-key.pem -out server-csr.pem \
+#   -subj "/C=US/ST=State/L=City/O=MyOrg/CN=proxy.example.com"
+# openssl x509 -req -in server-csr.pem -CA client-ca.pem -CAkey client-ca-key.pem \
+#   -CAcreateserial -out server-cert.pem -days 365
+
+## 3. Generate Client Certificate
+# openssl genrsa -out client-key.pem 4096
+# openssl req -new -key client-key.pem -out client-csr.pem \
+#   -subj "/C=US/ST=State/L=City/O=MyOrg/CN=client.example.com"
+# openssl x509 -req -in client-csr.pem -CA client-ca.pem -CAkey client-ca-key.pem \
+#   -CAcreateserial -out client-cert.pem -days 365
+
+## 4. Test with curl
+# curl --cert client-cert.pem --key client-key.pem \
+#   --cacert server-cert.pem https://localhost:8443/api
+
+---
+
+# Backend Integration Example
+#
+# Your backend services will receive client certificate information via headers:
+#
+# X-Client-Cert-Subject: CN=client.example.com,O=MyOrg,C=US
+# X-Client-Cert-Issuer: CN=Client CA,O=MyOrg,C=US
+# X-Client-Cert-Serial: 01234567890ABCDEF
+# X-Client-Cert-Fingerprint: a1b2c3d4e5f6789012345678901234567890abcdef0123456789abcdef012345
+# X-Client-Cert-CN: client.example.com
+# X-Client-Cert-Not-Before: 1609459200
+# X-Client-Cert-Not-After: 1672531200
+#
+# Use these headers for:
+# - Authentication and authorization
+# - Audit logging
+# - Per-client rate limiting
+# - Custom business logic

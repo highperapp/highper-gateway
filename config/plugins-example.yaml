@@ -1,0 +1,420 @@
+# Complete Plugin System Configuration Example
+# This file demonstrates all available plugin system features
+
+# Global plugin configuration
+plugins:
+  # Plugin discovery and monitoring
+  discovery:
+    # Directory containing plugin files
+    plugin_dir: /etc/highper-gateway/plugins
+
+    # Enable file watching for hot-reload (zero-downtime updates)
+    watch: true
+
+    # Automatically load plugins on startup
+    auto_load: true
+
+    # Allowed plugin file extensions
+    extensions:
+      - wasm      # WebAssembly plugins
+      - so        # Linux shared libraries
+      - dylib     # macOS dynamic libraries
+      - dll       # Windows DLLs
+
+  # Default resource limits for WASM plugins
+  # These apply unless overridden per-plugin
+  default_limits:
+    # Maximum memory per plugin (MB)
+    memory_mb: 64
+
+    # Maximum instructions per execution (prevents infinite loops)
+    fuel: 1000000
+
+    # Maximum execution time per request (ms)
+    timeout_ms: 100
+
+    # Maximum concurrent requests per plugin
+    max_concurrent_requests: 100
+
+  # Individual plugin configurations
+  plugins:
+    # ============================================
+    # EXAMPLE 1: Authentication Plugin (WASM)
+    # ============================================
+    - name: jwt-auth
+      type: wasm
+      path: /etc/highper-gateway/plugins/jwt_auth.wasm
+      enabled: true
+
+      # Priority determines execution order (higher = earlier)
+      # Auth should run first to fail fast on invalid requests
+      priority: 100
+
+      # Resource limits (overrides defaults)
+      limits:
+        memory_mb: 64
+        fuel: 1000000
+        timeout_ms: 50  # Auth is fast, use tight timeout
+        max_concurrent_requests: 1000
+
+      # WASI capabilities (security sandbox)
+      capabilities:
+        # Deny filesystem access
+        filesystem: false
+
+        # Network access control
+        network:
+          # Allow outbound connections only to auth service
+          allow_outbound:
+            - "auth.internal:443"
+            - "*.auth.example.com"
+          # Block private IP ranges
+          deny_private_ips: true
+          # Network timeout (ms)
+          timeout_ms: 5000
+
+        # Allow specific environment variables
+        environment:
+          - JWT_SECRET
+          - AUTH_ISSUER
+
+        # Disable random number generation
+        random: false
+
+        # Allow clock access (for JWT exp validation)
+        clock: true
+
+      # Plugin-specific configuration (passed to plugin)
+      config:
+        jwt_secret: "${JWT_SECRET}"
+        issuer: "https://auth.example.com"
+        audience: "api.example.com"
+        algorithm: "HS256"
+        required_claims:
+          - sub
+          - exp
+          - iat
+        cache_ttl_seconds: 300
+
+    # ============================================
+    # EXAMPLE 2: Rate Limiting Plugin (FFI)
+    # ============================================
+    - name: rate-limiter
+      type: ffi
+      path: /etc/highper-gateway/plugins/librate_limit.so
+      enabled: true
+
+      # High priority but after auth
+      priority: 90
+
+      # FFI plugins don't use resource limits
+      # (they run in-process without sandboxing)
+
+      config:
+        # Requests per window
+        limit: 100
+        # Window size (seconds)
+        window_seconds: 1
+        # Storage backend
+        storage: memory  # or "redis"
+        # Redis connection (if storage=redis)
+        redis_url: "redis://localhost:6379"
+        # Key prefix
+        key_prefix: "rate_limit:"
+        # Identifier source
+        identifier: client_ip  # or "header:X-API-Key"
+
+    # ============================================
+    # EXAMPLE 3: Request Validation Plugin (WASM)
+    # ============================================
+    - name: request-validator
+      type: wasm
+      path: /etc/highper-gateway/plugins/validator.wasm
+      enabled: true
+      priority: 80
+
+      limits:
+        memory_mb: 64
+        fuel: 2000000  # More fuel for validation logic
+        timeout_ms: 100
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound: []  # No network access needed
+        environment: []
+        random: false
+        clock: false
+
+      config:
+        # Maximum request body size (bytes)
+        max_body_size: 10485760  # 10MB
+        # Required headers
+        required_headers:
+          - content-type
+          - user-agent
+        # Allowed content types
+        allowed_content_types:
+          - application/json
+          - application/x-www-form-urlencoded
+        # JSON schema validation
+        schema_file: /etc/highper-gateway/schemas/api-schema.json
+
+    # ============================================
+    # EXAMPLE 4: CORS Headers Plugin (WASM)
+    # ============================================
+    - name: cors-headers
+      type: wasm
+      path: /etc/highper-gateway/plugins/cors.wasm
+      enabled: true
+      priority: 75
+
+      limits:
+        memory_mb: 32  # Simple plugin, less memory
+        fuel: 500000
+        timeout_ms: 25
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound: []
+        environment: []
+        random: false
+        clock: false
+
+      config:
+        allowed_origins:
+          - "https://app.example.com"
+          - "https://admin.example.com"
+        allowed_methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        allowed_headers:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        expose_headers:
+          - X-Request-ID
+          - X-RateLimit-Remaining
+        max_age_seconds: 86400
+        allow_credentials: true
+
+    # ============================================
+    # EXAMPLE 5: Content Transformation Plugin (FFI)
+    # ============================================
+    - name: json-to-protobuf
+      type: ffi
+      path: /etc/highper-gateway/plugins/libtransform.so
+      enabled: false  # Disabled by default
+      priority: 50
+
+      config:
+        input_format: json
+        output_format: protobuf
+        schema_file: /etc/highper-gateway/schemas/api.proto
+        preserve_unknown_fields: false
+        compress_output: true
+
+    # ============================================
+    # EXAMPLE 6: Logging & Analytics Plugin (WASM)
+    # ============================================
+    - name: analytics
+      type: wasm
+      path: /etc/highper-gateway/plugins/analytics.wasm
+      enabled: true
+      priority: 20  # Low priority (run late)
+
+      limits:
+        memory_mb: 128  # More memory for batching
+        fuel: 1000000
+        timeout_ms: 200  # Allow time for batch send
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound:
+            - "analytics.internal:443"
+          deny_private_ips: true
+        environment:
+          - ANALYTICS_API_KEY
+        random: true  # For sampling
+        clock: true   # For timestamps
+
+      config:
+        endpoint: "https://analytics.internal/events"
+        api_key: "${ANALYTICS_API_KEY}"
+        batch_size: 100
+        flush_interval_seconds: 60
+        sample_rate: 1.0  # 100% sampling
+        include_headers:
+          - user-agent
+          - referer
+        include_geo: true
+
+    # ============================================
+    # EXAMPLE 7: Custom Response Headers (WASM)
+    # ============================================
+    - name: response-headers
+      type: wasm
+      path: /etc/highper-gateway/plugins/headers.wasm
+      enabled: true
+      priority: 10  # Very low priority (run last)
+
+      limits:
+        memory_mb: 16  # Minimal memory
+        fuel: 100000
+        timeout_ms: 10
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound: []
+        environment: []
+        random: false
+        clock: true  # For timestamps
+
+      config:
+        static_headers:
+          X-Served-By: highper-gateway
+          X-Version: "1.0.0"
+          X-Frame-Options: DENY
+          X-Content-Type-Options: nosniff
+          X-XSS-Protection: "1; mode=block"
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+        dynamic_headers:
+          - name: X-Request-ID
+            source: generate_uuid
+          - name: X-Response-Time
+            source: request_duration_ms
+          - name: X-Cache-Status
+            source: cache_status
+
+    # ============================================
+    # EXAMPLE 8: WAF (Web Application Firewall) Plugin (WASM)
+    # ============================================
+    - name: waf
+      type: wasm
+      path: /etc/highper-gateway/plugins/waf.wasm
+      enabled: true
+      priority: 95  # High priority (after auth, before rate limit)
+
+      limits:
+        memory_mb: 128
+        fuel: 5000000  # Complex pattern matching needs more fuel
+        timeout_ms: 150
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound: []
+        environment: []
+        random: false
+        clock: true
+
+      config:
+        mode: block  # or "detect" for monitoring only
+        rules:
+          - name: sql_injection
+            pattern: "('|(\\-\\-)|(;)|(\\|\\|)|(\\*))"
+            action: block
+            severity: high
+          - name: xss_attack
+            pattern: "(<script|javascript:|onerror=|onload=)"
+            action: block
+            severity: high
+          - name: path_traversal
+            pattern: "(\\.\\./|\\.\\.\\ )"
+            action: block
+            severity: medium
+        ip_whitelist:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+        ip_blacklist:
+          - 192.0.2.0/24  # TEST-NET-1
+
+    # ============================================
+    # EXAMPLE 9: Circuit Breaker Plugin (FFI)
+    # ============================================
+    - name: circuit-breaker
+      type: ffi
+      path: /etc/highper-gateway/plugins/libcircuit_breaker.so
+      enabled: true
+      priority: 85
+
+      config:
+        failure_threshold: 5  # Open after 5 failures
+        success_threshold: 2  # Close after 2 successes
+        timeout_seconds: 60   # Half-open after 60s
+        metrics_window_seconds: 120
+
+    # ============================================
+    # EXAMPLE 10: A/B Testing Plugin (WASM)
+    # ============================================
+    - name: ab-testing
+      type: wasm
+      path: /etc/highper-gateway/plugins/ab_test.wasm
+      enabled: false  # Disabled, enable when running experiments
+      priority: 70
+
+      limits:
+        memory_mb: 64
+        fuel: 1000000
+        timeout_ms: 50
+
+      capabilities:
+        filesystem: false
+        network:
+          allow_outbound: []
+        environment: []
+        random: true   # For variant selection
+        clock: false
+
+      config:
+        experiments:
+          - name: new_algorithm
+            variants:
+              - name: control
+                weight: 50
+                upstream: backend-v1
+              - name: treatment
+                weight: 50
+                upstream: backend-v2
+            enabled: true
+
+# Observability configuration for plugins
+observability:
+  # Plugin metrics
+  metrics:
+    enabled: true
+    export_interval_seconds: 60
+    labels:
+      - plugin_name
+      - plugin_type
+      - phase
+      - result
+
+  # Plugin tracing
+  tracing:
+    enabled: true
+    sample_rate: 0.1  # 10% sampling
+    include_plugin_details: true
+
+  # Plugin logging
+  logging:
+    level: info
+    include_execution_time: true
+    include_fuel_consumed: true
+
+# Admin API endpoints for plugin management
+admin:
+  enabled: true
+  address: 127.0.0.1:9090
+  endpoints:
+    # GET /admin/plugins - List all plugins
+    # POST /admin/plugins/:name/enable - Enable plugin
+    # POST /admin/plugins/:name/disable - Disable plugin
+    # POST /admin/plugins/:name/reload - Reload plugin
+    # GET /admin/plugins/:name/stats - Get plugin statistics

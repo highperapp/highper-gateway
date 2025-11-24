@@ -1,0 +1,228 @@
+//! Caddy-like DSL Grammar
+//!
+//! This grammar defines a simple, intuitive configuration language
+//! for reverse proxy configuration inspired by Caddy.
+//!
+//! Example:
+//!   example.com proxy localhost:3000
+//!   https://api.example.com {
+//!       /api/* proxy backend:8080
+//!       cors
+//!   }
+
+WHITESPACE = _{ " " | "\t" | "\r" }
+COMMENT = _{ "#" ~ (!NEWLINE ~ ANY)* ~ NEWLINE? }
+newline = _{ NEWLINE }
+
+// Top-level config file
+config = {
+    SOI ~
+    newline* ~
+    (global_directive | site)* ~
+    EOI
+}
+
+// Global directives (apply to all sites)
+global_directive = {
+    log_directive
+  | admin_directive
+  | metrics_directive
+}
+
+log_directive = { "log" ~ log_level ~ newline }
+log_level = { "debug" | "info" | "warn" | "error" }
+
+admin_directive = { "admin" ~ admin_address ~ newline }
+admin_address = @{ (domain ~ port?) | (":" ~ port) }
+
+metrics_directive = { "metrics" ~ ("on" | "off")? ~ newline }
+
+// Site definition
+site = {
+    site_address ~ (site_block | simple_proxy) ~ newline*
+}
+
+site_address = {
+    (scheme? ~ domain ~ (":" ~ port)? ~ path?)  // HTTP/HTTPS/gRPC
+  | (":" ~ port ~ tcp_protocol?)                 // TCP-only (e.g., :3306 mysql)
+}
+
+scheme = { "https://" | "http://" | "grpc://" }
+
+domain = @{
+    (ASCII_ALPHANUMERIC | "-")+ ~ ("." ~ (ASCII_ALPHANUMERIC | "-")+)*
+  | "localhost"
+}
+
+port = @{ ASCII_DIGIT{1,5} }
+
+path = { "/" ~ path_segment ~ ("/" ~ path_segment)* ~ "/"? }
+path_segment = @{ (ASCII_ALPHANUMERIC | "-" | "_" | "." | "*")+ }
+
+tcp_protocol = { "mysql" | "postgres" | "redis" | "tcp" }
+
+// Simple one-line proxy
+simple_proxy = { "proxy" ~ backend+ }
+
+// Block with multiple directives
+site_block = {
+    "{" ~ newline* ~
+    (route | directive)* ~
+    "}" ~ newline*
+}
+
+// Path-based route
+route = {
+    path ~ (route_block | simple_proxy) ~ newline*
+}
+
+route_block = {
+    "{" ~ newline* ~
+    directive* ~
+    "}" ~ newline*
+}
+
+// Directives
+directive = {
+    proxy_directive
+  | tcp_directive
+  | lb_directive
+  | pool_directive
+  | health_directive
+  | tls_directive
+  | cors_directive
+  | websocket_directive
+  | grpc_directive
+  | compress_directive
+  | rate_limit_directive
+  | timeout_directive
+  | headers_directive
+}
+
+// Proxy directive: proxy backend1 backend2 ...
+proxy_directive = { "proxy" ~ backend+ ~ newline }
+
+backend = {
+    scheme? ~ domain ~ (":" ~ port)?
+  | ip_address ~ (":" ~ port)?
+}
+
+ip_address = @{
+    ASCII_DIGIT{1,3} ~ "." ~ ASCII_DIGIT{1,3} ~ "." ~
+    ASCII_DIGIT{1,3} ~ "." ~ ASCII_DIGIT{1,3}
+}
+
+// TCP-specific directives
+tcp_directive = {
+    tcp_protocol ~ proxy_directive?
+}
+
+// Load balancing: lb round_robin | least_conn | ip_hash | random | weighted | consistent_hash
+lb_directive = {
+    "lb" ~ lb_algorithm ~ newline
+}
+
+lb_algorithm = {
+    "round_robin"
+  | "least_conn"
+  | "ip_hash"
+  | "random"
+  | "weighted"
+  | "consistent_hash"
+}
+
+// Connection pool: pool max=500 min=20 lifetime=1h
+pool_directive = {
+    "pool" ~ pool_option+ ~ newline
+}
+
+pool_option = {
+    "max=" ~ number
+  | "min=" ~ number
+  | "lifetime=" ~ duration
+  | "idle=" ~ duration
+}
+
+// Health checks: health interval=10s timeout=5s path=/health
+health_directive = {
+    "health" ~ health_option* ~ newline
+}
+
+health_option = {
+    "interval=" ~ duration
+  | "timeout=" ~ duration
+  | "path=" ~ quoted_string
+  | "healthy=" ~ number      // healthy threshold
+  | "unhealthy=" ~ number    // unhealthy threshold
+}
+
+// TLS: tls | tls internal | tls email@example.com | tls cert.pem key.pem
+tls_directive = {
+    "tls" ~ (
+        "internal"                             // Self-signed
+      | email                                  // Auto ACME
+      | (quoted_string ~ quoted_string)       // Cert + key files
+    )? ~ newline
+}
+
+email = @{ (ASCII_ALPHANUMERIC | "." | "-" | "_" | "+")+ ~ "@" ~ domain }
+
+// CORS: cors | cors origins=https://example.com
+cors_directive = {
+    "cors" ~ cors_option* ~ newline
+}
+
+cors_option = {
+    "origins=" ~ quoted_string
+  | "methods=" ~ quoted_string
+  | "headers=" ~ quoted_string
+  | "credentials"
+}
+
+// WebSocket: websocket
+websocket_directive = { "websocket" ~ newline }
+
+// gRPC: grpc
+grpc_directive = { "grpc" ~ newline }
+
+// Compression: compress | compress gzip | compress gzip br
+compress_directive = {
+    "compress" ~ compression_algo* ~ newline
+}
+
+compression_algo = { "gzip" | "br" | "deflate" | "zstd" }
+
+// Rate limiting: rate_limit 100 per 1s
+rate_limit_directive = {
+    "rate_limit" ~ number ~ ("per" ~ duration)? ~ newline
+}
+
+// Timeout: timeout 30s
+timeout_directive = {
+    "timeout" ~ duration ~ newline
+}
+
+// Headers: header_up Host {upstream_hostport} | header_down Server "rust-proxy"
+headers_directive = {
+    ("header_up" | "header_down") ~ header_name ~ header_value ~ newline
+}
+
+header_name = @{ (ASCII_ALPHANUMERIC | "-")+ }
+header_value = { quoted_string | variable }
+variable = @{ "{" ~ (ASCII_ALPHANUMERIC | "_")+ ~ "}" }
+
+// Primitives
+number = @{ ASCII_DIGIT+ }
+
+duration = @{
+    number ~ ("ms" | "s" | "m" | "h" | "d")
+}
+
+quoted_string = @{
+    "\"" ~ (!"\"" ~ ANY)* ~ "\""
+}
+
+// TLS passthrough: :9443 tls-passthrough example.com -> backend:443
+tls_passthrough_directive = {
+    "tls-passthrough" ~ domain ~ "->" ~ backend ~ newline
+}

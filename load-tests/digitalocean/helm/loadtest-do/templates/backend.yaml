@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        # Simple HTTP server that returns OK
+        image: nginx:alpine
+        ports:
+        - containerPort: {{ .Values.backend.port }}
+        resources:
+          limits:
+            cpu: {{ .Values.backend.resources.limits.cpu }}
+            memory: {{ .Values.backend.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.backend.resources.requests.cpu }}
+            memory: {{ .Values.backend.resources.requests.memory }}
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: backend-nginx-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-nginx-config
+data:
+  nginx.conf: |
+    worker_processes auto;
+    worker_rlimit_nofile 65535;
+
+    events {
+        worker_connections 65535;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        access_log off;
+        error_log /dev/null;
+
+        keepalive_timeout 65;
+        keepalive_requests 10000;
+
+        server {
+            listen 80;
+
+            location / {
+                return 200 'OK\n';
+                add_header Content-Type text/plain;
+            }
+
+            location /health {
+                return 200 'healthy';
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  type: NodePort
+  selector:
+    app: backend
+  ports:
+  - port: {{ .Values.backend.port }}
+    targetPort: {{ .Values.backend.port }}
+    nodePort: 30080

@@ -1,0 +1,43 @@
+# Test Configuration for io_uring Integration
+# Simple HTTP proxy to test GLOBAL_IO backend
+
+server:
+  bind:
+    - "0.0.0.0:8080"     # HTTP only
+  tls_bind: []           # No TLS for this test
+  workers: "2"
+  protocols:
+    - http1
+    - http2
+  http3:
+    enabled: false
+
+# Simple upstream for testing
+upstreams:
+  - name: "test_backend"
+    servers:
+      - url: "http://127.0.0.1:3000"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+    health_check:
+      active:
+        enabled: false
+
+# Simple catch-all route
+routes:
+  - name: "test_route"
+    match:
+      paths: ["/*"]
+    upstream: "test_backend"
+
+# Observability
+observability:
+  logging:
+    level: "info"
+    format: "pretty"
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    prometheus:
+      enabled: true

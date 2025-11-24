@@ -1,0 +1,117 @@
+# HTTP/3 (QUIC) Configuration Example
+# This example demonstrates how to enable and configure HTTP/3 support
+# in the Highper Gateway reverse proxy server
+
+server:
+  # HTTP and HTTPS bind addresses
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS (HTTP/2)
+
+  workers: "auto"
+
+  # Enable HTTP/3 alongside HTTP/1.1 and HTTP/2
+  protocols:
+    - http1
+    - http2
+    - http3
+
+  # HTTP/3 (QUIC) configuration
+  http3:
+    # Enable HTTP/3 server
+    enabled: true
+
+    # UDP port for HTTP/3 (typically same as HTTPS port)
+    port: 8443
+
+    # Bind address for HTTP/3
+    bind: "0.0.0.0"
+
+    # Enable 0-RTT (zero round-trip time) for faster connection resumption
+    # Warning: 0-RTT can be vulnerable to replay attacks, use with caution
+    enable_0rtt: false
+
+    # Maximum number of concurrent streams per connection
+    max_concurrent_streams: 100
+
+    # Initial flow control window size in bytes (10 MB)
+    initial_window_size: 10485760
+
+    # Maximum datagram size in bytes
+    max_datagram_size: 1350
+
+    # Connection idle timeout in seconds
+    idle_timeout_secs: 30
+
+# TLS configuration (required for HTTP/3)
+tls:
+  # Manual certificate configuration
+  certificates:
+    - domain: "example.com"
+      cert_file: "/etc/ssl/certs/example.com.crt"
+      key_file: "/etc/ssl/private/example.com.key"
+
+    - domain: "*.example.com"
+      cert_file: "/etc/ssl/certs/wildcard.example.com.crt"
+      key_file: "/etc/ssl/private/wildcard.example.com.key"
+
+  # Or use ACME for automatic certificates
+  # auto: true
+  # acme:
+  #   enabled: true
+  #   email: "admin@example.com"
+  #   directory_url: "https://acme-v02.api.letsencrypt.org/directory"
+  #   domains:
+  #     - "example.com"
+  #     - "www.example.com"
+
+# Upstream backend configuration
+upstreams:
+  - name: "app_servers"
+    servers:
+      - address: "localhost:3000"
+        weight: 1
+      - address: "localhost:3001"
+        weight: 1
+
+    load_balancing:
+      algorithm: "round_robin"
+
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 5s
+      path: "/health"
+
+# Route configuration
+routes:
+  - path: "/api"
+    upstream: "app_servers"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+
+  - path: "/"
+    upstream: "app_servers"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API (optional)
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"
+
+# Cache configuration (optional)
+cache:
+  enabled: false
+
+# Rate limiting (optional)
+rate_limit:
+  enabled: false

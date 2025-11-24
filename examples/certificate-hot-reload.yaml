@@ -1,0 +1,197 @@
+# Certificate Hot Reload Example Configuration
+#
+# This demonstrates automatic certificate reloading when files change on disk.
+# Perfect for ACME renewals (Let's Encrypt) or manual certificate updates.
+
+server:
+  bind:
+    - "0.0.0.0:80"
+  tls_bind:
+    - "0.0.0.0:443"
+  workers: "auto"
+  protocols:
+    - Http1
+    - Http2
+
+# TLS Configuration with Manual Certificates
+tls:
+  # Automatic HTTPS (disabled for manual certificates)
+  auto: false
+
+  # Minimum TLS version
+  min_version: "TLS1.2"
+
+  # Session cache for performance
+  session_cache:
+    enabled: true
+    size: 10000
+    timeout: 300
+
+  # Manual certificates (monitored for changes)
+  certificates:
+    # Primary domain
+    - domain: "example.com"
+      cert_file: "/etc/letsencrypt/live/example.com/fullchain.pem"
+      key_file: "/etc/letsencrypt/live/example.com/privkey.pem"
+      # Certificate will be automatically reloaded when files change
+
+    # Additional domains
+    - domain: "api.example.com"
+      cert_file: "/etc/letsencrypt/live/api.example.com/fullchain.pem"
+      key_file: "/etc/letsencrypt/live/api.example.com/privkey.pem"
+
+    # Wildcard certificate
+    - domain: "*.example.com"
+      cert_file: "/etc/certs/wildcard.crt"
+      key_file: "/etc/certs/wildcard.key"
+
+# Upstream backends
+upstreams:
+  - id: "web_servers"
+    servers:
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
+    healthcheck:
+      enabled: true
+      path: "/health"
+      interval: 10
+
+# Routes
+routes:
+  - path: "/"
+    upstream: "web_servers"
+    match_type: "prefix"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "127.0.0.1:9100"
+  tracing:
+    enabled: false
+  access_log:
+    enabled: true
+    format: "json"
+
+# =====================================================
+# How Certificate Hot Reload Works
+# =====================================================
+#
+# 1. File Monitoring:
+#    - The proxy watches all certificate and key files
+#    - Uses inotify (Linux), FSEvents (macOS), or polling (Windows)
+#
+# 2. Change Detection:
+#    - When a file changes, the proxy detects it within ~500ms
+#    - Handles atomic operations (write to temp file + rename)
+#
+# 3. Validation:
+#    - New certificate is validated before applying
+#    - Checks for:
+#      * Valid PEM format
+#      * Certificate not expired
+#      * Certificate/key pair compatibility
+#
+# 4. Zero-Downtime Reload:
+#    - New connections use the new certificate
+#    - Existing connections continue with old certificate
+#    - No service interruption
+#
+# 5. Failure Handling:
+#    - If validation fails, old certificate remains active
+#    - Error logged for troubleshooting
+#
+# =====================================================
+# ACME/Let's Encrypt Integration
+# =====================================================
+#
+# Compatible with certbot:
+#
+# 1. Install certbot:
+#    sudo apt-get install certbot
+#
+# 2. Get certificate:
+#    sudo certbot certonly --webroot \
+#      -w /var/www/html \
+#      -d example.com \
+#      -d www.example.com
+#
+# 3. Set up auto-renewal (cron):
+#    0 0 * * * certbot renew --quiet
+#
+# 4. Configure proxy (as shown above)
+#
+# When certbot renews the certificate, the proxy automatically
+# detects the change and reloads it within seconds.
+#
+# =====================================================
+# Testing Certificate Reload
+# =====================================================
+#
+# 1. Start the proxy:
+#    ./highper-gateway certificate-hot-reload.yaml
+#
+# 2. Check current certificate:
+#    echo | openssl s_client -connect localhost:443 -servername example.com 2>/dev/null | \
+#      openssl x509 -noout -dates
+#
+# 3. Update certificate:
+#    sudo cp new-cert.pem /etc/certs/example.com.crt
+#    sudo cp new-key.pem /etc/certs/example.com.key
+#
+# 4. Wait ~1 second for reload
+#
+# 5. Verify new certificate:
+#    echo | openssl s_client -connect localhost:443 -servername example.com 2>/dev/null | \
+#      openssl x509 -noout -dates
+#
+# You should see the new certificate dates!
+#
+# =====================================================
+# Monitoring
+# =====================================================
+#
+# Watch proxy logs for reload events:
+#    tail -f /var/log/highper-gateway.log | grep -i certificate
+#
+# Expected log messages:
+#    - "Certificate file change detected"
+#    - "Certificate validation successful"
+#    - "Certificate reloaded successfully for domain: example.com"
+#
+# =====================================================
+# Troubleshooting
+# =====================================================
+#
+# Certificate not reloading?
+#
+# 1. Check file permissions:
+#    ls -la /etc/letsencrypt/live/example.com/
+#    # Ensure proxy process can read files
+#
+# 2. Check logs for errors:
+#    grep -i "certificate\|validation" /var/log/highper-gateway.log
+#
+# 3. Verify file changes are detected:
+#    touch /etc/letsencrypt/live/example.com/fullchain.pem
+#    # Should trigger reload (check logs)
+#
+# 4. Test certificate manually:
+#    openssl x509 -in /etc/letsencrypt/live/example.com/fullchain.pem -text -noout
+#
+# 5. Check if files are symlinks:
+#    # Let's Encrypt uses symlinks - ensure target files are readable
+#
+# =====================================================
+# Best Practices
+# =====================================================
+#
+# 1. Test certificates before deployment
+# 2. Monitor certificate expiration (30-day warning)
+# 3. Set up automated renewal (certbot + cron)
+# 4. Keep backup certificates
+# 5. Use HTTPS-only in production
+# 6. Enable HSTS headers
+# 7. Monitor reload success rate
+#
+# =====================================================
