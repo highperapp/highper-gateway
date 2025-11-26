@@ -1,4 +1,4 @@
-# Highper Gateway Improvement Roadmap
+# Rust Proxy Improvement Roadmap
 
 **Current Score:** 70% (Rank #7 of 8)
 **Target Score:** 85%+ (Rank #3-4)
@@ -8,13 +8,13 @@
 
 ## 🎯 Executive Summary
 
-Based on the comprehensive comparison with 8 major proxies, Highper Gateway needs focused improvements in 3 key areas:
+Based on the comprehensive comparison with 8 major proxies, Rust Proxy needs focused improvements in 3 key areas:
 
 1. **Configuration Management** (43% → 85%): Hot reload, admin API, dynamic config
 2. **Protocol Support** (86% → 100%): HTTP/3, mTLS
 3. **API Gateway Features** (58% → 80%): API aggregation, GraphQL, OAuth2
 
-**Impact:** These improvements would move Highper Gateway from #7 (70%) to #3-4 (85%+), positioning it as a serious competitor to Nginx Plus, Caddy, and KrakenD.
+**Impact:** These improvements would move Rust Proxy from #7 (70%) to #3-4 (85%+), positioning it as a serious competitor to Nginx Plus, Caddy, and KrakenD.
 
 ---
 
@@ -290,7 +290,7 @@ observability:
     enabled: true
     exporter: jaeger
     endpoint: "http://jaeger:14268/api/traces"
-    service_name: "highper-gateway"
+    service_name: "rust-proxy"
     sampling_rate: 1.0  # 100%
 ```
 
@@ -329,7 +329,7 @@ gateway:
     oauth2:
       enabled: true
       provider: "https://auth.example.com"
-      client_id: "highper-gateway"
+      client_id: "rust-proxy"
       client_secret: "${OAUTH_SECRET}"
       scopes: ["openid", "profile"]
       redirect_uri: "https://example.com/callback"
@@ -800,7 +800,7 @@ modsecurity = "0.1"  # or custom implementation
 
 ## ✅ SUMMARY
 
-**This roadmap provides a clear path** to transform Highper Gateway from #7 (70%) to #1-2 (95%+) in 12 months.
+**This roadmap provides a clear path** to transform Rust Proxy from #7 (70%) to #1-2 (95%+) in 12 months.
 
 **Key Success Factors:**
 1. **Focus on quick wins first** (Phase 1: 3 months, +17%)

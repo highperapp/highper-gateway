@@ -356,7 +356,7 @@ timeout = "1s"
 
 ## Comparison to Production Proxies
 
-| Feature | Highper Gateway | nginx | HAProxy | Envoy | Caddy |
+| Feature | Rust Proxy | nginx | HAProxy | Envoy | Caddy |
 |---------|------------|-------|---------|-------|-------|
 | **Circuit Breaker** | ✅ Built-in | ❌ Requires nginx+ | ✅ Built-in | ✅ Built-in | ⚠️ Via plugin |
 | **Health Checks** | ✅ Active | ✅ Active/Passive | ✅ Active/Passive | ✅ Active/Passive | ✅ Active |

@@ -294,7 +294,7 @@ async fn serve_static_file(...) -> Result<Response<Full<Bytes>>>
 ### Rate Limiting
 
 ```rust
-use highper_gateway::middleware::rate_limit::{RateLimiter, RateLimitConfig};
+use rust_proxy::middleware::rate_limit::{RateLimiter, RateLimitConfig};
 use std::time::Duration;
 
 let config = RateLimitConfig {
@@ -315,7 +315,7 @@ if !limiter.check_rate_limit(&client_ip) {
 ### Request Size Limiting
 
 ```rust
-use highper_gateway::middleware::request_size_limit::{RequestSizeLimiter, RequestSizeLimitConfig};
+use rust_proxy::middleware::request_size_limit::{RequestSizeLimiter, RequestSizeLimitConfig};
 
 let config = RequestSizeLimitConfig {
     max_body_size: 5 * 1024 * 1024, // 5 MB
@@ -332,7 +332,7 @@ limiter.check_request_size(&req)?;
 ### Export API Gateway Routes
 
 ```rust
-use highper_gateway::gateway::routing::HostnameRouter;
+use rust_proxy::gateway::routing::HostnameRouter;
 
 let router = HostnameRouter::new();
 // ... load routes ...
@@ -475,7 +475,7 @@ new_tokens = min(current_tokens + tokens_refilled, capacity)
 
 ## 🎉 Conclusion
 
-This session successfully enhanced the highper-gateway with:
+This session successfully enhanced the rust-proxy with:
 
 1. **Export Capability** - Backup and debugging support for API Gateway
 2. **Rate Limiting** - Production-grade abuse prevention
@@ -488,7 +488,7 @@ All features are:
 - ✅ **Backward compatible** (all features optional)
 - ✅ **Security-focused** following OWASP best practices
 
-The highper-gateway is now even more complete as an **enterprise-grade Nginx alternative** with advanced API Gateway capabilities and robust security features.
+The rust-proxy is now even more complete as an **enterprise-grade Nginx alternative** with advanced API Gateway capabilities and robust security features.
 
 **Status: COMPLETE ✅**
 

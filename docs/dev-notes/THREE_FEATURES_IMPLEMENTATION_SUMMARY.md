@@ -512,7 +512,7 @@ WebServerConfig {
    - PHP-FPM integration tutorial
 
 8. **Migration Guide**
-   - Nginx to highper-gateway migration
+   - Nginx to rust-proxy migration
    - Route configuration conversion
    - PHP-FPM setup equivalent
    - Performance comparison

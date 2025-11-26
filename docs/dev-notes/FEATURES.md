@@ -1,8 +1,8 @@
-# Highper Gateway - Feature Documentation
+# Rust Proxy - Feature Documentation
 
 ## Overview
 
-Highper Gateway is a high-performance reverse proxy and API gateway built in Rust, designed to compete with industry leaders like Nginx, Envoy, Caddy, and Cloudflare's Pingora. This document provides a comprehensive overview of implemented features.
+Rust Proxy is a high-performance reverse proxy and API gateway built in Rust, designed to compete with industry leaders like Nginx, Envoy, Caddy, and Cloudflare's Pingora. This document provides a comprehensive overview of implemented features.
 
 ## Current Status
 
@@ -484,7 +484,7 @@ reverse_proxy/
 
 ## Conclusion
 
-Highper Gateway has achieved significant functionality across multiple development phases:
+Rust Proxy has achieved significant functionality across multiple development phases:
 
 - **Phases 1-2**: 100% Complete (Core + HTTP/2)
 - **Phase 3**: 90% Complete (TLS & ACME)
@@ -499,4 +499,4 @@ The project demonstrates:
 - Extensive configurability
 - Strong foundation for future growth
 
-With systematic development and clear roadmap, Highper Gateway is well-positioned to compete with established solutions while offering modern features and superior performance characteristics.
+With systematic development and clear roadmap, Rust Proxy is well-positioned to compete with established solutions while offering modern features and superior performance characteristics.

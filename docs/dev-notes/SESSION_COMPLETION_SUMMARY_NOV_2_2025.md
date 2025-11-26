@@ -176,14 +176,14 @@ Overall: All tests passing ✅
 
 **Binary Verification:**
 ```bash
-$ ls -lh ../target/release/highper-gateway
--rwxr-xr-x 2 infy infy 13M Nov  2 18:04 highper-gateway
+$ ls -lh ../target/release/rust-proxy
+-rwxr-xr-x 2 infy infy 13M Nov  2 18:04 rust-proxy
 
-$ file ../target/release/highper-gateway
+$ file ../target/release/rust-proxy
 ELF 64-bit LSB pie executable, stripped
 
-$ ./target/release/highper-gateway --version
-highper-gateway 0.1.0
+$ ./target/release/rust-proxy --version
+rust-proxy 0.1.0
 ```
 
 ---
@@ -337,7 +337,7 @@ highper-gateway 0.1.0
 ├── NEXT_STEPS.md                              # Immediate actions
 └── README.md                                  # Project overview
 
-highper-gateway/src/
+rust-proxy/src/
 ├── http/
 │   ├── http3_quiche.rs (461 lines) - **NEW** ✅
 │   ├── http3.rs (62 lines) - Deprecated ⚠️
@@ -350,7 +350,7 @@ highper-gateway/src/
 
 **For HTTP/3 Details:**
 - `HTTP3_QUICHE_IMPLEMENTATION_COMPLETE.md` - Complete guide
-- `highper-gateway/src/http/http3_quiche.rs` - Implementation code
+- `rust-proxy/src/http/http3_quiche.rs` - Implementation code
 
 **For Overall Status:**
 - `FINAL_IMPLEMENTATION_SUMMARY.md` - All phases
@@ -489,7 +489,7 @@ if should_remove {
 
 **Build Commands:**
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 
 # Build release
 cargo build --release
@@ -504,10 +504,10 @@ cargo test --lib http3
 **Verify Commands:**
 ```bash
 # Check binary
-ls -lh ../target/release/highper-gateway
+ls -lh ../target/release/rust-proxy
 
 # Check version
-../target/release/highper-gateway --version
+../target/release/rust-proxy --version
 
 # Verify quiche
 cargo tree -p quiche | head -10
@@ -565,7 +565,7 @@ cargo tree -p quinn  # Should error
 
 ### Documentation:
 - **Project Docs:** `/home/infy/reverse_proxy/*.md`
-- **Code:** `/home/infy/reverse_proxy/highper-gateway/src/`
+- **Code:** `/home/infy/reverse_proxy/rust-proxy/src/`
 - **Specs:** `/home/infy/reverse_proxy/specs/`
 
 ### External References:

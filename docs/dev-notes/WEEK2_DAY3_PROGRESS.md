@@ -12,7 +12,7 @@
 
 ### 1. ✅ Integrated GLOBAL_IO into Server
 
-**File Modified**: `highper-gateway/src/proxy/server.rs`
+**File Modified**: `rust-proxy/src/proxy/server.rs`
 
 **Changes Made**:
 ```rust
@@ -34,7 +34,7 @@ info!("I/O backend: {} ({})", GLOBAL_IO.name(), backend_stats.backend_info);
 
 ### 2. ✅ Fixed HybridTcpStream Borrow Checker Issues
 
-**File Modified**: `highper-gateway/src/runtime/hybrid_stream.rs`
+**File Modified**: `rust-proxy/src/runtime/hybrid_stream.rs`
 
 **Problem**: Borrow checker error in `poll_read`:
 ```
@@ -162,12 +162,12 @@ curl http://localhost:8080/test
 ## 💾 Code Changes Summary
 
 ### Files Modified:
-1. **`highper-gateway/src/proxy/server.rs`** (+7 lines, -2 lines)
+1. **`rust-proxy/src/proxy/server.rs`** (+7 lines, -2 lines)
    - Added GLOBAL_IO imports
    - Added I/O backend logging
    - Added TODO for proper io_uring integration
 
-2. **`highper-gateway/src/runtime/hybrid_stream.rs`** (~5 lines changed)
+2. **`rust-proxy/src/runtime/hybrid_stream.rs`** (~5 lines changed)
    - Fixed borrow checker error in `poll_read`
    - Cleaner slice handling
 
@@ -345,8 +345,8 @@ With the adapter pattern:
 ## 📚 Files Modified/Created
 
 ### Modified Files:
-1. `highper-gateway/src/proxy/server.rs` - Integrated GLOBAL_IO
-2. `highper-gateway/src/runtime/hybrid_stream.rs` - Fixed borrow checker
+1. `rust-proxy/src/proxy/server.rs` - Integrated GLOBAL_IO
+2. `rust-proxy/src/runtime/hybrid_stream.rs` - Fixed borrow checker
 
 ### Created Files:
 1. `config/test-io-uring.yaml` - Test configuration

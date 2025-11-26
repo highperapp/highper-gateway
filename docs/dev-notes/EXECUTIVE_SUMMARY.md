@@ -205,21 +205,21 @@ Final:          450K RPS  (+200% total)
 **Monday AM** (4-6 hours):
 ```
 Task: Complete HTTP/3 proxy integration
-File: highper-gateway/src/http/http3_quiche.rs (line 363)
+File: rust-proxy/src/http/http3_quiche.rs (line 363)
 Goal: Production-ready HTTP/3 support
 ```
 
 **Monday PM - Tuesday** (2 days):
 ```
 Task: Implement WebSocket gateway
-Files: highper-gateway/src/websocket/handler.rs (new)
+Files: rust-proxy/src/websocket/handler.rs (new)
 Goal: Bidirectional WebSocket proxying
 ```
 
 **Wednesday - Thursday** (2 days):
 ```
 Task: Complete gRPC gateway
-Files: highper-gateway/src/grpc/handler.rs (implement)
+Files: rust-proxy/src/grpc/handler.rs (implement)
 Goal: All 4 streaming types working
 ```
 

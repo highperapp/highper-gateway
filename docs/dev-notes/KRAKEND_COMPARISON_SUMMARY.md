@@ -10,7 +10,7 @@ Pingora     ██████████████████   85%
 Caddy       █████████████████    82%
 Nginx Plus  █████████████████    80%
 KrakenD     ████████████████     76%  ⭐ NEW
-Highper Gateway  ████████████████     74%
+Rust Proxy  ████████████████     74%
 HAProxy     ███████████████      69%
 Nginx OSS   █████████████        60%
 ```
@@ -22,13 +22,13 @@ Nginx OSS   █████████████        60%
 | Category | 1st Place | 2nd Place | 3rd Place |
 |----------|-----------|-----------|-----------|
 | **API Gateway** | 🥇 **KrakenD (91%)** | Envoy (82%) | Nginx Plus (73%) |
-| **Reverse Proxy** | 🥇 Nginx (94%) | Pingora (100%) | Highper Gateway (88%) |
-| **Ease of Use** | 🥇 Caddy | Highper Gateway | KrakenD |
+| **Reverse Proxy** | 🥇 Nginx (94%) | Pingora (100%) | Rust Proxy (88%) |
+| **Ease of Use** | 🥇 Caddy | Rust Proxy | KrakenD |
 | **Performance** | 🥇 Pingora | HAProxy | Nginx |
 | **Observability** | 🥇 Envoy | **KrakenD** | Pingora |
 | **Resilience** | 🥇 Envoy/Pingora/Rust/**KrakenD** (100%) | - | - |
 | **Load Balancing** | 🥇 HAProxy (100%) | Envoy (88%) | Caddy/Pingora (81%) |
-| **Memory Safety** | 🥇 Highper Gateway/Pingora | **KrakenD**/Caddy | - |
+| **Memory Safety** | 🥇 Rust Proxy/Pingora | **KrakenD**/Caddy | - |
 
 ---
 
@@ -58,14 +58,14 @@ Nginx OSS   █████████████        60%
 KrakenD      ████████████████████ 91%  🏆
 Envoy        █████████████████    82%
 Nginx Plus   ███████████████      73%
-Highper Gateway   ████████████         59%
+Rust Proxy   ████████████         59%
 Pingora      ███████████          55%
 Caddy        ██████████           50%
 ```
 
-### **What KrakenD Has That Highper Gateway Doesn't**
+### **What KrakenD Has That Rust Proxy Doesn't**
 
-| Feature | KrakenD | Highper Gateway | Gap |
+| Feature | KrakenD | Rust Proxy | Gap |
 |---------|---------|------------|-----|
 | **API Aggregation** | ✅ Yes | ❌ No | ⚠️ Major |
 | **Response Merging** | ✅ Yes | ❌ No | ⚠️ Major |
@@ -75,9 +75,9 @@ Caddy        ██████████           50%
 | **Distributed Tracing** | ✅ Yes | ⚠️ Planned | ⚠️ Minor |
 | **OpenTelemetry** | ✅ Yes | ⚠️ Planned | ⚠️ Minor |
 
-### **What Highper Gateway Has That KrakenD Doesn't**
+### **What Rust Proxy Has That KrakenD Doesn't**
 
-| Feature | Highper Gateway | KrakenD | Advantage |
+| Feature | Rust Proxy | KrakenD | Advantage |
 |---------|------------|---------|-----------|
 | **TLS Passthrough** | ✅ SNI-based | ❌ No | ✅ Major |
 | **Auto Let's Encrypt** | ✅ Built-in | ⚠️ External | ✅ Major |
@@ -112,7 +112,7 @@ Caddy        ██████████           50%
 
 ---
 
-### **Choose Highper Gateway When:**
+### **Choose Rust Proxy When:**
 
 ✅ **General-Purpose Reverse Proxy Needed**
 - Want one tool for proxy + API gateway
@@ -138,7 +138,7 @@ Caddy        ██████████           50%
 
 ---
 
-## 🔀 Highper Gateway + KrakenD: Complementary?
+## 🔀 Rust Proxy + KrakenD: Complementary?
 
 ### **Yes! They can work together:**
 
@@ -147,7 +147,7 @@ Architecture Pattern:
 
 Internet
    ↓
-Highper Gateway (Ingress Layer)
+Rust Proxy (Ingress Layer)
    ├─ TLS Termination/Passthrough
    ├─ Rate Limiting
    ├─ JWT Auth
@@ -161,12 +161,12 @@ Microservices
 ```
 
 **Why this works:**
-- ✅ Highper Gateway handles ingress, TLS, auth, rate limiting
+- ✅ Rust Proxy handles ingress, TLS, auth, rate limiting
 - ✅ KrakenD focuses on API composition and aggregation
 - ✅ Each does what it's best at
 - ✅ Separation of concerns
 
-**Alternative: All-in-one with Highper Gateway**
+**Alternative: All-in-one with Rust Proxy**
 - If you don't need advanced API aggregation
 - Simpler architecture (one tool)
 - Lower operational complexity
@@ -175,13 +175,13 @@ Microservices
 
 ## 📊 Head-to-Head: Key Metrics
 
-| Metric | Highper Gateway | KrakenD | Winner |
+| Metric | Rust Proxy | KrakenD | Winner |
 |--------|------------|---------|--------|
 | **Overall Score** | 74% | 76% | KrakenD (+2%) |
 | **API Gateway** | 59% | 91% | KrakenD (+32%) |
-| **Reverse Proxy** | 88% | 75% | Highper Gateway (+13%) |
-| **TLS Features** | 67% | 58% | Highper Gateway (+9%) |
-| **Load Balancing** | 75% | 25% | Highper Gateway (+50%) |
+| **Reverse Proxy** | 88% | 75% | Rust Proxy (+13%) |
+| **TLS Features** | 67% | 58% | Rust Proxy (+9%) |
+| **Load Balancing** | 75% | 25% | Rust Proxy (+50%) |
 | **Resilience** | 100% | 100% | Tie |
 | **Observability** | 71% | 100% | KrakenD (+29%) |
 | **Ease of Config** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | Tie |
@@ -190,7 +190,7 @@ Microservices
 
 ## 💡 Strategic Insights
 
-### **For Highper Gateway Development:**
+### **For Rust Proxy Development:**
 
 **Current Position:** 74% overall, 2 points behind KrakenD
 
@@ -224,7 +224,7 @@ Microservices
                │
     ───────────┼───────────────────→
                │
-    Highper Gateway │ (59% API GW, 88% Proxy)
+    Rust Proxy │ (59% API GW, 88% Proxy)
   (All-rounder)│
                │
                │
@@ -233,7 +233,7 @@ Microservices
 
 **Key Insight:**
 - **KrakenD** dominates API Gateway category (91%)
-- **Highper Gateway** balances both (good proxy, decent API GW)
+- **Rust Proxy** balances both (good proxy, decent API GW)
 - **Opportunity:** Add API aggregation to close the gap
 
 ---
@@ -246,7 +246,7 @@ Microservices
 3. Caddy (82%) - Ease of use champion
 4. Nginx Plus (80%) - Enterprise features
 5. **KrakenD (76%) - API Gateway specialist** ⭐
-6. **Highper Gateway (74%) - Modern all-rounder**
+6. **Rust Proxy (74%) - Modern all-rounder**
 7. HAProxy (69%) - Load balancing expert
 8. Nginx OSS (60%) - Solid basics
 
@@ -254,14 +254,14 @@ Microservices
 1. **KrakenD (91%)** 🏆 Purpose-built
 2. Envoy (82%)
 3. Nginx Plus (73%)
-4. Highper Gateway (59%)
+4. Rust Proxy (59%)
 5. Pingora (55%)
 6. Caddy (50%)
 
 ### **By Reverse Proxy Capabilities**
 1. Nginx (94%)
 2. Pingora (100%)
-3. Highper Gateway (88%)
+3. Rust Proxy (88%)
 4. Caddy (100%)
 5. **KrakenD (75%)**
 6. Envoy (100%)
@@ -273,24 +273,24 @@ Microservices
 | Your Primary Need | Best Choice | Alternative |
 |------------------|-------------|-------------|
 | **API Aggregation** | **KrakenD** | Envoy |
-| **General Reverse Proxy** | Nginx | **Highper Gateway** |
-| **Memory-Safe Modern Proxy** | **Highper Gateway** | Pingora |
-| **All-in-One (Proxy + API GW)** | **Highper Gateway** | Envoy |
-| **Easiest Setup** | Caddy | **Highper Gateway** |
+| **General Reverse Proxy** | Nginx | **Rust Proxy** |
+| **Memory-Safe Modern Proxy** | **Rust Proxy** | Pingora |
+| **All-in-One (Proxy + API GW)** | **Rust Proxy** | Envoy |
+| **Easiest Setup** | Caddy | **Rust Proxy** |
 | **Pure Performance** | Pingora | HAProxy |
 | **Cloud-Native/K8s** | Envoy | Pingora |
-| **Load Balancing** | HAProxy | **Highper Gateway** |
-| **Automatic HTTPS** | Caddy | **Highper Gateway** |
-| **TLS Passthrough** | **Highper Gateway** | Nginx |
+| **Load Balancing** | HAProxy | **Rust Proxy** |
+| **Automatic HTTPS** | Caddy | **Rust Proxy** |
+| **TLS Passthrough** | **Rust Proxy** | Nginx |
 
 ---
 
 ## 🏆 Verdict
 
-### **Highper Gateway vs KrakenD:**
+### **Rust Proxy vs KrakenD:**
 
 **Different Focus:**
-- **Highper Gateway** = General reverse proxy with API gateway features
+- **Rust Proxy** = General reverse proxy with API gateway features
 - **KrakenD** = Pure API gateway with limited reverse proxy
 
 **Complementary Strengths:**
@@ -298,11 +298,11 @@ Microservices
 - Or choose based on primary use case
 
 **For Most Users:**
-- **All-in-one need?** → Highper Gateway
+- **All-in-one need?** → Rust Proxy
 - **API-heavy architecture?** → KrakenD
 - **Both needs?** → Use both together or choose Envoy
 
-**Highper Gateway's Position:**
+**Rust Proxy's Position:**
 Solid all-rounder at 74%, just 2% behind KrakenD overall, but serving different primary purposes. Strong in areas KrakenD is weak (TLS, LB), weak where KrakenD is strong (API aggregation).
 
 ---

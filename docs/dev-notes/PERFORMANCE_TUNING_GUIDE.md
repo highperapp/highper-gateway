@@ -35,7 +35,7 @@ Based on load testing results, the proxy achieves different performance tiers:
 
 ### Linux Kernel Parameters
 
-Add these to `/etc/sysctl.conf` or `/etc/sysctl.d/99-highper-gateway.conf`:
+Add these to `/etc/sysctl.conf` or `/etc/sysctl.d/99-rust-proxy.conf`:
 
 ```bash
 # File descriptor limits
@@ -89,10 +89,10 @@ sudo sysctl -p
 Edit `/etc/security/limits.conf`:
 
 ```
-highper-gateway soft nofile 65536
-highper-gateway hard nofile 65536
-highper-gateway soft nproc 4096
-highper-gateway hard nproc 4096
+rust-proxy soft nofile 65536
+rust-proxy hard nofile 65536
+rust-proxy soft nproc 4096
+rust-proxy hard nproc 4096
 ```
 
 Verify:
@@ -518,7 +518,7 @@ echo "GET http://localhost:8080/" | vegeta attack -rate=5000 -duration=3600s | t
 **Using perf:**
 ```bash
 # Record for 30 seconds
-sudo perf record -F 99 -p $(pgrep highper-gateway) -g -- sleep 30
+sudo perf record -F 99 -p $(pgrep rust-proxy) -g -- sleep 30
 
 # Generate report
 sudo perf report
@@ -529,7 +529,7 @@ sudo perf script | ./flamegraph.pl > flame.svg
 
 **Using criterion (for benchmarks):**
 ```bash
-cd highper-gateway
+cd rust-proxy
 cargo bench --bench optimization_bench
 ```
 
@@ -537,7 +537,7 @@ cargo bench --bench optimization_bench
 
 **Using valgrind (massif):**
 ```bash
-valgrind --tool=massif --massif-out-file=massif.out ./target/release/highper-gateway
+valgrind --tool=massif --massif-out-file=massif.out ./target/release/rust-proxy
 
 # Visualize
 ms_print massif.out
@@ -545,8 +545,8 @@ ms_print massif.out
 
 **Using heaptrack:**
 ```bash
-heaptrack ./target/release/highper-gateway
-heaptrack_gui heaptrack.highper-gateway.*.gz
+heaptrack ./target/release/rust-proxy
+heaptrack_gui heaptrack.rust-proxy.*.gz
 ```
 
 ### Network Profiling
@@ -616,7 +616,7 @@ curl http://localhost:9090/metrics | grep connection_pool
 ulimit -n 65536
 
 # Verify
-lsof -p $(pgrep highper-gateway) | wc -l
+lsof -p $(pgrep rust-proxy) | wc -l
 ```
 
 ### Pattern 3: CPU Saturation
@@ -683,7 +683,7 @@ If high, the issue is backend, not proxy.
 
 **Check 3: CPU Usage**
 ```bash
-top -p $(pgrep highper-gateway)
+top -p $(pgrep rust-proxy)
 ```
 
 If > 80%, add more workers or scale horizontally.
@@ -699,13 +699,13 @@ traceroute backend-server
 **Check 1: Worker Threads**
 ```bash
 # Check current workers
-ps -eLf | grep highper-gateway | wc -l
+ps -eLf | grep rust-proxy | wc -l
 ```
 
 **Check 2: System Limits**
 ```bash
 # File descriptors
-lsof -p $(pgrep highper-gateway) | wc -l
+lsof -p $(pgrep rust-proxy) | wc -l
 ulimit -n
 
 # Check for errors
@@ -724,7 +724,7 @@ nload eth0
 **Monitor over time:**
 ```bash
 # Watch memory usage
-watch -n 1 'ps aux | grep highper-gateway'
+watch -n 1 'ps aux | grep rust-proxy'
 
 # Check with Prometheus
 # memory_usage_bytes (if exposed)
@@ -732,7 +732,7 @@ watch -n 1 'ps aux | grep highper-gateway'
 
 **Profile with valgrind:**
 ```bash
-valgrind --leak-check=full ./target/release/highper-gateway
+valgrind --leak-check=full ./target/release/rust-proxy
 ```
 
 ### Connection Issues

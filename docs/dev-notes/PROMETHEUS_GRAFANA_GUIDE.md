@@ -89,7 +89,7 @@ bind = "127.0.0.1:9090"  # localhost only for security
 ### Starting the Proxy
 
 ```bash
-./highper-gateway start --config config.toml
+./rust-proxy start --config config.toml
 ```
 
 ### Verifying Metrics Endpoint
@@ -141,12 +141,12 @@ alerting:
 
 # Load rules once and periodically evaluate them
 rule_files:
-  - "highper_gateway_alerts.yml"
+  - "rust_proxy_alerts.yml"
 
 # Scrape configurations
 scrape_configs:
-  # Highper Gateway metrics
-  - job_name: 'highper-gateway'
+  # Rust Proxy metrics
+  - job_name: 'rust-proxy'
     static_configs:
       - targets: ['localhost:9090']
         labels:
@@ -212,15 +212,15 @@ sudo systemctl enable grafana-server
    - Access: Server (default)
 6. **Click** "Save & Test"
 
-### Importing Highper Gateway Dashboard
+### Importing Rust Proxy Dashboard
 
-Save this as `highper-gateway-dashboard.json`:
+Save this as `rust-proxy-dashboard.json`:
 
 ```json
 {
   "dashboard": {
     "title": "Rust Reverse Proxy - Overview",
-    "tags": ["highper-gateway", "performance"],
+    "tags": ["rust-proxy", "performance"],
     "timezone": "browser",
     "schemaVersion": 16,
     "version": 1,
@@ -314,7 +314,7 @@ Save this as `highper-gateway-dashboard.json`:
 
 **Import Dashboard:**
 1. In Grafana, click **+** > **Import**
-2. Upload `highper-gateway-dashboard.json`
+2. Upload `rust-proxy-dashboard.json`
 3. Select Prometheus data source
 4. Click **Import**
 
@@ -434,11 +434,11 @@ histogram_quantile(0.99, rate(route_request_duration_seconds_bucket[5m]))
 
 ## Alerting Rules
 
-Create `highper_gateway_alerts.yml`:
+Create `rust_proxy_alerts.yml`:
 
 ```yaml
 groups:
-  - name: highper_gateway_alerts
+  - name: rust_proxy_alerts
     interval: 30s
     rules:
       # High error rate
@@ -539,7 +539,7 @@ groups:
 
 ```bash
 # Check alert rules syntax
-promtool check rules highper_gateway_alerts.yml
+promtool check rules rust_proxy_alerts.yml
 
 # Query active alerts
 curl http://localhost:9090/api/v1/alerts | jq
@@ -588,7 +588,7 @@ curl http://localhost:9090/api/v1/alerts | jq
 ```yaml
 # Recording rule example
 groups:
-  - name: highper_gateway_recording
+  - name: rust_proxy_recording
     interval: 30s
     rules:
       - record: job:http_requests_total:rate5m
@@ -695,8 +695,8 @@ The Rust proxy has **comprehensive Prometheus metrics** built-in:
 - Test end-to-end monitoring (5 minutes)
 
 **For more information:**
-- Source code: `highper-gateway/src/observability/metrics.rs`
-- Admin API: `highper-gateway/src/admin/metrics.rs`
+- Source code: `rust-proxy/src/observability/metrics.rs`
+- Admin API: `rust-proxy/src/admin/metrics.rs`
 - Week 2 Summary: `WEEK2_SECURITY_FEATURES_SUMMARY.md`
 
 ---

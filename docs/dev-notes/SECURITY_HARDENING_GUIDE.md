@@ -218,7 +218,7 @@ block_mode = true
 max_body_size = 1048576  # 1 MB
 
 [middleware.waf.coraza]
-rules_path = "/etc/highper-gateway/waf/coreruleset"
+rules_path = "/etc/rust-proxy/waf/coreruleset"
 paranoia_level = 2  # 1=basic, 2=moderate, 3=strict, 4=paranoid
 ```
 
@@ -504,13 +504,13 @@ openssl s_client -connect yourdomain.com:443 -tls1
 2. **Investigation**
    ```bash
    # Check recent logs
-   journalctl -u highper-gateway -n 1000 | grep -i "error\|warn"
+   journalctl -u rust-proxy -n 1000 | grep -i "error\|warn"
 
    # Check WAF blocks
-   grep "waf_blocked" /var/log/highper-gateway/waf.log
+   grep "waf_blocked" /var/log/rust-proxy/waf.log
 
    # Check rate limit hits
-   grep "429" /var/log/highper-gateway/access.log | wc -l
+   grep "429" /var/log/rust-proxy/access.log | wc -l
    ```
 
 3. **Response**
@@ -561,7 +561,7 @@ See `SECURITY_AUDIT_OWASP.md` for full compliance report.
 cat config-production-secure.toml
 
 # 2. Build release binary
-cd highper-gateway
+cd rust-proxy
 cargo build --release
 
 # 3. Run security validation
@@ -572,10 +572,10 @@ cd ../load-tests
 ./chaos-testing.sh
 
 # 5. Test configuration
-../target/release/highper-gateway check --config ../config-production-secure.toml
+../target/release/rust-proxy check --config ../config-production-secure.toml
 
 # 6. Start proxy
-../target/release/highper-gateway start --config ../config-production-secure.toml
+../target/release/rust-proxy start --config ../config-production-secure.toml
 ```
 
 ### Post-Deployment
@@ -588,7 +588,7 @@ curl -I https://yourdomain.com
 curl http://localhost:9090/metrics
 
 # 3. Monitor logs
-tail -f /var/log/highper-gateway/access.log
+tail -f /var/log/rust-proxy/access.log
 
 # 4. Run SSL Labs test
 # https://www.ssllabs.com/ssltest/
@@ -624,4 +624,4 @@ The Rust proxy has comprehensive security features:
 
 **Last Updated:** November 17, 2025
 **Version:** 1.0
-**Maintained by:** Highper Gateway Security Team
+**Maintained by:** Rust Proxy Security Team

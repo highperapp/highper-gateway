@@ -3,7 +3,7 @@
 **Date:** October 30, 2025
 
 **Comparing:**
-1. **Highper Gateway** (Your Project)
+1. **Rust Proxy** (Your Project)
 2. **Caddy**
 3. **Nginx OSS**
 4. **Nginx Plus**
@@ -18,7 +18,7 @@
 
 | # | Proxy | Language | Type | Primary Focus | License |
 |---|-------|----------|------|---------------|---------|
-| 1 | **Highper Gateway** | Rust | Reverse Proxy + API Gateway | Modern all-in-one | Open Source |
+| 1 | **Rust Proxy** | Rust | Reverse Proxy + API Gateway | Modern all-in-one | Open Source |
 | 2 | **Caddy** | Go | Web Server + Reverse Proxy | Ease of use, auto HTTPS | Open Source |
 | 3 | **Nginx OSS** | C | Web Server + Reverse Proxy | High performance, proven | Open Source |
 | 4 | **Nginx Plus** | C | Enterprise Reverse Proxy | Enterprise features | Commercial |
@@ -33,7 +33,7 @@
 
 ### **1. Core Protocols & Standards**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **HTTP/1.1** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 | **HTTP/2** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
@@ -44,7 +44,7 @@
 | **TLS 1.3** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 **Score:** (out of 7)
-- Highper Gateway: **6/7 (86%)**
+- Rust Proxy: **6/7 (86%)**
 - Caddy: **7/7 (100%)**
 - Nginx OSS: **6.5/7 (93%)**
 - Nginx Plus: **6.5/7 (93%)**
@@ -57,7 +57,7 @@
 
 ### **2. TLS & Certificate Management**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **TLS Termination** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 | **TLS Passthrough** | ✅ SNI-based | ✅ SNI-based | ✅ Stream | ✅ Stream | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes |
@@ -70,7 +70,7 @@
 | **Custom CA Support** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 **Score:** (out of 9)
-- Highper Gateway: **5.5/9 (61%)**
+- Rust Proxy: **5.5/9 (61%)**
 - Caddy: **9/9 (100%)** 🏆
 - Nginx OSS: **6/9 (67%)**
 - Nginx Plus: **6.5/9 (72%)**
@@ -83,7 +83,7 @@
 
 ### **3. Load Balancing Algorithms**
 
-| Algorithm | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Algorithm | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |-----------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Round Robin** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Least Connections** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes |
@@ -96,7 +96,7 @@
 | **Session Persistence** | ✅ IP-based | ✅ Cookie/IP | ✅ Cookie/IP | ✅ Advanced | ✅ Yes | ✅ Advanced | ❌ No | ✅ Yes |
 
 **Score:** (out of 9)
-- Highper Gateway: **6/9 (67%)**
+- Rust Proxy: **6/9 (67%)**
 - Caddy: **7/9 (78%)**
 - Nginx OSS: **5/9 (56%)**
 - Nginx Plus: **8/9 (89%)**
@@ -109,7 +109,7 @@
 
 ### **4. Health Checks & Resilience**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Active Health Checks** | ✅ HTTP | ✅ HTTP | ❌ No | ✅ HTTP/TCP | ✅ HTTP/TCP/gRPC | ✅ Advanced | ✅ HTTP | ✅ Yes |
 | **Passive Health Checks** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
@@ -121,7 +121,7 @@
 | **Outlier Detection** | ⚠️ Basic | ❌ No | ❌ No | ⚠️ Limited | ✅ Advanced | ✅ Yes | ⚠️ Basic | ✅ Yes |
 
 **Score:** (out of 8)
-- Highper Gateway: **7/8 (88%)**
+- Rust Proxy: **7/8 (88%)**
 - Caddy: **5/8 (63%)**
 - Nginx OSS: **4/8 (50%)**
 - Nginx Plus: **5/8 (63%)**
@@ -134,7 +134,7 @@
 
 ### **5. API Gateway Features**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **JWT Authentication** | ✅ Built-in | ⚠️ Plugin | ❌ No | ✅ Yes | ✅ Yes | ❌ No | ✅ Built-in | ⚠️ Via code |
 | **API Key Auth** | ✅ Built-in | ⚠️ Plugin | ❌ No | ✅ Yes | ✅ Yes | ❌ No | ✅ Built-in | ⚠️ Via code |
@@ -151,7 +151,7 @@
 | **API Documentation** | ❌ No | ❌ No | ❌ No | ⚠️ Limited | ❌ No | ❌ No | ⚠️ Enterprise | ❌ No |
 
 **Score:** (out of 13)
-- Highper Gateway: **7.5/13 (58%)**
+- Rust Proxy: **7.5/13 (58%)**
 - Caddy: **6/13 (46%)**
 - Nginx OSS: **3/13 (23%)**
 - Nginx Plus: **9/13 (69%)**
@@ -164,7 +164,7 @@
 
 ### **6. Observability & Monitoring**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Prometheus Metrics** | ✅ Built-in | ✅ Built-in | ⚠️ Exporter | ✅ Built-in | ✅ Built-in | ⚠️ Exporter | ✅ Built-in | ✅ Yes |
 | **Structured Logging** | ✅ JSON | ✅ JSON | ✅ Yes | ✅ JSON | ✅ JSON | ✅ Yes | ✅ JSON | ✅ Yes |
@@ -177,7 +177,7 @@
 | **Custom Metrics** | ✅ Yes | ⚠️ Limited | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 **Score:** (out of 9)
-- Highper Gateway: **7/9 (78%)**
+- Rust Proxy: **7/9 (78%)**
 - Caddy: **7.5/9 (83%)**
 - Nginx OSS: **5/9 (56%)**
 - Nginx Plus: **9/9 (100%)** 🏆
@@ -190,7 +190,7 @@
 
 ### **7. Configuration & Management**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Config Format** | YAML | Caddyfile/JSON | Nginx conf | Nginx conf | YAML/JSON | HAProxy conf | JSON | Code (Rust) |
 | **Config Validation** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Compile-time |
@@ -202,7 +202,7 @@
 | **Ease of Configuration** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
 
 **Score:** (out of 7)
-- Highper Gateway: **3/7 (43%)**
+- Rust Proxy: **3/7 (43%)**
 - Caddy: **6/7 (86%)** 🏆
 - Nginx OSS: **4/7 (57%)**
 - Nginx Plus: **6/7 (86%)** 🏆
@@ -215,7 +215,7 @@
 
 ### **8. Performance Metrics (Approximate)**
 
-| Metric | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Metric | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |--------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Req/sec (1 core)** | ~80K | ~50K | ~100K | ~100K | ~70K | ~120K | ~85K | ~110K |
 | **Latency p50** | 0.3ms | 0.5ms | 0.2ms | 0.2ms | 0.4ms | 0.2ms | 0.3ms | 0.2ms |
@@ -229,7 +229,7 @@
 2. 🥈 **HAProxy** (120K req/s, 0.2ms p50, proven)
 3. 🥉 **Nginx** (100K req/s, 0.2ms p50, battle-tested)
 4. **KrakenD** (85K req/s, 0.3ms p50, Go)
-5. **Highper Gateway** (80K req/s, 0.3ms p50, Rust)
+5. **Rust Proxy** (80K req/s, 0.3ms p50, Rust)
 6. **Envoy** (70K req/s, 0.4ms p50, feature overhead)
 7. **Caddy** (50K req/s, 0.5ms p50, ease of use)
 
@@ -237,7 +237,7 @@
 
 ### **9. Security Features**
 
-| Feature | Highper Gateway | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx OSS | Nginx Plus | Envoy | HAProxy | KrakenD | Pingora |
 |---------|------------|-------|-----------|------------|-------|---------|---------|---------|
 | **Memory Safety** | ✅ Rust | ✅ Go | ❌ C | ❌ C | ❌ C++ | ❌ C | ✅ Go | ✅ Rust |
 | **DDoS Protection** | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic | ✅ Advanced | ⚠️ Basic | ✅ Advanced | ⚠️ Basic | ✅ Advanced |
@@ -249,7 +249,7 @@
 | **Secrets Management** | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic | ✅ Vault | ✅ Yes | ⚠️ Basic | ⚠️ Basic | ✅ Yes |
 
 **Score:** (out of 8)
-- Highper Gateway: **5/8 (63%)**
+- Rust Proxy: **5/8 (63%)**
 - Caddy: **5.5/8 (69%)**
 - Nginx OSS: **5/8 (63%)**
 - Nginx Plus: **7/8 (88%)**
@@ -271,7 +271,7 @@
 | 3 | **Nginx Plus** | 93% | 72% | 89% | 63% | 69% | 100% | 86% | **Excellent** | 88% | **84%** |
 | 4 | **Caddy** | 100% | **100%** | 78% | 63% | 46% | 83% | 86% | Good | 69% | **81%** |
 | 5 | **KrakenD** | 86% | 61% | 22% | 88% | **88%** | 100% | 86% | Very Good | 75% | **78%** |
-| 6 | **Highper Gateway** | 86% | 61% | 67% | 88% | 58% | 78% | 43% | Very Good | 63% | **70%** |
+| 6 | **Rust Proxy** | 86% | 61% | 67% | 88% | 58% | 78% | 43% | Very Good | 63% | **70%** |
 | 7 | **HAProxy** | 79% | 67% | **100%** | 88% | 31% | 67% | 71% | **Excellent** | 75% | **75%** |
 | 8 | **Nginx OSS** | 93% | 67% | 56% | 50% | 23% | 56% | 57% | **Excellent** | 63% | **63%** |
 
@@ -301,7 +301,7 @@ Security:          Nginx Plus, Pingora       (88%)
 
 ## 🎯 USE CASE RECOMMENDATIONS
 
-### **1. Choose Highper Gateway If:**
+### **1. Choose Rust Proxy If:**
 ✅ You want modern, memory-safe architecture
 ✅ You need all-in-one reverse proxy + API gateway
 ✅ Automatic ACME/Let's Encrypt is important
@@ -417,7 +417,7 @@ Security:          Nginx Plus, Pingora       (88%)
 
 ## 💎 UNIQUE SELLING POINTS
 
-### **Highper Gateway**
+### **Rust Proxy**
 - 🦀 Memory-safe Rust implementation
 - 🔐 Built-in ACME with automatic renewal
 - 🎭 TLS termination + passthrough on different ports
@@ -479,34 +479,34 @@ Security:          Nginx Plus, Pingora       (88%)
 ## 🎯 HEAD-TO-HEAD: RUST PROXY POSITIONING
 
 ### **vs Caddy** (Similar ease-of-use tier)
-- ✅ **Highper Gateway wins:** More API gateway features, circuit breaker, Rust safety
+- ✅ **Rust Proxy wins:** More API gateway features, circuit breaker, Rust safety
 - ❌ **Caddy wins:** Easier config (100% vs 43%), HTTP/3, more mature
-- **Verdict:** Highper Gateway for API-heavy, Caddy for simplicity
+- **Verdict:** Rust Proxy for API-heavy, Caddy for simplicity
 
 ### **vs Nginx Plus** (Similar enterprise tier)
-- ✅ **Highper Gateway wins:** Memory safety, auto ACME, modern architecture, free
+- ✅ **Rust Proxy wins:** Memory safety, auto ACME, modern architecture, free
 - ❌ **Nginx Plus wins:** Battle-tested, dashboard, enterprise support, features
-- **Verdict:** Nginx Plus for enterprise, Highper Gateway for modern startups
+- **Verdict:** Nginx Plus for enterprise, Rust Proxy for modern startups
 
 ### **vs Envoy** (Similar cloud-native tier)
-- ✅ **Highper Gateway wins:** Easier config, auto ACME, all-in-one approach
+- ✅ **Rust Proxy wins:** Easier config, auto ACME, all-in-one approach
 - ❌ **Envoy wins:** More features (90% vs 70%), observability, service mesh
-- **Verdict:** Envoy for complex microservices, Highper Gateway for simpler needs
+- **Verdict:** Envoy for complex microservices, Rust Proxy for simpler needs
 
 ### **vs HAProxy** (Load balancing comparison)
-- ✅ **Highper Gateway wins:** API gateway features (58% vs 31%), auto ACME, modern
+- ✅ **Rust Proxy wins:** API gateway features (58% vs 31%), auto ACME, modern
 - ❌ **HAProxy wins:** Load balancing (100% vs 67%), performance, HA focus
-- **Verdict:** HAProxy for LB specialist, Highper Gateway for all-in-one
+- **Verdict:** HAProxy for LB specialist, Rust Proxy for all-in-one
 
 ### **vs KrakenD** (API Gateway comparison)
-- ✅ **Highper Gateway wins:** TLS passthrough, LB algorithms (67% vs 22%), reverse proxy
+- ✅ **Rust Proxy wins:** TLS passthrough, LB algorithms (67% vs 22%), reverse proxy
 - ❌ **KrakenD wins:** API aggregation (88% vs 58%), GraphQL, response merging
-- **Verdict:** KrakenD for pure API gateway, Highper Gateway for general proxy + API
+- **Verdict:** KrakenD for pure API gateway, Rust Proxy for general proxy + API
 
 ### **vs Pingora** (Rust comparison)
-- ✅ **Highper Gateway wins:** Complete product (vs framework), easier to use, ACME
+- ✅ **Rust Proxy wins:** Complete product (vs framework), easier to use, ACME
 - ❌ **Pingora wins:** Performance (110K vs 80K), HTTP/3, Cloudflare-proven
-- **Verdict:** Pingora for custom/extreme performance, Highper Gateway for out-of-box
+- **Verdict:** Pingora for custom/extreme performance, Rust Proxy for out-of-box
 
 ---
 
@@ -524,7 +524,7 @@ Security:          Nginx Plus, Pingora       (88%)
                │
          Envoy │    Nginx Plus
                │
-    Highper Gateway │  Caddy
+    Rust Proxy │  Caddy
                │
          General Purpose
 ```
@@ -538,14 +538,14 @@ Security:          Nginx Plus, Pingora       (88%)
                │
     ───────────┼───────────────────→ Features
                │
-    Highper Gateway │  KrakenD
+    Rust Proxy │  KrakenD
                │
          Caddy │     Nginx Plus
                │
          Simple
 ```
 
-**Highper Gateway Sweet Spot:**
+**Rust Proxy Sweet Spot:**
 - Between Caddy (simple) and Envoy (complex)
 - Between Nginx (traditional) and KrakenD (specialized)
 - Modern, memory-safe, all-in-one approach
@@ -586,7 +586,7 @@ Security:          Nginx Plus, Pingora       (88%)
 4. **Caddy (81%)** - Easiest to use + auto HTTPS
 5. **KrakenD (78%)** - API Gateway specialist
 6. **HAProxy (75%)** - Load balancing champion
-7. **Highper Gateway (70%)** - Modern all-rounder
+7. **Rust Proxy (70%)** - Modern all-rounder
 8. **Nginx OSS (63%)** - Solid basics
 
 ### **Best in Category:**
@@ -598,9 +598,9 @@ Security:          Nginx Plus, Pingora       (88%)
 - **Best Observability:** Nginx Plus, Envoy, KrakenD, Pingora (100%)
 - **Best Performance:** Pingora, HAProxy, Nginx
 - **Most Secure:** Nginx Plus, Pingora (88%)
-- **Best Value:** Highper Gateway (free, modern, memory-safe)
+- **Best Value:** Rust Proxy (free, modern, memory-safe)
 
-### **Highper Gateway's Position:**
+### **Rust Proxy's Position:**
 - **Rank:** #7 of 8 (70%)
 - **Strengths:** Memory safety, resilience, all-in-one approach, auto ACME
 - **Weaknesses:** HTTP/3, API aggregation, config management, maturity

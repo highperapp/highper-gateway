@@ -55,13 +55,13 @@ upstreams:
 
 ### Subcommands Implemented
 
-1. **`highper-gateway start`** - Start server
+1. **`rust-proxy start`** - Start server
    - Hot reload support
    - Configurable via flags
 
-2. **`highper-gateway validate`** - Validate configuration
+2. **`rust-proxy validate`** - Validate configuration
    ```bash
-   $ highper-gateway validate -c config.yaml --verbose
+   $ rust-proxy validate -c config.yaml --verbose
    🔍 Validating configuration: config.yaml
    ✅ Configuration file loaded successfully
 
@@ -72,12 +72,12 @@ upstreams:
       HTTP/3 port: 8443
 
    ✅ Configuration is valid!
-   💡 Tip: Use 'highper-gateway test' to verify upstream connectivity
+   💡 Tip: Use 'rust-proxy test' to verify upstream connectivity
    ```
 
-3. **`highper-gateway test`** - Test upstream connectivity
+3. **`rust-proxy test`** - Test upstream connectivity
    ```bash
-   $ highper-gateway test
+   $ rust-proxy test
    🔌 Testing upstream connectivity...
 
    📦 Upstream: api-backend
@@ -89,12 +89,12 @@ upstreams:
    ✅ All upstreams passed connectivity tests!
    ```
 
-4. **`highper-gateway health`** - Check server health
-5. **`highper-gateway reload`** - Reload configuration (SIGHUP)
-6. **`highper-gateway version`** - Show version info
+4. **`rust-proxy health`** - Check server health
+5. **`rust-proxy reload`** - Reload configuration (SIGHUP)
+6. **`rust-proxy version`** - Show version info
    ```bash
-   $ highper-gateway version --verbose
-   Highper Gateway v0.1.0
+   $ rust-proxy version --verbose
+   Rust Proxy v0.1.0
 
    Build Information:
      Compiler: rustc 1.90.0
@@ -156,7 +156,7 @@ upstreams:
 ### Configuration
 
 ```rust
-use highper_gateway::middleware::waf::{WafMiddleware, WafConfig};
+use rust_proxy::middleware::waf::{WafMiddleware, WafConfig};
 
 let waf_config = WafConfig {
     enabled: true,
@@ -296,9 +296,9 @@ HTTP/1.1 403 Forbidden
    - Example plugins
 
 3. **Additional CLI Features**
-   - `highper-gateway status` - Detailed server status
-   - `highper-gateway bench` - Built-in benchmarking
-   - `highper-gateway config` - Interactive config generator
+   - `rust-proxy status` - Detailed server status
+   - `rust-proxy bench` - Built-in benchmarking
+   - `rust-proxy config` - Interactive config generator
 
 4. **Additional WAF Features**
    - Custom regex rules

@@ -1,4 +1,4 @@
-# Highper Gateway - Features Summary
+# Rust Proxy - Features Summary
 
 Complete high-performance reverse proxy and API gateway with comprehensive web server capabilities.
 
@@ -427,7 +427,7 @@ Response
 
 ## 🏆 Comparison with Nginx
 
-| Feature | highper-gateway | Nginx |
+| Feature | rust-proxy | Nginx |
 |---------|-----------|-------|
 | Static Files | ✅ | ✅ |
 | PHP-FPM | ✅ | ✅ |

@@ -17,7 +17,7 @@
 - The newer redis API already handles the type inference correctly
 
 **Files Modified:**
-- `highper-gateway/Cargo.toml` - Updated redis version
+- `rust-proxy/Cargo.toml` - Updated redis version
 
 **Impact:**
 - ✅ Eliminates all future incompatibility warnings
@@ -45,7 +45,7 @@
 **Next Steps:**
 1. ✅ Verify build passes with redis 0.32
 2. Run `cargo fix --lib --allow-dirty` to auto-fix warnings
-3. Run `cargo fix --bin highper-gateway --allow-dirty` for binary warnings
+3. Run `cargo fix --bin rust-proxy --allow-dirty` for binary warnings
 4. Manually fix remaining warnings that can't be auto-fixed
 
 ---
@@ -137,7 +137,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 cargo install flamegraph
 
 # Profile under load
-cargo flamegraph --bin highper-gateway -- start --config config.toml
+cargo flamegraph --bin rust-proxy -- start --config config.toml
 
 # In another terminal, run load test
 echo "GET http://localhost:8080/" | vegeta attack -rate=10000 -duration=60s

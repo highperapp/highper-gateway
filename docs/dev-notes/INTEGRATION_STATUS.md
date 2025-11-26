@@ -162,7 +162,7 @@ wscat -c wss://localhost:8443/ws
 
 ```bash
 $ cargo build --release
-   Compiling highper-gateway v0.1.0
+   Compiling rust-proxy v0.1.0
     Finished `release` profile [optimized] target(s)
 ```
 

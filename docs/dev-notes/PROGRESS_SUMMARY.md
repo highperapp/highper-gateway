@@ -331,7 +331,7 @@ cargo test --lib
 ## 🏆 Comparison with Competitors
 
 ### Current State vs. Competitors
-| Feature | highper-gateway | Nginx | Envoy | Caddy | Pingora |
+| Feature | rust-proxy | Nginx | Envoy | Caddy | Pingora |
 |---------|------------|-------|-------|-------|---------|
 | HTTP/1.1 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | HTTP/2 | ✅ | ✅ | ✅ | ✅ | ✅ |

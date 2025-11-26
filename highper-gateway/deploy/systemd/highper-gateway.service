@@ -1,0 +1,175 @@
+[Unit]
+Description=Highper Gateway - High-Performance Reverse Proxy and API Gateway
+Documentation=https://github.com/yourusername/highper-gateway
+After=network-online.target
+Wants=network-online.target
+# Start after consul/etcd if using service discovery
+After=consul.service etcd.service
+Wants=consul.service etcd.service
+
+[Service]
+Type=simple
+User=highper
+Group=highper
+WorkingDirectory=/opt/highper-gateway
+
+# Binary location
+ExecStart=/opt/highper-gateway/bin/highper-gateway start --config /etc/highper-gateway/config.yaml
+
+# Reload configuration on SIGHUP (zero-downtime reload)
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# ============================================================================
+# RESOURCE LIMITS (Critical for 3M+ connections)
+# ============================================================================
+
+# File descriptor limits (10M for 3M+ connections + overhead)
+LimitNOFILE=10000000
+
+# Process limits
+LimitNPROC=infinity
+
+# Memory locking (for io_uring registered buffers)
+LimitMEMLOCK=infinity
+
+# Core dump settings (for debugging crashes)
+# Uncomment to enable core dumps in /var/crash/
+# LimitCORE=infinity
+
+# Stack size per thread (2MB recommended)
+LimitSTACK=2097152
+
+# Maximum number of memory mappings (for io_uring)
+# Default 65530 is usually sufficient, increase if needed
+# LimitAS=infinity  # Uncomment if you hit mmap limits
+
+# ============================================================================
+# PERFORMANCE TUNING
+# ============================================================================
+
+# CPU scheduling priority (-20 to 19, lower = higher priority)
+# Use negative values for latency-sensitive workloads
+# Nice=-10
+
+# I/O scheduling class (0 = none, 1 = realtime, 2 = best-effort, 3 = idle)
+# IOSchedulingClass=2
+# IOSchedulingPriority=0
+
+# CPU affinity (pin to specific CPUs)
+# CPUAffinity=0-63  # Use all 64 cores
+# Recommended: Let the application handle CPU pinning internally
+
+# NUMA policy (prefer local memory allocation)
+# NUMAPolicy=prefer
+# NUMAMask=0-1  # Use both NUMA nodes
+
+# ============================================================================
+# SECURITY HARDENING
+# ============================================================================
+
+# Private /tmp directory
+PrivateTmp=yes
+
+# Protect system directories
+ProtectSystem=full
+
+# Protect /home directories
+ProtectHome=yes
+
+# Deny access to kernel modules
+ProtectKernelModules=yes
+
+# Deny access to kernel tunables
+ProtectKernelTunables=yes
+
+# Deny access to control groups
+ProtectControlGroups=yes
+
+# Restrict address families (allow only IPv4/IPv6/Unix sockets)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Restrict real-time scheduling
+RestrictRealtime=yes
+
+# Deny new privileges
+NoNewPrivileges=yes
+
+# Lock down personality
+LockPersonality=yes
+
+# Restrict namespaces (disable for containers)
+# RestrictNamespaces=yes
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+# Standard output/error handling
+StandardOutput=journal
+StandardError=journal
+
+# Syslog identifier
+SyslogIdentifier=highper-gateway
+
+# Log level (can be overridden in config file)
+# Environment="RUST_LOG=info"
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+
+# Rust logging
+Environment="RUST_LOG=info"
+
+# Rust backtrace (disable in production for performance)
+Environment="RUST_BACKTRACE=0"
+
+# jemalloc tuning (memory allocator)
+# Enable profiling for debugging memory leaks (disable in production)
+# Environment="MALLOC_CONF=prof:true,prof_leak:true,lg_prof_sample:19"
+
+# Production jemalloc settings (optimized for throughput)
+Environment="MALLOC_CONF=background_thread:true,metadata_thp:auto,dirty_decay_ms:30000,muzzy_decay_ms:30000"
+
+# Tokio worker threads (auto-detect = CPU cores × 2)
+# Environment="TOKIO_WORKER_THREADS=128"
+
+# io_uring settings (if using io_uring backend)
+# Environment="HIGHPER_IO_URING_ENTRIES=4096"
+# Environment="HIGHPER_IO_URING_SQPOLL=1"
+
+# ============================================================================
+# HEALTH MONITORING
+# ============================================================================
+
+# Watchdog integration (systemd watchdog)
+# Requires application to notify systemd periodically
+# WatchdogSec=30s
+
+# ============================================================================
+# WORKING DIRECTORY PERMISSIONS
+# ============================================================================
+
+# Ensure working directory exists and has correct permissions
+# ExecStartPre=/bin/mkdir -p /opt/highper-gateway
+# ExecStartPre=/bin/chown highper:highper /opt/highper-gateway
+
+# Ensure log directory exists
+# ExecStartPre=/bin/mkdir -p /var/log/highper-gateway
+# ExecStartPre=/bin/chown highper:highper /var/log/highper-gateway
+
+# Ensure config directory exists
+# ExecStartPre=/bin/mkdir -p /etc/highper-gateway
+# ExecStartPre=/bin/chown highper:highper /etc/highper-gateway
+
+[Install]
+WantedBy=multi-user.target

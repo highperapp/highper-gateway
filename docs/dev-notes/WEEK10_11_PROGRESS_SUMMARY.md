@@ -14,7 +14,7 @@ Successfully completed Week 10 benchmark analysis and began Week 11 SIMD integra
 
 ### 1. Fixed Flaky Test
 
-**File**: `highper-gateway/src/config/watcher.rs`
+**File**: `rust-proxy/src/config/watcher.rs`
 **Problem**: Timing race condition in file modification detection
 **Solution**:
 - Increased initialization wait: 100ms → 200ms
@@ -49,8 +49,8 @@ Successfully completed Week 10 benchmark analysis and began Week 11 SIMD integra
 ### 4. Deprecated Harmful SIMD Functions
 
 **Files Modified**:
-- `highper-gateway/src/runtime/simd_opt.rs` - Added `#[deprecated]` attributes
-- `highper-gateway/src/runtime/mod.rs` - Removed from public API exports
+- `rust-proxy/src/runtime/simd_opt.rs` - Added `#[deprecated]` attributes
+- `rust-proxy/src/runtime/mod.rs` - Removed from public API exports
 
 **Functions Deprecated**:
 - `simd_memcpy` - 2-3x SLOWER than `std::ptr::copy_nonoverlapping`
@@ -62,7 +62,7 @@ Successfully completed Week 10 benchmark analysis and began Week 11 SIMD integra
 
 ### 5. Created SIMD Helper Module
 
-**File**: `highper-gateway/src/runtime/simd_helpers.rs` (249 lines)
+**File**: `rust-proxy/src/runtime/simd_helpers.rs` (249 lines)
 **Purpose**: Practical, high-level wrappers around beneficial SIMD operations
 
 **Functions Provided**:
@@ -133,15 +133,15 @@ pub fn compute_request_checksum(data: &[u8]) -> u64
 
 ### Modified Files
 
-1. **highper-gateway/src/runtime/mod.rs**
+1. **rust-proxy/src/runtime/mod.rs**
    - Line 51: Removed `simd_memcpy`, `simd_memcmp` from exports
    - Line 32: Added `pub mod simd_helpers`
 
-2. **highper-gateway/src/runtime/simd_opt.rs**
+2. **rust-proxy/src/runtime/simd_opt.rs**
    - Lines 23-26: Added deprecation warning to `simd_memcpy`
    - Lines 154-157: Added deprecation warning to `simd_memcmp`
 
-3. **highper-gateway/src/config/watcher.rs**
+3. **rust-proxy/src/config/watcher.rs**
    - Lines 126-163: Fixed flaky test with retry logic
 
 4. **Cargo.toml**
@@ -149,7 +149,7 @@ pub fn compute_request_checksum(data: &[u8]) -> u64
 
 ### New Files
 
-1. **highper-gateway/src/runtime/simd_helpers.rs** (249 lines)
+1. **rust-proxy/src/runtime/simd_helpers.rs** (249 lines)
    - 6 public helper functions
    - 5 comprehensive tests
    - Full documentation with examples
@@ -186,7 +186,7 @@ pub fn compute_request_checksum(data: &[u8]) -> u64
 ### Example 1: HTTP Header Parsing
 
 ```rust
-use highper_gateway::runtime::simd_helpers::{parse_header, find_header_separator};
+use rust_proxy::runtime::simd_helpers::{parse_header, find_header_separator};
 
 // Old way (slower)
 let header = b"Content-Type: application/json";
@@ -204,7 +204,7 @@ if let Some((name, value)) = parse_header(header) {
 ### Example 2: Request Line Parsing
 
 ```rust
-use highper_gateway::runtime::simd_helpers::parse_request_line;
+use rust_proxy::runtime::simd_helpers::parse_request_line;
 
 let request = b"GET /api/users HTTP/1.1";
 if let Some((method, path, version)) = parse_request_line(request) {
@@ -215,7 +215,7 @@ if let Some((method, path, version)) = parse_request_line(request) {
 ### Example 3: Request Checksums
 
 ```rust
-use highper_gateway::runtime::simd_helpers::compute_request_checksum;
+use rust_proxy::runtime::simd_helpers::compute_request_checksum;
 
 // Fast cache key generation (8-26x faster)
 let cache_key = compute_request_checksum(request_data);
@@ -368,7 +368,7 @@ Week 10-11 successfully **prevented a significant performance regression** by id
 **Files Created This Session**:
 1. `WEEK10_BENCHMARK_RESULTS.md` - 520 lines
 2. `SIMD_DEPRECATION_NOTICE.md` - 285 lines
-3. `highper-gateway/src/runtime/simd_helpers.rs` - 249 lines
+3. `rust-proxy/src/runtime/simd_helpers.rs` - 249 lines
 4. `WEEK10_11_PROGRESS_SUMMARY.md` - This file
 
 **Lines of Code**: ~1,050 lines of documentation + code

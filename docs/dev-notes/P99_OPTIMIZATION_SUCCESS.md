@@ -248,7 +248,7 @@ Bucket           #       %       Distribution
 | **Caddy** | 30-50k | 10-20ms | 20-40ms | ✅ Much better p99! |
 | **HAProxy** | 60-100k | 8-15ms | 15-30ms | ✅ Better p99! |
 | **Envoy** | 40-70k | 10-25ms | 25-50ms | ✅ Much better p99! |
-| **Highper Gateway** | **10k** tested | **4.69ms** | **12.42ms** | **Tier 3 latency!** |
+| **Rust Proxy** | **10k** tested | **4.69ms** | **12.42ms** | **Tier 3 latency!** |
 
 **Observation:** Our **p99 latency (12.42ms) is now better than most competitors** including nginx (10-20ms), HAProxy (15-30ms), and Envoy (25-50ms)!
 

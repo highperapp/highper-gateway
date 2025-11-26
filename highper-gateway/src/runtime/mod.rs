@@ -34,6 +34,12 @@ pub mod simd_helpers;
 // Lock-free data structures for high-performance concurrent access
 mod lockfree;
 
+// CPU affinity and NUMA awareness for extreme scale
+pub mod cpu_affinity;
+
+// Backpressure and load shedding for graceful degradation
+pub mod backpressure;
+
 pub use worker::*;
 pub use buffer_pool::*;
 pub use signals::*;

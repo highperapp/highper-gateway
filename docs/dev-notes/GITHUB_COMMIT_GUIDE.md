@@ -12,12 +12,12 @@
 ├── Cargo.lock              ✅ COMMIT (for reproducible builds)
 ├── README.md               ✅ COMMIT (create if missing)
 ├── LICENSE                 ✅ COMMIT (add your license)
-└── highper-gateway/             ✅ COMMIT (entire directory)
+└── rust-proxy/             ✅ COMMIT (entire directory)
 ```
 
-#### 2. Highper Gateway Directory
+#### 2. Rust Proxy Directory
 ```
-highper-gateway/
+rust-proxy/
 ├── Cargo.toml              ✅ COMMIT
 ├── Cargo.lock              ✅ COMMIT
 ├── src/                    ✅ COMMIT (all source files)
@@ -83,10 +83,10 @@ highper-gateway/
 │   │   ├── service.yaml
 │   │   └── configmap.yaml
 │   ├── helm/
-│   │   └── highper-gateway/
+│   │   └── rust-proxy/
 │   ├── terraform/
 │   └── systemd/
-│       └── highper-gateway.service
+│       └── rust-proxy.service
 ```
 
 #### 6. Scripts
@@ -115,7 +115,7 @@ highper-gateway/
 #### Build Artifacts
 ```
 ❌ /target/                  (Rust build output)
-❌ /highper-gateway/target/       (Binary artifacts)
+❌ /rust-proxy/target/       (Binary artifacts)
 ❌ *.rlib                    (Rust libraries)
 ❌ debug/                    (Debug builds)
 ```
@@ -183,10 +183,10 @@ cp PROJECT_OVERVIEW.md README.md
 ### Step 4: Add Files to Git
 ```bash
 # Add all source files
-git add highper-gateway/src/
-git add highper-gateway/tests/
-git add highper-gateway/benches/
-git add highper-gateway/Cargo.toml
+git add rust-proxy/src/
+git add rust-proxy/tests/
+git add rust-proxy/benches/
+git add rust-proxy/Cargo.toml
 
 # Add workspace configuration
 git add Cargo.toml
@@ -258,7 +258,7 @@ rust-reverse-proxy/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                  # GitHub Actions CI
-├── highper-gateway/
+├── rust-proxy/
 │   ├── src/                        # Source code
 │   ├── tests/                      # Integration tests
 │   ├── benches/                    # Benchmarks
@@ -303,7 +303,7 @@ git secrets --scan
 ## 📊 Files Summary by Category
 
 ### Source Code (~50 files)
-- ✅ All `.rs` files in `highper-gateway/src/`
+- ✅ All `.rs` files in `rust-proxy/src/`
 - ✅ `main.rs`, `lib.rs`
 - ✅ All module directories
 
@@ -313,7 +313,7 @@ git secrets --scan
 - ✅ `tests/integration_tests.rs`
 
 ### Configuration (~2 files)
-- ✅ `highper-gateway/Cargo.toml`
+- ✅ `rust-proxy/Cargo.toml`
 - ✅ `Cargo.toml` (workspace)
 
 ### Documentation (~10+ files)
@@ -341,7 +341,7 @@ git push -u origin main
 ### Commit Specific Changes
 ```bash
 # After making changes
-git add highper-gateway/src/gateway/graphql/
+git add rust-proxy/src/gateway/graphql/
 git commit -m "feat: Add GraphQL gateway with schema stitching"
 git push
 ```

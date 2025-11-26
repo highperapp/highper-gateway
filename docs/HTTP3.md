@@ -2,7 +2,7 @@
 
 ## Overview
 
-HTTP/3 is the latest version of the HTTP protocol, built on top of QUIC (Quick UDP Internet Connections) instead of TCP. This document explains how to enable, configure, and use HTTP/3 in Highper Gateway.
+HTTP/3 is the latest version of the HTTP protocol, built on top of QUIC (Quick UDP Internet Connections) instead of TCP. This document explains how to enable, configure, and use HTTP/3 in Rust Proxy.
 
 ## What is HTTP/3?
 
@@ -253,7 +253,7 @@ RUST_LOG=debug h3 https://example.com
 export RUST_LOG=quinn=debug,h3=debug
 
 # Run proxy
-./highper-gateway --config config.yaml
+./rust-proxy --config config.yaml
 ```
 
 ### Common Issues
@@ -305,7 +305,7 @@ wireshark quic.pcap
 
 ### Metrics
 
-Highper Gateway exposes HTTP/3 metrics via Prometheus:
+Rust Proxy exposes HTTP/3 metrics via Prometheus:
 
 ```
 # HTTP/3 connections
@@ -402,8 +402,8 @@ QUIC includes built-in protection:
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/yourusername/highper-gateway/issues
-- Documentation: https://docs.highper-gateway.dev
+- GitHub Issues: https://github.com/yourusername/rust-proxy/issues
+- Documentation: https://docs.rust-proxy.dev
 
 ---
 

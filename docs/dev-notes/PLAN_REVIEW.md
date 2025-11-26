@@ -606,7 +606,7 @@ The strategic plan is **excellent** and ready for execution with minor adjustmen
 **Day 1 (Monday AM)** - 4-6 hours:
 ```bash
 # Task 1: HTTP/3 Proxy Handler Integration
-cd highper-gateway
+cd rust-proxy
 # Edit src/http/http3_quiche.rs line 363
 # Integrate proxy handler
 # Test with h3 client

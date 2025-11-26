@@ -522,11 +522,11 @@ server:
 
 ### Configuration Files
 
-1. **highper-gateway/config-profiling.yaml**
+1. **rust-proxy/config-profiling.yaml**
    - Optimal 4-worker config
    - ✅ Recommended for production
 
-2. **highper-gateway/config-tier3.yaml**
+2. **rust-proxy/config-tier3.yaml**
    - 8-worker config (tested)
    - ❌ Not recommended (worse performance)
 

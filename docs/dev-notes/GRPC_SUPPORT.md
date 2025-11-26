@@ -460,7 +460,7 @@ routes:
       - name: "add_headers"
         config:
           x-proxy-id: "proxy-1"
-          x-forwarded-by: "highper-gateway"
+          x-forwarded-by: "rust-proxy"
 ```
 
 ## Performance

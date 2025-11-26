@@ -150,7 +150,7 @@ thiserror = "1"
 ### Project Structure
 
 ```
-highper-gateway/
+rust-proxy/
 ├── Cargo.toml
 ├── Cargo.lock
 ├── README.md
@@ -294,13 +294,13 @@ highper-gateway/
 │   │   └── pvc.yaml              # Certificate storage
 │   │
 │   ├── helm/
-│   │   └── highper-gateway/
+│   │   └── rust-proxy/
 │   │       ├── Chart.yaml
 │   │       ├── values.yaml
 │   │       └── templates/
 │   │
 │   ├── systemd/
-│   │   └── highper-gateway.service    # Systemd service
+│   │   └── rust-proxy.service    # Systemd service
 │   │
 │   └── terraform/
 │       ├── aws/                  # AWS ECS/EKS
@@ -800,7 +800,7 @@ tls:
     # Certificate storage
     storage:
       type: "file"  # file, redis, s3, azure-blob, gcs
-      path: "/var/lib/highper-gateway/certs"
+      path: "/var/lib/rust-proxy/certs"
 
       # Cloud storage (optional)
       redis:
@@ -1173,7 +1173,7 @@ observability:
     access_log:
       enabled: true
       format: "combined"  # combined, common, json
-      output: "/var/log/highper-gateway/access.log"
+      output: "/var/log/rust-proxy/access.log"
       rotation:
         enabled: true
         max_size: "100MB"
@@ -1183,7 +1183,7 @@ observability:
     # Error logs
     error_log:
       enabled: true
-      output: "/var/log/highper-gateway/error.log"
+      output: "/var/log/rust-proxy/error.log"
 
   # Tracing
   tracing:
@@ -1192,7 +1192,7 @@ observability:
     # OpenTelemetry
     otlp:
       endpoint: "http://jaeger:4317"
-      service_name: "highper-gateway"
+      service_name: "rust-proxy"
       service_version: "1.0.0"
 
     # Sampling
@@ -1231,12 +1231,12 @@ admin:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: highper-gateway-hpa
+  name: rust-proxy-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: highper-gateway
+    name: rust-proxy
   minReplicas: 3
   maxReplicas: 50
   metrics:
@@ -1253,13 +1253,13 @@ spec:
 ```yaml
 services:
   proxy:
-    image: highper-gateway:latest
+    image: rust-proxy:latest
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./config.yaml:/config/config.yaml:ro
-      - certs:/var/lib/highper-gateway/certs
+      - certs:/var/lib/rust-proxy/certs
     environment:
       RUST_LOG: info
 ```
@@ -1268,13 +1268,13 @@ services:
 
 ```ini
 [Unit]
-Description=Highper Gateway
+Description=Rust Proxy
 After=network.target
 
 [Service]
 Type=simple
 User=proxy
-ExecStart=/usr/local/bin/highper-gateway --config /etc/highper-gateway/config.yaml
+ExecStart=/usr/local/bin/rust-proxy --config /etc/rust-proxy/config.yaml
 Restart=always
 RestartSec=5
 
@@ -1437,7 +1437,7 @@ cargo bench
 ./scripts/bench.sh --baseline v1.0.0
 
 # Profile
-cargo flamegraph --bin highper-gateway
+cargo flamegraph --bin rust-proxy
 ```
 
 ### Release Process
@@ -1474,10 +1474,10 @@ cargo build --release --target x86_64-unknown-linux-musl
 
 ### Release Artifacts
 
-- `highper-gateway-{version}-linux-x86_64` - Static binary
-- `highper-gateway-{version}-linux-aarch64` - ARM64 binary
-- `highper-gateway:{version}` - Docker image
-- `highper-gateway:{version}-alpine` - Alpine-based image
+- `rust-proxy-{version}-linux-x86_64` - Static binary
+- `rust-proxy-{version}-linux-aarch64` - ARM64 binary
+- `rust-proxy:{version}` - Docker image
+- `rust-proxy:{version}-alpine` - Alpine-based image
 
 ---
 

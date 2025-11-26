@@ -508,8 +508,8 @@ upstreams:
 ### Programmatic Usage
 
 ```rust
-use highper_gateway::proxy::LoadBalancer;
-use highper_gateway::config::{LoadBalancingAlgorithm, ServerDef};
+use rust_proxy::proxy::LoadBalancer;
+use rust_proxy::config::{LoadBalancingAlgorithm, ServerDef};
 
 // Create servers
 let servers = vec![

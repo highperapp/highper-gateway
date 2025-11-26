@@ -28,7 +28,7 @@
 - Strategic importance section explaining database load balancing needs
 - Performance comparison table vs HAProxy and Nginx Plus:
 
-| Metric | HAProxy | Nginx Plus | highper-gateway Target |
+| Metric | HAProxy | Nginx Plus | rust-proxy Target |
 |--------|---------|------------|-------------------|
 | Latency Overhead | <0.5ms | <0.8ms | <0.5ms p99 ✅ |
 | Throughput | 1M+ conn/sec | 800k+ conn/sec | 1M+ conn/sec ✅ |
@@ -79,7 +79,7 @@ Complete code examples for:
 Detailed 15-feature comparison:
 - HAProxy 2.8+
 - Nginx Plus R30
-- highper-gateway (current status + targets)
+- rust-proxy (current status + targets)
 
 ### 2. **TCP_PROXY_IMPLEMENTATION_PLAN.md** (NEW)
 **Size**: 750+ lines
@@ -237,7 +237,7 @@ impl AsyncRead for HybridTcpStream {
 
 ### 4. Benchmarking Methodology
 **Comparative Testing**:
-- Test same workload on highper-gateway, HAProxy, Nginx Plus
+- Test same workload on rust-proxy, HAProxy, Nginx Plus
 - Use standard tools: sysbench, pgbench, redis-benchmark
 - Document results in comparison table
 - Target: Match or exceed industry leaders

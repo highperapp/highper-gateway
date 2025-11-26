@@ -82,14 +82,14 @@ join_threads(workers);
 
 **Fixed Compilation Errors**:
 
-**File**: `highper-gateway/examples/benchmark_demo.rs`
+**File**: `rust-proxy/examples/benchmark_demo.rs`
 1. ❌ `println!("=".repeat(70))` → ✅ `println!("{}", "=".repeat(70))` (format specifier)
-2. ❌ `use highper_gateway::runtime::simd_memcpy` → ✅ Removed (deprecated)
+2. ❌ `use rust_proxy::runtime::simd_memcpy` → ✅ Removed (deprecated)
 3. ✅ Updated to showcase beneficial SIMD operations (`simd_find_pattern`, `simd_checksum`)
 
 **Updated Benchmarks**:
 
-**File**: `highper-gateway/benches/optimization_bench.rs`
+**File**: `rust-proxy/benches/optimization_bench.rs`
 - Removed deprecated `simd_memcpy` and `simd_memcmp` benchmarks
 - Updated imports to only include beneficial SIMD functions
 - Updated `criterion_group!` macro to reflect changes
@@ -173,7 +173,7 @@ json!({
 
 ### 6. Created Corrected Buffer Pool Benchmark ✅
 
-**New File**: `highper-gateway/benches/buffer_pool_steady_state.rs` (107 lines)
+**New File**: `rust-proxy/benches/buffer_pool_steady_state.rs` (107 lines)
 
 **Features**:
 - Long-lived worker threads (match production pattern)
@@ -210,7 +210,7 @@ for _ in 0..num_threads {
 
 **Result**: Successfully measured 4.4x improvement
 
-**Registered in**: `highper-gateway/Cargo.toml`
+**Registered in**: `rust-proxy/Cargo.toml`
 
 ---
 
@@ -261,27 +261,27 @@ for _ in 0..num_threads {
 
 ### Files Modified (3)
 
-1. **`highper-gateway/benches/optimization_bench.rs`**
+1. **`rust-proxy/benches/optimization_bench.rs`**
    - Removed deprecated `simd_memcpy` and `simd_memcmp` imports
    - Removed corresponding benchmark functions
    - Updated `criterion_group!` macro
    - Added explanatory comments
    - **Lines changed**: ~50 (deletions and comments)
 
-2. **`highper-gateway/examples/benchmark_demo.rs`**
+2. **`rust-proxy/examples/benchmark_demo.rs`**
    - Fixed format specifier bug (`println!`)
    - Removed deprecated `simd_memcpy` usage
    - Updated to showcase beneficial SIMD (`find_pattern`, `checksum`)
    - Improved example output formatting
    - **Lines changed**: ~60
 
-3. **`highper-gateway/Cargo.toml`**
+3. **`rust-proxy/Cargo.toml`**
    - Added `buffer_pool_steady_state` benchmark entry
    - **Lines changed**: 3
 
 ### Files Created (1)
 
-1. **`highper-gateway/benches/buffer_pool_steady_state.rs`** (NEW)
+1. **`rust-proxy/benches/buffer_pool_steady_state.rs`** (NEW)
    - Complete steady-state benchmark implementation
    - Long-lived thread pattern
    - Cache warmup logic
@@ -684,12 +684,12 @@ This session exemplifies **data-driven engineering**:
 **Total**: ~2,900 lines of documentation
 
 ### Code Files Modified (3)
-1. `highper-gateway/benches/optimization_bench.rs` - Updated
-2. `highper-gateway/examples/benchmark_demo.rs` - Fixed & updated
-3. `highper-gateway/Cargo.toml` - Added benchmark entry
+1. `rust-proxy/benches/optimization_bench.rs` - Updated
+2. `rust-proxy/examples/benchmark_demo.rs` - Fixed & updated
+3. `rust-proxy/Cargo.toml` - Added benchmark entry
 
 ### Code Files Created (1)
-1. `highper-gateway/benches/buffer_pool_steady_state.rs` - NEW (107 lines)
+1. `rust-proxy/benches/buffer_pool_steady_state.rs` - NEW (107 lines)
 
 **Total Code Changes**: ~220 lines
 

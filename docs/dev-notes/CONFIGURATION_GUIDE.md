@@ -1,6 +1,6 @@
-# Highper Gateway Configuration Guide
+# Rust Proxy Configuration Guide
 
-Complete guide for configuring the highper-gateway with all features: API Gateway, Static Files, PHP-FPM, WebSocket, gRPC, and more.
+Complete guide for configuring the rust-proxy with all features: API Gateway, Static Files, PHP-FPM, WebSocket, gRPC, and more.
 
 ## Table of Contents
 
@@ -184,7 +184,7 @@ Create `hostname_routes.json`:
 **Load hostname routes in code:**
 
 ```rust
-use highper_gateway::gateway::routing::HostnameRouter;
+use rust_proxy::gateway::routing::HostnameRouter;
 use std::sync::Arc;
 
 // Create router
@@ -215,7 +215,7 @@ let handler = Handler::new(config)
 ### Basic Static Site
 
 ```rust
-use highper_gateway::webserver::{StaticFileHandler, WebServerConfig};
+use rust_proxy::webserver::{StaticFileHandler, WebServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -292,7 +292,7 @@ let handler = Handler::new(config)
 
 **PHP-FPM Configuration:**
 ```rust
-use highper_gateway::webserver::{PhpFpmPool, PhpFpmConfig};
+use rust_proxy::webserver::{PhpFpmPool, PhpFpmConfig};
 use std::sync::Arc;
 
 let php_config = PhpFpmConfig {
@@ -439,7 +439,7 @@ tls:
       - "example.com"
       - "*.example.com"
     directory_url: "https://acme-v02.api.letsencrypt.org/directory"
-    cert_cache_dir: "/etc/highper-gateway/certs"
+    cert_cache_dir: "/etc/rust-proxy/certs"
 
 server:
   bind: ["0.0.0.0:80"]        # For ACME HTTP-01 challenge

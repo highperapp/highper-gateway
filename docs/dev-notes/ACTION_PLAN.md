@@ -54,13 +54,13 @@
 **Complexity**: Low
 
 **What's Missing**:
-- Line 363 in `highper-gateway/src/http/http3_quiche.rs` has TODO
+- Line 363 in `rust-proxy/src/http/http3_quiche.rs` has TODO
 - Need to integrate proxy handler for backend forwarding
 - Wire up middleware chain
 
 **Implementation Steps**:
 ```rust
-// File: highper-gateway/src/http/http3_quiche.rs
+// File: rust-proxy/src/http/http3_quiche.rs
 
 async fn handle_request(
     &self,
@@ -104,9 +104,9 @@ async fn handle_request(
 
 **Files to Create/Modify**:
 ```
-highper-gateway/src/websocket/handler.rs     (NEW - 300 lines)
-highper-gateway/src/websocket/framing.rs     (NEW - 150 lines)
-highper-gateway/src/proxy/handler.rs         (MODIFY - add WebSocket check)
+rust-proxy/src/websocket/handler.rs     (NEW - 300 lines)
+rust-proxy/src/websocket/framing.rs     (NEW - 150 lines)
+rust-proxy/src/proxy/handler.rs         (MODIFY - add WebSocket check)
 ```
 
 **Implementation Approach**:
@@ -170,9 +170,9 @@ async fn handle_websocket_upgrade(
 
 **Files to Implement**:
 ```
-highper-gateway/src/grpc/handler.rs      (IMPLEMENT - 400 lines)
-highper-gateway/src/grpc/framing.rs      (NEW - 200 lines)
-highper-gateway/src/grpc/streaming.rs    (NEW - 300 lines)
+rust-proxy/src/grpc/handler.rs      (IMPLEMENT - 400 lines)
+rust-proxy/src/grpc/framing.rs      (NEW - 200 lines)
+rust-proxy/src/grpc/streaming.rs    (NEW - 300 lines)
 ```
 
 **Validation**:
@@ -210,7 +210,7 @@ highper-gateway/src/grpc/streaming.rs    (NEW - 300 lines)
 
 **Code Changes**:
 ```rust
-// File: highper-gateway/src/proxy/handler.rs
+// File: rust-proxy/src/proxy/handler.rs
 
 async fn handle_connection(stream: TcpStream, handler: Arc<Handler>) {
     let fd = stream.as_raw_fd();
@@ -280,7 +280,7 @@ async fn handle_connection(stream: TcpStream, handler: Arc<Handler>) {
 
 #### Task 3.1: DSL Parser Implementation
 **Time**: 2 weeks
-**Files**: `highper-gateway/src/config/dsl_parser.rs` (NEW - 800 lines)
+**Files**: `rust-proxy/src/config/dsl_parser.rs` (NEW - 800 lines)
 
 **Grammar**:
 ```
@@ -310,19 +310,19 @@ example.com {
 
 **Usage**:
 ```bash
-$ highper-gateway --domain example.com --backend localhost:3000
+$ rust-proxy --domain example.com --backend localhost:3000
 # Everything automatic!
 ```
 
 #### Task 3.3: Enhanced CLI
 **Time**: 1 week
 **Commands to add**:
-- `highper-gateway init` - Interactive wizard
-- `highper-gateway validate` - Config validation
-- `highper-gateway test` - Test without starting
-- `highper-gateway reload` - Hot reload
-- `highper-gateway status` - Runtime status
-- `highper-gateway cert list` - List certificates
+- `rust-proxy init` - Interactive wizard
+- `rust-proxy validate` - Config validation
+- `rust-proxy test` - Test without starting
+- `rust-proxy reload` - Hot reload
+- `rust-proxy status` - Runtime status
+- `rust-proxy cert list` - List certificates
 
 ---
 

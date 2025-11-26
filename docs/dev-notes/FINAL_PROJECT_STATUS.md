@@ -35,7 +35,7 @@ Implemented complete gRPC proxying with HTTP/2:
 
 **Files Created:**
 ```
-highper-gateway/src/grpc/
+rust-proxy/src/grpc/
 ├── mod.rs          # gRPC config and types
 ├── detector.rs     # gRPC request detection
 ├── handler.rs      # gRPC proxying logic
@@ -158,7 +158,7 @@ GRPC_SUPPORT.md          # Complete documentation
 
 ```
 /home/infy/reverse_proxy/
-├── highper-gateway/                  # Main Rust proxy
+├── rust-proxy/                  # Main Rust proxy
 │   ├── src/
 │   │   ├── config/              # Configuration system
 │   │   ├── proxy/               # Core proxy logic
@@ -359,7 +359,7 @@ routes:
 
 ### 1. Single Server (Development)
 ```bash
-./highper-gateway --config config.yaml
+./rust-proxy --config config.yaml
 ```
 
 ### 2. Docker
@@ -370,9 +370,9 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:bookworm-slim
-COPY --from=builder /app/target/release/highper-gateway /usr/local/bin/
+COPY --from=builder /app/target/release/rust-proxy /usr/local/bin/
 EXPOSE 80 443
-CMD ["highper-gateway", "--config", "/etc/proxy/config.yaml"]
+CMD ["rust-proxy", "--config", "/etc/proxy/config.yaml"]
 ```
 
 ### 3. Docker Compose
@@ -401,20 +401,20 @@ services:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: highper-gateway
+  name: rust-proxy
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: highper-gateway
+      app: rust-proxy
   template:
     metadata:
       labels:
-        app: highper-gateway
+        app: rust-proxy
     spec:
       containers:
       - name: proxy
-        image: highper-gateway:latest
+        image: rust-proxy:latest
         ports:
         - containerPort: 80
         - containerPort: 443

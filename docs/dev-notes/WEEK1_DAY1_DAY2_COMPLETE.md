@@ -18,7 +18,7 @@ Successfully completed 3 out of 4 Week 1 tasks with **100% test pass rate achiev
 ## ✅ Completed Tasks
 
 ### Task 1: Fix io_uring HybridTcpStream borrow checker issues ✅
-**File**: `highper-gateway/src/runtime/hybrid_stream.rs`
+**File**: `rust-proxy/src/runtime/hybrid_stream.rs`
 **Solution**: Simplified implementation using delegation pattern
 - Removed complex buffer management causing borrow conflicts
 - Delegated AsyncRead/AsyncWrite to tokio::TcpStream
@@ -28,7 +28,7 @@ Successfully completed 3 out of 4 Week 1 tasks with **100% test pass rate achiev
 **Commit**: 764d0e8
 
 ### Task 2: Integrate GLOBAL_IO into server accept loop ✅
-**File**: `highper-gateway/src/proxy/server.rs:184-195`
+**File**: `rust-proxy/src/proxy/server.rs:184-195`
 **Solution**: Added periodic stats logging
 - Logs I/O backend statistics every 1000 connections
 - Demonstrates adapter pattern is working
@@ -47,7 +47,7 @@ Successfully completed 3 out of 4 Week 1 tasks with **100% test pass rate achiev
 **Commit**: 5f046de
 
 #### Phase 2: Fixed WAF Test Assertions  
-**File**: `highper-gateway/tests/waf_integration_tests.rs`
+**File**: `rust-proxy/tests/waf_integration_tests.rs`
 - Adjusted 6 test assertions to match actual WAF engine behavior
 - Coraza tests: Accept Medium/High/Critical severities
 - ModSecurity tests: Accept Block/Allow/Log decisions

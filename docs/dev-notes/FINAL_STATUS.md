@@ -383,7 +383,7 @@ routes:
 
 ### JWT Authentication
 ```rust
-use highper_gateway::gateway::auth::jwt::*;
+use rust_proxy::gateway::auth::jwt::*;
 
 // Create authenticator
 let auth = JwtAuthenticator::with_hs256("my-secret-key".to_string())?;
@@ -398,7 +398,7 @@ if result.is_authenticated() {
 
 ### Distributed Rate Limiting
 ```rust
-use highper_gateway::gateway::ratelimit::distributed::*;
+use rust_proxy::gateway::ratelimit::distributed::*;
 
 let config = DistributedRateLimiterConfig {
     redis_url: "redis://localhost:6379".to_string(),
@@ -418,7 +418,7 @@ if !result.is_allowed() {
 
 ### Distributed Caching
 ```rust
-use highper_gateway::gateway::cache::distributed::*;
+use rust_proxy::gateway::cache::distributed::*;
 
 let config = DistributedCacheConfig {
     redis_url: "redis://localhost:6379".to_string(),
@@ -447,7 +447,7 @@ if let Some(cached) = cache.get(&key).await {
 
 ## 🔬 Comparison with Competitors
 
-| Feature | highper-gateway | Nginx | Envoy | Caddy | Pingora |
+| Feature | rust-proxy | Nginx | Envoy | Caddy | Pingora |
 |---------|------------|-------|-------|-------|---------|
 | **Language** | Rust ✅ | C | C++ | Go | Rust ✅ |
 | **HTTP/1.1** | ✅ | ✅ | ✅ | ✅ | ✅ |

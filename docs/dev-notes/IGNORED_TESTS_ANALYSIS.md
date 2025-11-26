@@ -73,7 +73,7 @@ All 5 tests fail with: **"Connection refused (os error 111)"**
 Add documentation to test files explaining what infrastructure is needed:
 
 ```rust
-// File: highper-gateway/src/gateway/cache/distributed.rs
+// File: rust-proxy/src/gateway/cache/distributed.rs
 
 #[cfg(test)]
 mod tests {
@@ -158,15 +158,15 @@ cargo test --lib tls::acme::tests::test_acme_client_init -- --ignored
 
 ### Files With Ignored Tests
 
-1. **`highper-gateway/src/tls/acme.rs`**
+1. **`rust-proxy/src/tls/acme.rs`**
    - Test: `test_acme_client_init`
    - Line: ~Search for `#[ignore]` above test
 
-2. **`highper-gateway/src/gateway/cache/distributed.rs`**
+2. **`rust-proxy/src/gateway/cache/distributed.rs`**
    - Tests: `test_distributed_cache_*` (3 tests)
    - All require Redis connection
 
-3. **`highper-gateway/src/gateway/ratelimit/distributed.rs`**
+3. **`rust-proxy/src/gateway/ratelimit/distributed.rs`**
    - Tests: `test_distributed_*` (2 tests)
    - All require Redis connection
 

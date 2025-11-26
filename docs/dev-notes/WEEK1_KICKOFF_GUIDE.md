@@ -121,7 +121,7 @@ cargo build --release --features io-uring
 uname -r
 
 # Run on Linux 5.1+
-./target/release/highper-gateway --config config/example.yaml
+./target/release/rust-proxy --config config/example.yaml
 
 # Check logs for io_uring usage
 # Should see: "Using io_uring backend on Linux"
@@ -224,7 +224,7 @@ async fn test_config_reload() {
 # Likely issue: Prometheus metric format changes
 
 # Run individual tests
-cargo test --package highper-gateway --lib observability::tests
+cargo test --package rust-proxy --lib observability::tests
 ```
 
 **Step 4: Run full test suite (2 hours)**
@@ -373,7 +373,7 @@ async fn protected_endpoint(_auth: ApiKeyAuth) -> Result<Json<Value>> {
 ```bash
 # Build and run
 cargo build --release --features io-uring
-./target/release/highper-gateway --config config/example.yaml
+./target/release/rust-proxy --config config/example.yaml
 
 # Check logs
 tail -f logs/proxy.log | grep -i "io_uring\|epoll"
@@ -403,7 +403,7 @@ cargo tarpaulin --all-features --out Html
 ### After Day 5 (Admin API):
 ```bash
 # Start server
-./target/release/highper-gateway --config config/example.yaml
+./target/release/rust-proxy --config config/example.yaml
 
 # Test endpoints
 curl http://localhost:9090/api/health

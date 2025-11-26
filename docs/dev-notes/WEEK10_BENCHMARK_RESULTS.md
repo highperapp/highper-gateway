@@ -24,7 +24,7 @@ Week 10 focused on benchmarking the Week 9 performance optimizations and fixing 
 - Non-unique temp file names causing conflicts
 - Single timeout without retry logic
 
-**Solution** (highper-gateway/src/config/watcher.rs:126-163):
+**Solution** (rust-proxy/src/config/watcher.rs:126-163):
 ```rust
 // Increased initialization wait to 200ms
 sleep(Duration::from_millis(200)).await;
@@ -251,8 +251,8 @@ use std::slice::cmp;                  // Already optimized
 3. Update benchmarks to verify improvements
 
 **Files to Change**:
-- `highper-gateway/src/runtime/simd_opt.rs` - Remove bad implementations
-- `highper-gateway/src/runtime/mod.rs` - Remove exports
+- `rust-proxy/src/runtime/simd_opt.rs` - Remove bad implementations
+- `rust-proxy/src/runtime/mod.rs` - Remove exports
 - `benches/optimization_bench.rs` - Update benchmarks
 
 ---
@@ -265,9 +265,9 @@ use std::slice::cmp;                  // Already optimized
 3. Add SIMD pattern matching to WAF
 
 **Integration Points**:
-- `highper-gateway/src/http/parser.rs` - Header name/value parsing
-- `highper-gateway/src/middleware/waf/engine.rs` - Rule matching
-- `highper-gateway/src/proxy/handler.rs` - Request validation
+- `rust-proxy/src/http/parser.rs` - Header name/value parsing
+- `rust-proxy/src/middleware/waf/engine.rs` - Rule matching
+- `rust-proxy/src/proxy/handler.rs` - Request validation
 
 ---
 
@@ -279,7 +279,7 @@ use std::slice::cmp;                  // Already optimized
 3. Benchmark improvements
 
 **File to Change**:
-- `highper-gateway/src/runtime/buffer_pool.rs`
+- `rust-proxy/src/runtime/buffer_pool.rs`
 
 ---
 

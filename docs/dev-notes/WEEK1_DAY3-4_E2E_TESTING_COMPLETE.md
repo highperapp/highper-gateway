@@ -131,7 +131,7 @@ Tests use dedicated ports to avoid conflicts:
 ### Compile Tests
 
 ```bash
-cd highper-gateway
+cd rust-proxy
 cargo test --test e2e_comprehensive --no-run
 ```
 **Status:** ✅ Compiles successfully

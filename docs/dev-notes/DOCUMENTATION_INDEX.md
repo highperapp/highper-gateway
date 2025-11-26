@@ -1,5 +1,5 @@
 # Documentation Index
-## Complete Guide to highper-gateway Documentation
+## Complete Guide to rust-proxy Documentation
 
 **Last Updated**: November 9, 2025
 
@@ -102,7 +102,7 @@
 **Key Sections**:
 - Connection pooling analysis
 - Multithreading vs multiprocessing
-- Comparison table (highper-gateway vs Pingora)
+- Comparison table (rust-proxy vs Pingora)
 - Performance impact analysis
 - Enhancement plan summary
 
@@ -141,7 +141,7 @@
 **Status**: ✅ Complete (100%)
 
 #### **PLUGIN_INTEGRATION_GUIDE.md**
-**Purpose**: How to integrate plugins into highper-gateway
+**Purpose**: How to integrate plugins into rust-proxy
 **Status**: ✅ Complete
 
 #### **PLUGIN_HOST_FUNCTIONS.md**

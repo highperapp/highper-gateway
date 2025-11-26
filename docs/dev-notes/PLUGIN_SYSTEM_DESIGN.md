@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The Highper Gateway Plugin System provides a **dual-runtime architecture** combining:
+The Rust Proxy Plugin System provides a **dual-runtime architecture** combining:
 
 1. **WebAssembly (WASM/WASI)** - Primary runtime for untrusted, multi-language plugins
 2. **FFI/C ABI** - High-performance path for trusted Rust/C/C++ plugins
@@ -68,7 +68,7 @@ This hybrid approach delivers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Highper Gateway Core                              │
+│                     Rust Proxy Core                              │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │              Plugin Manager                               │  │
 │  │  ┌─────────────────────┐   ┌─────────────────────────┐   │  │

@@ -25,7 +25,7 @@ Week 1 implementation is **COMPLETE** with all planned optimizations successfull
 
 ### 1. ✅ Global BufferPool Integration
 
-**File**: `highper-gateway/src/runtime/buffer_pool.rs`
+**File**: `rust-proxy/src/runtime/buffer_pool.rs`
 
 **Implementation**:
 ```rust
@@ -35,7 +35,7 @@ use once_cell::sync::Lazy;
 pub static GLOBAL_BUFFER_POOL: Lazy<BufferPool> = Lazy::new(BufferPool::new);
 ```
 
-**Integrated Into**: `highper-gateway/src/proxy/handler.rs` (lines 345-396)
+**Integrated Into**: `rust-proxy/src/proxy/handler.rs` (lines 345-396)
 
 **Key Change**:
 - **Before**: Allocated new `Vec<u8>` on every request
@@ -50,7 +50,7 @@ pub static GLOBAL_BUFFER_POOL: Lazy<BufferPool> = Lazy::new(BufferPool::new);
 
 ### 2. ✅ jemalloc Global Allocator
 
-**File**: `highper-gateway/src/main.rs` (lines 5-8)
+**File**: `rust-proxy/src/main.rs` (lines 5-8)
 
 **Status**: Already configured and active!
 
@@ -63,7 +63,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 **Verification**:
 ```bash
 $ cargo build --release --features jemalloc
-$ ldd target/release/highper-gateway | grep jemalloc
+$ ldd target/release/rust-proxy | grep jemalloc
 # Should show: libjemalloc.so.2 => /usr/lib/...
 ```
 
@@ -76,7 +76,7 @@ $ ldd target/release/highper-gateway | grep jemalloc
 
 ### 3. ✅ Socket Optimizations (TCP_QUICKACK)
 
-**File**: `highper-gateway/src/utils/socket.rs`
+**File**: `rust-proxy/src/utils/socket.rs`
 
 **Added**:
 ```rust
@@ -246,10 +246,10 @@ Full Plan:        ███░░░░░░░░░░░░░░░░░ 1
 ## 📝 Files Modified/Created
 
 ### Modified Files:
-1. `highper-gateway/src/runtime/buffer_pool.rs` - Added GLOBAL_BUFFER_POOL
-2. `highper-gateway/src/proxy/handler.rs` - Integrated BufferPool in hot path
-3. `highper-gateway/src/utils/socket.rs` - Added TCP_QUICKACK support
-4. `highper-gateway/Cargo.toml` - Added once_cell dependency
+1. `rust-proxy/src/runtime/buffer_pool.rs` - Added GLOBAL_BUFFER_POOL
+2. `rust-proxy/src/proxy/handler.rs` - Integrated BufferPool in hot path
+3. `rust-proxy/src/utils/socket.rs` - Added TCP_QUICKACK support
+4. `rust-proxy/Cargo.toml` - Added once_cell dependency
 
 ### Created Files:
 1. `scripts/kernel_tuning.sh` - Comprehensive kernel optimization script
@@ -265,7 +265,7 @@ Full Plan:        ███░░░░░░░░░░░░░░░░░ 1
 
 ### 1. Build Optimized Binary:
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release --features jemalloc
 ```
 
@@ -276,13 +276,13 @@ sudo ../scripts/kernel_tuning.sh
 
 ### 3. Run Proxy:
 ```bash
-./target/release/highper-gateway --config ../config/config.yaml
+./target/release/rust-proxy --config ../config/config.yaml
 ```
 
 ### 4. Verify Optimizations:
 ```bash
 # Check jemalloc
-ldd target/release/highper-gateway | grep jemalloc
+ldd target/release/rust-proxy | grep jemalloc
 
 # Check kernel settings
 sysctl net.ipv4.tcp_tw_reuse

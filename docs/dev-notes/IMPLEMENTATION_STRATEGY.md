@@ -471,7 +471,7 @@ Feature is complete when:
 **START:** Week 1, Day 1 - POST Body Streaming
 
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 
 # Implement Handler changes
 vim src/proxy/handler.rs

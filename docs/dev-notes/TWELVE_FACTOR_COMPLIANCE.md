@@ -132,21 +132,21 @@ upstream:
 ```bash
 # 1. Build stage - creates immutable artifact
 cargo build --release
-# Output: target/release/highper-gateway (binary)
+# Output: target/release/rust-proxy (binary)
 ```
 
 **Release Stage**:
 ```bash
 # 2. Release stage - combine build + config
-docker build -t highper-gateway:v1.2.3 .
-# Tags: highper-gateway:v1.2.3, highper-gateway:latest
+docker build -t rust-proxy:v1.2.3 .
+# Tags: rust-proxy:v1.2.3, rust-proxy:latest
 ```
 
 **Run Stage**:
 ```bash
 # 3. Run stage - execute release
-./highper-gateway --config /etc/highper-gateway/config.yaml
-# Or: docker run highper-gateway:v1.2.3
+./rust-proxy --config /etc/rust-proxy/config.yaml
+# Or: docker run rust-proxy:v1.2.3
 ```
 
 **Characteristics**:
@@ -261,12 +261,12 @@ pub async fn run(&self) -> Result<()> {
 **Scaling Examples**:
 ```bash
 # Scale out by running more processes
-./highper-gateway --config prod.yaml &  # Instance 1
-./highper-gateway --config prod.yaml &  # Instance 2
-./highper-gateway --config prod.yaml &  # Instance 3
+./rust-proxy --config prod.yaml &  # Instance 1
+./rust-proxy --config prod.yaml &  # Instance 2
+./rust-proxy --config prod.yaml &  # Instance 3
 
 # Or with container orchestration
-kubectl scale deployment highper-gateway --replicas=10
+kubectl scale deployment rust-proxy --replicas=10
 ```
 
 **Score**: 10/10
@@ -393,12 +393,12 @@ info!(
 **External Routing**:
 ```bash
 # Development: stdout
-./highper-gateway 2>&1 | tee logs.txt
+./rust-proxy 2>&1 | tee logs.txt
 
 # Production: Aggregation
-./highper-gateway 2>&1 | fluentd
-./highper-gateway 2>&1 | filebeat
-docker logs highper-gateway | splunk-forwarder
+./rust-proxy 2>&1 | fluentd
+./rust-proxy 2>&1 | filebeat
+docker logs rust-proxy | splunk-forwarder
 ```
 
 **Score**: 10/10
@@ -432,9 +432,9 @@ curl -X POST http://localhost:9090/api/admin/cache/clear
 
 # Missing: CLI for one-off tasks
 # Should have:
-./highper-gateway-cli --config prod.yaml migrate-config
-./highper-gateway-cli --config prod.yaml validate-certs
-./highper-gateway-cli --config prod.yaml export-metrics
+./rust-proxy-cli --config prod.yaml migrate-config
+./rust-proxy-cli --config prod.yaml validate-certs
+./rust-proxy-cli --config prod.yaml export-metrics
 ```
 
 **Recommendation**: Add CLI tool for one-off admin tasks
@@ -497,20 +497,20 @@ curl -X POST http://localhost:9090/api/admin/cache/clear
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: highper-gateway
+  name: rust-proxy
 spec:
   replicas: 3  # Horizontal scaling
   selector:
     matchLabels:
-      app: highper-gateway
+      app: rust-proxy
   template:
     metadata:
       labels:
-        app: highper-gateway
+        app: rust-proxy
     spec:
       containers:
-      - name: highper-gateway
-        image: highper-gateway:1.0.0
+      - name: rust-proxy
+        image: rust-proxy:1.0.0
         env:  # Factor III: Config
         - name: RUST_PROXY_CONFIG
           value: /etc/config/prod.yaml

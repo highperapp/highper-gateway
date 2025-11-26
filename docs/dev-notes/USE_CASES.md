@@ -1,4 +1,4 @@
-# Highper Gateway - Validated Use Cases
+# Rust Proxy - Validated Use Cases
 
 Quick-start configurations for common use cases. Each example is production-ready.
 
@@ -46,7 +46,7 @@ curl http://localhost/
 
 **main.rs:**
 ```rust
-use highper_gateway::webserver::{StaticFileHandler, WebServerConfig};
+use rust_proxy::webserver::{StaticFileHandler, WebServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -92,7 +92,7 @@ curl http://localhost/style.css
 
 **main.rs:**
 ```rust
-use highper_gateway::webserver::{StaticFileHandler, PhpFpmPool, PhpFpmConfig, WebServerConfig};
+use rust_proxy::webserver::{StaticFileHandler, PhpFpmPool, PhpFpmConfig, WebServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -189,7 +189,7 @@ curl http://localhost/wp-admin/ # WordPress admin
 
 **main.rs:**
 ```rust
-use highper_gateway::gateway::routing::HostnameRouter;
+use rust_proxy::gateway::routing::HostnameRouter;
 use std::sync::Arc;
 
 let router = Arc::new(HostnameRouter::new());
@@ -348,7 +348,7 @@ curl http://localhost:8080/api/status
 
 **main.rs:**
 ```rust
-use highper_gateway::webserver::{StaticFileHandler, WebServerConfig};
+use rust_proxy::webserver::{StaticFileHandler, WebServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -400,7 +400,7 @@ tls:
       - "example.com"
       - "www.example.com"
     directory_url: "https://acme-v02.api.letsencrypt.org/directory"
-    cert_cache_dir: "/etc/highper-gateway/certs"
+    cert_cache_dir: "/etc/rust-proxy/certs"
 
 server:
   bind: ["0.0.0.0:80"]       # For ACME challenge
@@ -492,7 +492,7 @@ curl -H "Host: api.example.com" http://localhost/v1/status
 
 **main.rs:**
 ```rust
-use highper_gateway::webserver::{StaticFileHandler, PhpFpmPool, PhpFpmConfig, WebServerConfig};
+use rust_proxy::webserver::{StaticFileHandler, PhpFpmPool, PhpFpmConfig, WebServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -584,4 +584,4 @@ For more details, see:
 - [examples/](examples/) - Code examples
 - [tests/](tests/) - Integration tests as examples
 
-Report issues: https://github.com/yourusername/highper-gateway/issues
+Report issues: https://github.com/yourusername/rust-proxy/issues

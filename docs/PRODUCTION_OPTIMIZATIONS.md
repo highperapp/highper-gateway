@@ -1,6 +1,6 @@
 # Production Optimizations Guide
 
-This guide covers all production-grade optimizations implemented in Highper Gateway for maximum performance, scalability, and reliability.
+This guide covers all production-grade optimizations implemented in Rust Proxy for maximum performance, scalability, and reliability.
 
 ---
 
@@ -223,7 +223,7 @@ fs.nr_open = 2097152
 * hard nofile 65535
 ```
 
-### Systemd Service Limits (`highper-gateway.service`)
+### Systemd Service Limits (`rust-proxy.service`)
 
 ```ini
 [Service]
@@ -271,13 +271,13 @@ watch -n1 'ss -s'
 ss -ant | grep TIME-WAIT | wc -l
 
 # Monitor file descriptors
-watch -n1 'ls /proc/$(pgrep highper-gateway)/fd | wc -l'
+watch -n1 'ls /proc/$(pgrep rust-proxy)/fd | wc -l'
 
 # Service status (shows FD usage, memory, CPU)
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # Detailed logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 ```
 
 ### Metrics Export
@@ -313,22 +313,22 @@ This script:
 
 ```bash
 # 1. Build release binary
-cd highper-gateway
+cd rust-proxy
 cargo build --release
 
 # 2. Apply kernel tuning
 sudo ./scripts/kernel-tuning.sh
 
 # 3. Install systemd service
-sudo cp scripts/highper-gateway.service /etc/systemd/system/
+sudo cp scripts/rust-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # 4. Configure
-sudo nano /etc/highper-gateway/config.yaml
+sudo nano /etc/rust-proxy/config.yaml
 
 # 5. Start service
-sudo systemctl start highper-gateway
-sudo systemctl enable highper-gateway
+sudo systemctl start rust-proxy
+sudo systemctl enable rust-proxy
 ```
 
 ---
@@ -424,7 +424,7 @@ sudo systemctl enable highper-gateway
 3. Reload systemd:
    ```bash
    sudo systemctl daemon-reload
-   sudo systemctl restart highper-gateway
+   sudo systemctl restart rust-proxy
    ```
 
 ### TCP Fast Open Not Working
@@ -463,12 +463,12 @@ sudo sysctl -w net.core.default_qdisc=fq
 
 - [ ] Kernel parameters applied: `sysctl -a | grep -E 'tcp_tw_reuse|tcp_fin_timeout|tcp_fastopen'`
 - [ ] File descriptor limits: `ulimit -n` shows 65535
-- [ ] Service running: `systemctl status highper-gateway`
+- [ ] Service running: `systemctl status rust-proxy`
 - [ ] Listening on ports: `ss -ltn | grep -E '80|443'`
-- [ ] No errors in logs: `journalctl -u highper-gateway -n 100`
+- [ ] No errors in logs: `journalctl -u rust-proxy -n 100`
 - [ ] TIME_WAIT count reasonable: `ss -ant | grep TIME-WAIT | wc -l` < 5000
 - [ ] CLOSE_WAIT count low: `ss -ant | grep CLOSE-WAIT | wc -l` < 100
-- [ ] Memory usage normal: `systemctl status highper-gateway` shows RSS < 1GB
+- [ ] Memory usage normal: `systemctl status rust-proxy` shows RSS < 1GB
 - [ ] Metrics accessible: `curl http://localhost:9090/metrics`
 
 ---
@@ -500,7 +500,7 @@ wrk -t 12 -c 400 -d 30s --latency http://localhost:80/
 watch -n1 'ss -s'
 
 # Terminal 2: Watch file descriptors
-watch -n1 'ls /proc/$(pgrep highper-gateway)/fd | wc -l'
+watch -n1 'ls /proc/$(pgrep rust-proxy)/fd | wc -l'
 
 # Terminal 3: Watch system resources
 htop
@@ -537,7 +537,7 @@ htop
 
 ### Production Ready ✅
 
-The Highper Gateway is now optimized for production deployment with:
+The Rust Proxy is now optimized for production deployment with:
 - **60,000+ concurrent connections**
 - **200,000+ requests/second**
 - **<10 second port release**

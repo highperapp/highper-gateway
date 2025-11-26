@@ -46,7 +46,7 @@ We have successfully developed a high-performance reverse proxy and API gateway 
 ```
 /home/infy/
 ├── reverse_proxy/              # Main Rust proxy project
-│   ├── highper-gateway/             # Rust proxy source code
+│   ├── rust-proxy/             # Rust proxy source code
 │   │   ├── src/
 │   │   │   ├── config/         # Configuration system
 │   │   │   ├── proxy/          # Core proxy logic
@@ -413,7 +413,7 @@ The Admin API is a standalone Node.js microservice that manages one or more reve
 ### 1. Single Server (Simple)
 ```bash
 # Reverse proxy
-./highper-gateway --config config.yaml
+./rust-proxy --config config.yaml
 
 # Admin API (separate server)
 cd proxy-admin-api/backend
@@ -425,7 +425,7 @@ npm start
 version: '3.8'
 services:
   proxy:
-    image: highper-gateway:latest
+    image: rust-proxy:latest
     ports:
       - "80:80"
       - "443:443"
@@ -549,7 +549,7 @@ services:
 
 ## Contributors
 
-- Development Team (Highper Gateway)
+- Development Team (Rust Proxy)
 - Development Team (Admin API)
 - You (Project Lead)
 

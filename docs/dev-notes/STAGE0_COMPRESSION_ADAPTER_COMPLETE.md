@@ -38,7 +38,7 @@ Stage 0 of the Comprehensive Development Plan has been **successfully completed*
 
 ### File Structure
 ```
-highper-gateway/src/middleware/compression/
+rust-proxy/src/middleware/compression/
 ├── mod.rs                  - Public API (138 lines)
 ├── compressor.rs           - Trait & types (271 lines)
 ├── registry.rs             - Global registry (332 lines)
@@ -308,7 +308,7 @@ vec!["br", "zstd", "gzip", "deflate"]
 ### Basic Usage
 
 ```rust
-use highper_gateway::middleware::compression::*;
+use rust_proxy::middleware::compression::*;
 
 // Initialize compression system (registers all compressors)
 init_compression();
@@ -331,7 +331,7 @@ println!("Compressed {} -> {} bytes ({:.1}% saved)",
 ### Content Negotiation
 
 ```rust
-use highper_gateway::middleware::compression::*;
+use rust_proxy::middleware::compression::*;
 
 // Client's Accept-Encoding header
 let accept_encoding = "gzip, deflate, br;q=0.9, zstd;q=0.8";
@@ -349,7 +349,7 @@ if let Some(compressor) = select_compressor(accept_encoding, server_prefs) {
 ### Statistics Tracking
 
 ```rust
-use highper_gateway::middleware::compression::*;
+use rust_proxy::middleware::compression::*;
 
 let compressor = GLOBAL_COMPRESSOR_REGISTRY.get("gzip").unwrap();
 
@@ -367,7 +367,7 @@ println!("Statistics: {}", stats);
 ### Custom Compressor
 
 ```rust
-use highper_gateway::middleware::compression::*;
+use rust_proxy::middleware::compression::*;
 use std::sync::Arc;
 
 // Define custom compressor

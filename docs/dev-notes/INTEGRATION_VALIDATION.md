@@ -144,11 +144,11 @@ Finished `release` profile [optimized] target(s) in 0.14s
 
 ### **Binary Status**
 ```bash
-$ ls -lh ../target/release/highper-gateway
--rwxr-xr-x 2 infy infy 6.0M Oct 30 00:22 ../target/release/highper-gateway
+$ ls -lh ../target/release/rust-proxy
+-rwxr-xr-x 2 infy infy 6.0M Oct 30 00:22 ../target/release/rust-proxy
 
-$ ../target/release/highper-gateway --version
-highper-gateway 0.1.0
+$ ../target/release/rust-proxy --version
+rust-proxy 0.1.0
 ```
 
 ✅ **Binary builds successfully**
@@ -230,12 +230,12 @@ highper-gateway 0.1.0
 **1. Start the proxy:**
 ```bash
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 **2. Expected startup log:**
 ```
-INFO Starting Highper Gateway server
+INFO Starting Rust Proxy server
 INFO HTTP listening on 0.0.0.0:8080
 INFO HTTPS listening on 0.0.0.0:8443
 INFO TLS passthrough listening on 0.0.0.0:9443

@@ -18,16 +18,16 @@ Migrate your configuration in one command:
 
 ```bash
 # Basic migration
-highper-gateway migrate --input config/config.yaml
+rust-proxy migrate --input config/config.yaml
 
 # With statistics
-highper-gateway migrate --input config/config.yaml --diff
+rust-proxy migrate --input config/config.yaml --diff
 
 # Custom output path
-highper-gateway migrate --input config.yaml --output my-config.proxy
+rust-proxy migrate --input config.yaml --output my-config.proxy
 
 # Skip validation
-highper-gateway migrate --input config.yaml --validate=false
+rust-proxy migrate --input config.yaml --validate=false
 ```
 
 ## Migration Tool Usage
@@ -35,7 +35,7 @@ highper-gateway migrate --input config.yaml --validate=false
 ### Command Options
 
 ```bash
-highper-gateway migrate [OPTIONS]
+rust-proxy migrate [OPTIONS]
 ```
 
 **Options:**
@@ -72,7 +72,7 @@ https://api.example.com {
    Reduction: 89.7% (9.7x simpler)
 
 💡 Usage:
-   highper-gateway start --config config/config.proxy
+   rust-proxy start --config config/config.proxy
 ```
 
 ## Before & After Examples
@@ -440,7 +440,7 @@ https://example.com {
 
 ### Step 1: Migrate
 ```bash
-highper-gateway migrate --input config.yaml --output config.proxy --diff
+rust-proxy migrate --input config.yaml --output config.proxy --diff
 ```
 
 ### Step 2: Validate
@@ -454,20 +454,20 @@ The migration tool automatically validates by default:
 ### Step 3: Test Locally
 ```bash
 # Test with new DSL config
-highper-gateway validate --config config.proxy
+rust-proxy validate --config config.proxy
 
 # Start server with DSL
-highper-gateway start --config config.proxy
+rust-proxy start --config config.proxy
 ```
 
 ### Step 4: Diff Compare (Optional)
 ```bash
 # Compare original YAML behavior
-highper-gateway start --config config.yaml &
+rust-proxy start --config config.yaml &
 curl http://localhost:8080/test
 
 # Compare new DSL behavior
-highper-gateway start --config config.proxy &
+rust-proxy start --config config.proxy &
 curl http://localhost:8080/test
 
 # Should produce identical results
@@ -482,7 +482,7 @@ curl http://localhost:8080/test
 **Solution:**
 1. Use `--validate=false` to skip validation
 2. Manually review and adjust the DSL
-3. Test the DSL with `highper-gateway validate --config config.proxy`
+3. Test the DSL with `rust-proxy validate --config config.proxy`
 
 ### Issue: "Configuration simplification less than expected"
 
@@ -526,7 +526,7 @@ lb round_robin  # or least_conn, ip_hash, etc.
 - [ ] Backup original configuration file
 - [ ] Run migration tool with `--diff` flag
 - [ ] Review generated DSL for accuracy
-- [ ] Validate with `highper-gateway validate`
+- [ ] Validate with `rust-proxy validate`
 - [ ] Test in development environment
 - [ ] Compare behavior with original config
 - [ ] Update deployment scripts to use .proxy files
@@ -544,9 +544,9 @@ lb round_robin  # or least_conn, ip_hash, etc.
 
 ## Getting Help
 
-- **Documentation**: See [DSL_USER_GUIDE.md](highper-gateway/DSL_USER_GUIDE.md)
-- **Examples**: Check `highper-gateway/examples/*.proxy`
-- **Issues**: Report at [GitHub Issues](https://github.com/anthropics/highper-gateway/issues)
+- **Documentation**: See [DSL_USER_GUIDE.md](rust-proxy/DSL_USER_GUIDE.md)
+- **Examples**: Check `rust-proxy/examples/*.proxy`
+- **Issues**: Report at [GitHub Issues](https://github.com/anthropics/rust-proxy/issues)
 
 ## Conclusion
 

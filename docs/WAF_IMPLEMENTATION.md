@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Highper Gateway includes a comprehensive Web Application Firewall (WAF) system that supports multiple engines through an adapter pattern. This allows you to choose the best WAF solution for your needs or even combine multiple engines.
+The Rust Proxy includes a comprehensive Web Application Firewall (WAF) system that supports multiple engines through an adapter pattern. This allows you to choose the best WAF solution for your needs or even combine multiple engines.
 
 ## Supported Engines
 
@@ -168,7 +168,7 @@ waf:
 #### 1. Using Custom Engine
 
 ```rust
-use highper_gateway::middleware::waf::{WafMiddleware, CustomWafConfig};
+use rust_proxy::middleware::waf::{WafMiddleware, CustomWafConfig};
 
 // Create with defaults
 let waf = WafMiddleware::with_custom(CustomWafConfig::default());
@@ -188,7 +188,7 @@ let waf = WafMiddleware::with_custom(config);
 #### 2. Using Coraza Engine
 
 ```rust
-use highper_gateway::middleware::waf::{WafMiddleware, CorazaConfig};
+use rust_proxy::middleware::waf::{WafMiddleware, CorazaConfig};
 
 let config = CorazaConfig {
     enable_crs: true,
@@ -206,7 +206,7 @@ let waf = WafMiddleware::with_coraza(config);
 #### 3. Using ModSecurity Engine
 
 ```rust
-use highper_gateway::middleware::waf::{
+use rust_proxy::middleware::waf::{
     WafMiddleware, ModSecurityConfig, DetectionMode
 };
 
@@ -223,7 +223,7 @@ let waf = WafMiddleware::with_modsecurity(config)?;
 #### 4. Using AWS WAF Engine
 
 ```rust
-use highper_gateway::middleware::waf::{
+use rust_proxy::middleware::waf::{
     WafMiddleware, AwsWafConfig, ManagedRuleGroup, FallbackAction
 };
 
@@ -245,7 +245,7 @@ let waf = WafMiddleware::with_aws(config)?;
 #### 5. Using WafConfig (Generic)
 
 ```rust
-use highper_gateway::middleware::waf::{WafMiddleware, WafConfig, WafMode};
+use rust_proxy::middleware::waf::{WafMiddleware, WafConfig, WafMode};
 
 let mut config = WafConfig::default();
 config.mode = WafMode::Coraza;

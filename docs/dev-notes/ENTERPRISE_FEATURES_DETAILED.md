@@ -27,10 +27,10 @@
 - **Observability** (metrics, tracing, logging)
 - **Resilience** (circuit breaking, timeouts, fault injection)
 
-### Why Service Mesh for Highper Gateway?
+### Why Service Mesh for Rust Proxy?
 
-Current state: Highper Gateway can act as a **reverse proxy** or **API gateway**
-Target state: Highper Gateway as a **sidecar proxy** in service mesh deployments
+Current state: Rust Proxy can act as a **reverse proxy** or **API gateway**
+Target state: Rust Proxy as a **sidecar proxy** in service mesh deployments
 
 **Benefits**:
 1. **Istio/Linkerd compatibility** - Drop-in replacement for Envoy
@@ -116,7 +116,7 @@ async fn handle_cluster_update(update: ClusterUpdate) {
 │             │ xDS gRPC (CDS, EDS, LDS, RDS, SDS)             │
 │             │                                                 │
 │  ┌──────────▼──────────────────────────────────────────┐    │
-│  │                  Highper Gateway (Sidecar)               │    │
+│  │                  Rust Proxy (Sidecar)               │    │
 │  │                                                      │    │
 │  │  ┌────────────────┐  ┌────────────────┐            │    │
 │  │  │ XDS Client     │  │ Config Manager │            │    │
@@ -159,7 +159,7 @@ A **sidecar** is a container deployed alongside each application pod:
 #### Deployment Example (Kubernetes)
 
 ```yaml
-# Deployment with Highper Gateway sidecar
+# Deployment with Rust Proxy sidecar
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -168,13 +168,13 @@ spec:
   template:
     metadata:
       annotations:
-        # Inject Highper Gateway sidecar
+        # Inject Rust Proxy sidecar
         sidecar.istio.io/inject: "false"  # We inject manually
     spec:
       # Init container to set up iptables
       initContainers:
       - name: istio-init
-        image: highper-gateway-init:1.0
+        image: rust-proxy-init:1.0
         securityContext:
           capabilities:
             add: ["NET_ADMIN", "NET_RAW"]
@@ -191,9 +191,9 @@ spec:
         # App thinks it's talking directly to other services
         # But traffic is intercepted by sidecar
 
-      # Highper Gateway sidecar
-      - name: highper-gateway-sidecar
-        image: highper-gateway:1.2.0-sidecar
+      # Rust Proxy sidecar
+      - name: rust-proxy-sidecar
+        image: rust-proxy:1.2.0-sidecar
         args:
         - --mode=sidecar
         - --xds-server=istiod.istio-system.svc:15010
@@ -233,8 +233,8 @@ spec:
 ```
 Client Request Flow:
 1. Client sends request to user-service.default.svc:8080
-2. iptables redirects to Highper Gateway sidecar :15006 (inbound)
-3. Highper Gateway:
+2. iptables redirects to Rust Proxy sidecar :15006 (inbound)
+3. Rust Proxy:
    - Terminates mTLS
    - Checks authorization policies
    - Applies rate limits
@@ -244,8 +244,8 @@ Client Request Flow:
 
 Outbound Request Flow:
 1. Application calls payment-service.default.svc:8080
-2. iptables redirects to Highper Gateway sidecar :15001 (outbound)
-3. Highper Gateway:
+2. iptables redirects to Rust Proxy sidecar :15001 (outbound)
+3. Rust Proxy:
    - Queries EDS for payment-service endpoints
    - Selects healthy endpoint (load balancing)
    - Establishes mTLS connection
@@ -692,7 +692,7 @@ mesh_request_duration_seconds_bucket{
 
 **Testing**:
 - Deploy Istio in Kubernetes
-- Configure Highper Gateway as sidecar
+- Configure Rust Proxy as sidecar
 - Verify service discovery works
 - Test pod scaling (endpoints added/removed)
 
@@ -752,7 +752,7 @@ mesh_request_duration_seconds_bucket{
 
 ### Overview
 
-**Multi-tenancy** allows a single Highper Gateway instance to serve multiple isolated tenants (customers, teams, environments) with:
+**Multi-tenancy** allows a single Rust Proxy instance to serve multiple isolated tenants (customers, teams, environments) with:
 - **Resource isolation** (CPU, memory, connections)
 - **Configuration isolation** (routes, policies per tenant)
 - **Data isolation** (logs, metrics separated)
@@ -1050,7 +1050,7 @@ impl Drop for QuotaPermit {
 #[cfg(target_os = "linux")]
 pub fn set_tenant_cgroup_limits(tenant_id: &TenantId, quota: &TenantQuota) -> Result<()> {
     // Create cgroup for tenant
-    let cgroup_path = format!("/sys/fs/cgroup/highper-gateway/tenant-{}", tenant_id);
+    let cgroup_path = format!("/sys/fs/cgroup/rust-proxy/tenant-{}", tenant_id);
     std::fs::create_dir_all(&cgroup_path)?;
 
     // Set CPU quota (1.0 = 1 core, 0.5 = 50% of 1 core)
@@ -1510,7 +1510,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 
 ### Service Mesh: vs Envoy
 
-| Feature | Envoy | Highper Gateway (Target) | Advantage |
+| Feature | Envoy | Rust Proxy (Target) | Advantage |
 |---------|-------|---------------------|-----------|
 | **xDS Protocol** | ✅ Full | ✅ Full (planned) | Equal |
 | **Performance** | Excellent | ✅ Excellent+ | **Better** (Rust, SIMD, io_uring) |
@@ -1524,7 +1524,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 
 ### Multi-Tenancy: vs Kong
 
-| Feature | Kong | Highper Gateway (Target) | Advantage |
+| Feature | Kong | Rust Proxy (Target) | Advantage |
 |---------|------|---------------------|-----------|
 | **Tenant Isolation** | ✅ Workspaces | ✅ Full (planned) | Equal |
 | **Resource Limits** | ✅ Plugins | ✅ Built-in | Equal |
@@ -1561,7 +1561,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 │  │  │  Pod: frontend                                   │     │ │
 │  │  │  ┌──────────────┐  ┌────────────────────────┐   │     │ │
 │  │  │  │ Container:   │  │ Sidecar:               │   │     │ │
-│  │  │  │ frontend-app │  │ highper-gateway             │   │     │ │
+│  │  │  │ frontend-app │  │ rust-proxy             │   │     │ │
 │  │  │  │ :8080        │◄─┤ :15001 (outbound)      │   │     │ │
 │  │  │  └──────────────┘  │ :15006 (inbound)       │   │     │ │
 │  │  │                    │ :15090 (metrics)       │   │     │ │
@@ -1572,7 +1572,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 │  │  │  Pod: backend                                    │     │ │
 │  │  │  ┌──────────────┐  ┌────────────────────────┐   │     │ │
 │  │  │  │ Container:   │  │ Sidecar:               │   │     │ │
-│  │  │  │ backend-app  │  │ highper-gateway             │   │     │ │
+│  │  │  │ backend-app  │  │ rust-proxy             │   │     │ │
 │  │  │  │ :8080        │◄─┤ :15001 (outbound)      │   │     │ │
 │  │  │  └──────────────┘  │ :15006 (inbound)       │   │     │ │
 │  │  │                    │ :15090 (metrics)       │   │     │ │
@@ -1590,7 +1590,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                    Highper Gateway (Multi-Tenant)                    │
+│                    Rust Proxy (Multi-Tenant)                    │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │               Tenant Router & Isolation Layer            │  │
@@ -1655,7 +1655,7 @@ v2.2 (Months 10-11): Multi-Tenancy - Phase 3
 
 **Timeline**: 3-4 months (v2.0 → v2.2)
 **Effort**: 150 hours
-**ROI**: Enables SaaS/platform businesses to use Highper Gateway
+**ROI**: Enables SaaS/platform businesses to use Rust Proxy
 
 ---
 

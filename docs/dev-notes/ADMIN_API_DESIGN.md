@@ -1,6 +1,6 @@
 # Standalone Admin API & Dashboard Design
 
-**Project:** Highper Gateway Admin API & Dashboard
+**Project:** Rust Proxy Admin API & Dashboard
 **Type:** Standalone microservice
 **Language:** Rust (Backend) + TypeScript/React (Frontend)
 **Communication:** REST API + WebSocket + gRPC (optional)
@@ -53,7 +53,7 @@ A standalone Admin API service that provides:
                  │ gRPC / HTTP / Redis Pub/Sub
                  ▼
 ┌─────────────────────────────────────────────────────────┐
-│           Highper Gateway Instances (1..N)                    │
+│           Rust Proxy Instances (1..N)                    │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │  Instance 1  │  │  Instance 2  │  │  Instance N  │  │
 │  │  :8080       │  │  :8081       │  │  :808N       │  │
@@ -1047,7 +1047,7 @@ spec:
     spec:
       containers:
       - name: admin-api
-        image: highper-gateway/admin-api:latest
+        image: rust-proxy/admin-api:latest
         ports:
         - containerPort: 3000
         env:

@@ -4,14 +4,14 @@
 
 | Category | Winner | Runner-up |
 |----------|--------|-----------|
-| **Easiest to Use** | 🥇 Caddy | Highper Gateway |
+| **Easiest to Use** | 🥇 Caddy | Rust Proxy |
 | **Best Performance** | 🥇 Pingora | HAProxy |
 | **Most Features** | 🥇 Envoy | Nginx Plus |
-| **API Gateway** | 🥇 Envoy | Highper Gateway |
+| **API Gateway** | 🥇 Envoy | Rust Proxy |
 | **Load Balancing** | 🥇 HAProxy | Envoy |
-| **Memory Safety** | 🥇 Highper Gateway / Pingora | Caddy |
+| **Memory Safety** | 🥇 Rust Proxy / Pingora | Caddy |
 | **Observability** | 🥇 Envoy | Pingora |
-| **TLS Management** | 🥇 Caddy | Highper Gateway |
+| **TLS Management** | 🥇 Caddy | Rust Proxy |
 | **Most Mature** | 🥇 Nginx | HAProxy |
 | **Cloud Native** | 🥇 Envoy | Pingora |
 
@@ -24,7 +24,7 @@ Envoy       ████████████████████ 91%
 Pingora     ███████████████████  87%
 Caddy       ██████████████████   83%
 Nginx Plus  ██████████████████   83%
-Highper Gateway  ████████████████     74%
+Rust Proxy  ████████████████     74%
 HAProxy     ███████████████      70%
 Nginx OSS   █████████████        61%
 ```
@@ -34,7 +34,7 @@ Nginx OSS   █████████████        61%
 ## 🎯 Choose Based on Your Needs
 
 ### **Need Memory Safety + Modern Features?**
-→ **Highper Gateway** or **Pingora**
+→ **Rust Proxy** or **Pingora**
 
 ### **Need Easiest Setup?**
 → **Caddy**
@@ -43,7 +43,7 @@ Nginx OSS   █████████████        61%
 → **Nginx**
 
 ### **Need Full API Gateway?**
-→ **Envoy** or **Highper Gateway**
+→ **Envoy** or **Rust Proxy**
 
 ### **Need Best Load Balancing?**
 → **HAProxy**
@@ -58,7 +58,7 @@ Nginx OSS   █████████████        61%
 1. **HAProxy** - 120K req/sec, 0.2ms latency
 2. **Pingora** - 110K req/sec, 0.2ms latency
 3. **Nginx** - 100K req/sec, 0.2ms latency
-4. **Highper Gateway** - 80K req/sec, 0.3ms latency
+4. **Rust Proxy** - 80K req/sec, 0.3ms latency
 5. **Envoy** - 70K req/sec, 0.4ms latency
 6. **Caddy** - 50K req/sec, 0.5ms latency
 
@@ -67,7 +67,7 @@ Nginx OSS   █████████████        61%
 ## 🔒 Security (Memory Safety)
 
 **Memory-Safe Languages:**
-- ✅ **Highper Gateway** (Rust)
+- ✅ **Rust Proxy** (Rust)
 - ✅ **Pingora** (Rust)
 - ✅ **Caddy** (Go)
 
@@ -82,7 +82,7 @@ Nginx OSS   █████████████        61%
 
 | Proxy | Open Source | Commercial |
 |-------|-------------|------------|
-| **Highper Gateway** | ✅ Free | N/A |
+| **Rust Proxy** | ✅ Free | N/A |
 | **Caddy** | ✅ Free | Support available |
 | **Nginx** | ✅ Free (OSS) | Nginx Plus (~$2500/instance/year) |
 | **Envoy** | ✅ Free | Support via CNCF members |
@@ -95,7 +95,7 @@ Nginx OSS   █████████████        61%
 
 ```
 Caddy       ⭐ (Easiest)
-Highper Gateway  ⭐⭐
+Rust Proxy  ⭐⭐
 Nginx       ⭐⭐⭐
 HAProxy     ⭐⭐⭐
 Pingora     ⭐⭐⭐⭐ (Requires coding)
@@ -114,13 +114,13 @@ Envoy       ⭐⭐⭐⭐ (Complex config)
 
 **Emerging:**
 5. Pingora (2024, Cloudflare production)
-6. Highper Gateway (2025, new)
+6. Rust Proxy (2025, new)
 
 ---
 
 ## ✨ Unique Selling Points
 
-### Highper Gateway
+### Rust Proxy
 **"Modern All-in-One with Memory Safety"**
 - Built-in API gateway features
 - Automatic Let's Encrypt
@@ -165,15 +165,15 @@ Envoy       ⭐⭐⭐⭐ (Complex config)
 
 | Use Case | Best Choice | Alternative |
 |----------|-------------|-------------|
-| **Startup / New Project** | Highper Gateway | Caddy |
+| **Startup / New Project** | Rust Proxy | Caddy |
 | **Large Enterprise** | Nginx Plus | Envoy |
 | **Kubernetes / Service Mesh** | Envoy | Pingora |
 | **High Availability** | HAProxy | Nginx |
 | **Simple Website** | Caddy | Nginx |
-| **API Gateway** | Highper Gateway | Envoy |
-| **Custom Proxy Logic** | Pingora | Highper Gateway |
+| **API Gateway** | Rust Proxy | Envoy |
+| **Custom Proxy Logic** | Pingora | Rust Proxy |
 | **CDN / Edge** | Pingora | Nginx |
-| **Maximum Security** | Highper Gateway | Pingora |
+| **Maximum Security** | Rust Proxy | Pingora |
 | **Maximum Performance** | HAProxy | Pingora |
 
 ---
@@ -208,30 +208,30 @@ Legend: ✅ Yes  ⚠️ Limited/Plugin  ❌ No
 
 ---
 
-## 🔍 Deep Dive: Highper Gateway vs Competition
+## 🔍 Deep Dive: Rust Proxy vs Competition
 
 ### **vs Caddy**
-- **Highper Gateway wins:** More API gateway features, memory safety
+- **Rust Proxy wins:** More API gateway features, memory safety
 - **Caddy wins:** Easier config, HTTP/3, more mature
 - **Similarity:** Both focus on ease of use and automatic HTTPS
 
 ### **vs Nginx**
-- **Highper Gateway wins:** Built-in API gateway, memory safety, modern async
+- **Rust Proxy wins:** Built-in API gateway, memory safety, modern async
 - **Nginx wins:** Battle-tested, ecosystem, raw performance
 - **Similarity:** Both excellent reverse proxies
 
 ### **vs Envoy**
-- **Highper Gateway wins:** Easier config, auto ACME
+- **Rust Proxy wins:** Easier config, auto ACME
 - **Envoy wins:** More features, observability, service mesh native
 - **Similarity:** Both target cloud-native microservices
 
 ### **vs HAProxy**
-- **Highper Gateway wins:** API gateway features, memory safety, modern protocols
+- **Rust Proxy wins:** API gateway features, memory safety, modern protocols
 - **HAProxy wins:** Load balancing sophistication, battle-tested
 - **Similarity:** Both focus on high availability
 
 ### **vs Pingora**
-- **Highper Gateway wins:** Complete product (vs framework), easier to use
+- **Rust Proxy wins:** Complete product (vs framework), easier to use
 - **Pingora wins:** Raw performance, Cloudflare-proven, flexibility
 - **Similarity:** Both Rust-based, memory-safe, modern
 
@@ -244,7 +244,7 @@ Legend: ✅ Yes  ⚠️ Limited/Plugin  ❌ No
                ↑
                │
          Caddy │
-               │    Highper Gateway
+               │    Rust Proxy
                │
                │           Nginx
     ───────────┼───────────────────→ Performance
@@ -263,7 +263,7 @@ Legend: ✅ Yes  ⚠️ Limited/Plugin  ❌ No
           Envoy│
                │   Nginx Plus
                │
-               │    Highper Gateway
+               │    Rust Proxy
     ───────────┼───────────────────→ Specialization
          Caddy │
                │
@@ -275,7 +275,7 @@ Legend: ✅ Yes  ⚠️ Limited/Plugin  ❌ No
 
 ---
 
-**Highper Gateway Positioning:**
+**Rust Proxy Positioning:**
 - **Sweet spot** between ease of use (Caddy) and features (Envoy)
 - **Memory-safe** alternative to C/C++ proxies
 - **All-in-one** reverse proxy + API gateway

@@ -230,7 +230,7 @@ This comprehensive plan consolidates all previous enhancement plans, optimizatio
       oauth2:
         enabled: true
         provider: "https://auth.example.com"
-        client_id: "highper-gateway"
+        client_id: "rust-proxy"
         client_secret: "${OAUTH_SECRET}"
         scopes: ["openid", "profile", "email"]
         redirect_uri: "https://example.com/callback"
@@ -281,7 +281,7 @@ This comprehensive plan consolidates all previous enhancement plans, optimizatio
       enabled: true
       exporter: jaeger
       endpoint: "http://jaeger:14268/api/traces"
-      service_name: "highper-gateway"
+      service_name: "rust-proxy"
       sampling_rate: 0.1  # 10% sampling
       attributes:
         environment: "production"
@@ -466,7 +466,7 @@ This comprehensive plan consolidates all previous enhancement plans, optimizatio
   RUSTFLAGS="-Cprofile-generate=/tmp/pgo-data" cargo build --release
 
   # Step 2: Run workload
-  ./target/release/highper-gateway --config bench.yaml &
+  ./target/release/rust-proxy --config bench.yaml &
   wrk -t8 -c200 -d300s http://localhost:8080/
 
   # Step 3: Merge profiles
@@ -715,7 +715,7 @@ ws.example.com {
 }
 
 # Import other configs
-import /etc/highper-gateway/sites/*
+import /etc/rust-proxy/sites/*
 ```
 
 **Parser Implementation**:
@@ -742,7 +742,7 @@ import /etc/highper-gateway/sites/*
 - **Example**:
   ```bash
   # Zero config - just specify upstream
-  highper-gateway --upstream localhost:3000
+  rust-proxy --upstream localhost:3000
   # Automatically:
   # - Binds to 80/443
   # - Generates self-signed cert (dev) or uses ACME (prod detection)
@@ -753,7 +753,7 @@ import /etc/highper-gateway/sites/*
 
 **Migration Tool**:
 - **Effort**: 2-3 days
-- **Tool**: `highper-gateway config convert`
+- **Tool**: `rust-proxy config convert`
 - **Tasks**:
   1. YAML → DSL converter
   2. Preserve comments where possible
@@ -780,7 +780,7 @@ import /etc/highper-gateway/sites/*
 
 **Architecture**:
 ```
-highper-gateway/src/plugin/
+rust-proxy/src/plugin/
 ├── mod.rs           - Plugin manager
 ├── loader.rs        - Dynamic loading
 ├── wasm/            - WASM runtime
@@ -923,7 +923,7 @@ plugins:
   # WASM plugin (safe, sandboxed)
   - name: custom-auth
     type: wasm
-    path: /etc/highper-gateway/plugins/custom_auth.wasm
+    path: /etc/rust-proxy/plugins/custom_auth.wasm
     config:
       secret: "${AUTH_SECRET}"
     enabled: true
@@ -932,7 +932,7 @@ plugins:
   # Native plugin (unsafe, high performance)
   - name: custom-transform
     type: native
-    path: /etc/highper-gateway/plugins/libcustom_transform.so
+    path: /etc/rust-proxy/plugins/libcustom_transform.so
     config:
       rules: /etc/transform-rules.json
     enabled: true
@@ -943,9 +943,9 @@ plugins:
 **Plugin SDK**:
 - **Rust Plugin SDK**:
   ```toml
-  # New crate: highper-gateway-plugin-api
+  # New crate: rust-proxy-plugin-api
   [package]
-  name = "highper-gateway-plugin-api"
+  name = "rust-proxy-plugin-api"
   version = "0.1.0"
 
   [dependencies]
@@ -955,7 +955,7 @@ plugins:
   ```
 - **Example Plugin**:
   ```rust
-  use highper_gateway_plugin_api::*;
+  use rust_proxy_plugin_api::*;
 
   pub struct CustomAuthPlugin {
       secret: String,
@@ -1074,20 +1074,20 @@ plugins:
 - **Effort**: 3-4 days
 - **Commands**:
   ```bash
-  highper-gateway config validate [FILE]
-  highper-gateway config convert YAML_FILE [--to dsl|json|toml]
-  highper-gateway config reload [--host HOST]
-  highper-gateway status [--host HOST]
-  highper-gateway routes list [--host HOST]
-  highper-gateway upstreams list [--host HOST]
-  highper-gateway upstreams status UPSTREAM [--host HOST]
-  highper-gateway certs list [--host HOST]
-  highper-gateway certs renew DOMAIN [--host HOST]
-  highper-gateway logs tail [--follow] [--host HOST]
-  highper-gateway metrics [--host HOST]
-  highper-gateway plugin list [--host HOST]
-  highper-gateway plugin load PLUGIN [--host HOST]
-  highper-gateway plugin unload PLUGIN [--host HOST]
+  rust-proxy config validate [FILE]
+  rust-proxy config convert YAML_FILE [--to dsl|json|toml]
+  rust-proxy config reload [--host HOST]
+  rust-proxy status [--host HOST]
+  rust-proxy routes list [--host HOST]
+  rust-proxy upstreams list [--host HOST]
+  rust-proxy upstreams status UPSTREAM [--host HOST]
+  rust-proxy certs list [--host HOST]
+  rust-proxy certs renew DOMAIN [--host HOST]
+  rust-proxy logs tail [--follow] [--host HOST]
+  rust-proxy metrics [--host HOST]
+  rust-proxy plugin list [--host HOST]
+  rust-proxy plugin load PLUGIN [--host HOST]
+  rust-proxy plugin unload PLUGIN [--host HOST]
   ```
 - **Features**:
   - Remote management via Admin API
@@ -1254,7 +1254,7 @@ plugins:
 
 **Blog Posts / Announcements**
 - **Content**:
-  1. "Introducing Highper Gateway: Memory-Safe, High-Performance Reverse Proxy"
+  1. "Introducing Rust Proxy: Memory-Safe, High-Performance Reverse Proxy"
   2. "How We Achieved 500K RPS with Rust and io_uring"
   3. "Maglev Load Balancing: Google's Algorithm in Rust"
   4. "Building a WASM Plugin System for Extensibility"
@@ -1283,9 +1283,9 @@ plugins:
 
 **Docker Images**
 - **Images**:
-  1. `highper-gateway:latest` - Full featured
-  2. `highper-gateway:minimal` - Minimal dependencies
-  3. `highper-gateway:alpine` - Alpine-based (smallest)
+  1. `rust-proxy:latest` - Full featured
+  2. `rust-proxy:minimal` - Minimal dependencies
+  3. `rust-proxy:alpine` - Alpine-based (smallest)
 - **Features**:
   - Multi-arch (amd64, arm64)
   - Security scanning (Trivy)

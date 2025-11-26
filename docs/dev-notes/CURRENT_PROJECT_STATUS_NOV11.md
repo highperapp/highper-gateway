@@ -64,12 +64,12 @@ The **high-performance Rust-based reverse proxy and API gateway** is **productio
 ### 2. ✅ Code Quality & Compilation Fixes
 
 **Fixed Files**:
-1. `highper-gateway/examples/benchmark_demo.rs`
+1. `rust-proxy/examples/benchmark_demo.rs`
    - Fixed format specifier bugs
    - Removed deprecated SIMD references
    - Updated to showcase beneficial SIMD operations only
 
-2. `highper-gateway/benches/optimization_bench.rs`
+2. `rust-proxy/benches/optimization_bench.rs`
    - Removed deprecated SIMD benchmarks (`simd_memcpy`, `simd_memcmp`)
    - Kept beneficial SIMD benchmarks (7-26x faster operations)
 

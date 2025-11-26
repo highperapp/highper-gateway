@@ -24,7 +24,7 @@ The Rust reverse proxy **already has comprehensive security features** implement
 
 ### 1. Security Headers Middleware ✅
 
-**Location:** `highper-gateway/src/middleware/headers.rs`
+**Location:** `rust-proxy/src/middleware/headers.rs`
 
 **Features Implemented:**
 - ✅ X-Content-Type-Options: nosniff
@@ -65,7 +65,7 @@ SecurityHeadersConfig::relaxed()
 
 ### 2. Request Size Limits ✅
 
-**Location:** `highper-gateway/src/middleware/request_size_limit.rs`
+**Location:** `rust-proxy/src/middleware/request_size_limit.rs`
 
 **Features Implemented:**
 - ✅ Content-Length header validation
@@ -95,7 +95,7 @@ limiter.check_request_size(&request)?;
 
 ### 3. Web Application Firewall (WAF) ✅
 
-**Location:** `highper-gateway/src/middleware/waf/`
+**Location:** `rust-proxy/src/middleware/waf/`
 
 **Engines Supported:**
 1. ✅ **Custom Engine** - Pattern-based rules
@@ -129,7 +129,7 @@ WafConfig {
 
 ### 4. CORS Middleware ✅
 
-**Location:** `highper-gateway/src/middleware/cors.rs`
+**Location:** `rust-proxy/src/middleware/cors.rs`
 
 **Features Implemented:**
 - ✅ Access-Control-Allow-Origin
@@ -145,7 +145,7 @@ WafConfig {
 
 ### 5. Rate Limiting ✅
 
-**Location:** `highper-gateway/src/middleware/rate_limit.rs`
+**Location:** `rust-proxy/src/middleware/rate_limit.rs`
 
 **Features Implemented:**
 - ✅ Token bucket algorithm
@@ -162,7 +162,7 @@ WafConfig {
 
 ### 6. TLS/HTTPS ✅
 
-**Location:** `highper-gateway/src/tls/`
+**Location:** `rust-proxy/src/tls/`
 
 **Features Implemented:**
 - ✅ TLS 1.2 and 1.3 only (no SSL, TLS 1.0, TLS 1.1)
@@ -185,7 +185,7 @@ WafConfig {
 
 ### 7. Mutual TLS (mTLS) ✅
 
-**Location:** `highper-gateway/src/middleware/mtls.rs`
+**Location:** `rust-proxy/src/middleware/mtls.rs`
 
 **Features Implemented:**
 - ✅ Client certificate authentication
@@ -199,7 +199,7 @@ WafConfig {
 
 ### 8. Authentication & Authorization ✅
 
-**Location:** `highper-gateway/src/gateway/auth/`
+**Location:** `rust-proxy/src/gateway/auth/`
 
 **Features Implemented:**
 - ✅ JWT authentication (RS256/HS256)
@@ -214,7 +214,7 @@ WafConfig {
 
 ### 9. Path Traversal Prevention ✅
 
-**Location:** `highper-gateway/src/webserver/static_files.rs`
+**Location:** `rust-proxy/src/webserver/static_files.rs`
 
 **Features Implemented:**
 - ✅ Path canonicalization

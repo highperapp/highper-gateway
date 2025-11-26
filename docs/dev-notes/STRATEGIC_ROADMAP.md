@@ -61,7 +61,7 @@
 ##### Day 1-2: HTTP/3 Proxy Integration (IMMEDIATE PRIORITY)
 **Status**: 90% complete → 100%
 **Time**: 4-6 hours
-**File**: `highper-gateway/src/http/http3_quiche.rs`
+**File**: `rust-proxy/src/http/http3_quiche.rs`
 
 **Tasks**:
 - [ ] Integrate proxy handler with HTTP/3 request handling (line 363)
@@ -97,7 +97,7 @@ async fn handle_request(&self, request: Request<Body>) -> Result<Response<Body>>
 ##### Day 3-4: WebSocket Gateway (HIGH PRIORITY)
 **Status**: 30% complete → 100%
 **Time**: 2 days
-**Files**: `highper-gateway/src/websocket/handler.rs`
+**Files**: `rust-proxy/src/websocket/handler.rs`
 
 **Tasks**:
 - [ ] WebSocket upgrade detection (check `Upgrade: websocket` header)
@@ -151,7 +151,7 @@ pub async fn handle_websocket(
 ##### Day 5: gRPC Gateway Enhancement (MEDIUM PRIORITY)
 **Status**: 40% complete → 80%
 **Time**: 1 day
-**Files**: `highper-gateway/src/grpc/handler.rs`, `grpc/detector.rs`
+**Files**: `rust-proxy/src/grpc/handler.rs`, `grpc/detector.rs`
 
 **Tasks**:
 - [ ] gRPC detection (Content-Type: application/grpc)
@@ -327,7 +327,7 @@ example.com {
 **Implementation Plan**:
 
 ##### Step 1: Create DSL Parser (Week 4)
-**File**: `highper-gateway/src/config/dsl_parser.rs`
+**File**: `rust-proxy/src/config/dsl_parser.rs`
 
 **Tasks**:
 - [ ] Define DSL grammar (server blocks, directives)
@@ -401,7 +401,7 @@ impl DslParser {
 ```
 
 ##### Step 2: Sensible Defaults System (Week 5)
-**File**: `highper-gateway/src/config/defaults.rs`
+**File**: `rust-proxy/src/config/defaults.rs`
 
 **Tasks**:
 - [ ] Default configuration builder
@@ -416,7 +416,7 @@ impl DslParser {
 **Zero-Config Example**:
 ```bash
 # Just run with domain, everything else is automatic
-$ highper-gateway --domain example.com --backend localhost:3000
+$ rust-proxy --domain example.com --backend localhost:3000
 
 # Automatically:
 # - Binds :80, :443
@@ -428,7 +428,7 @@ $ highper-gateway --domain example.com --backend localhost:3000
 ```
 
 ##### Step 3: Configuration Migration Tool
-**File**: `highper-gateway/src/bin/config-migrate.rs`
+**File**: `rust-proxy/src/bin/config-migrate.rs`
 
 **Tasks**:
 - [ ] YAML → DSL converter
@@ -438,9 +438,9 @@ $ highper-gateway --domain example.com --backend localhost:3000
 
 **Usage**:
 ```bash
-$ highper-gateway config migrate config.yaml > config.dsl
-$ highper-gateway config validate config.dsl
-$ highper-gateway config diff config.yaml config.dsl
+$ rust-proxy config migrate config.yaml > config.dsl
+$ rust-proxy config validate config.dsl
+$ rust-proxy config diff config.yaml config.dsl
 ```
 
 ##### Step 4: Configuration Examples
@@ -490,24 +490,24 @@ api.example.com {
 **Tasks**:
 
 ##### CLI Enhancements
-**File**: `highper-gateway/src/bin/highper-gateway.rs`
+**File**: `rust-proxy/src/bin/rust-proxy.rs`
 
-- [ ] `highper-gateway init` - Interactive configuration wizard
-- [ ] `highper-gateway validate <config>` - Configuration validation
-- [ ] `highper-gateway test <config>` - Test configuration without starting
-- [ ] `highper-gateway reload` - Hot reload running instance
-- [ ] `highper-gateway logs tail [-f] [-n 100]` - Log tailing
-- [ ] `highper-gateway status` - Show runtime status
-- [ ] `highper-gateway backends` - List backends and health
-- [ ] `highper-gateway metrics` - Show key metrics
-- [ ] `highper-gateway cert list` - List TLS certificates
-- [ ] `highper-gateway cert renew <domain>` - Manual certificate renewal
+- [ ] `rust-proxy init` - Interactive configuration wizard
+- [ ] `rust-proxy validate <config>` - Configuration validation
+- [ ] `rust-proxy test <config>` - Test configuration without starting
+- [ ] `rust-proxy reload` - Hot reload running instance
+- [ ] `rust-proxy logs tail [-f] [-n 100]` - Log tailing
+- [ ] `rust-proxy status` - Show runtime status
+- [ ] `rust-proxy backends` - List backends and health
+- [ ] `rust-proxy metrics` - Show key metrics
+- [ ] `rust-proxy cert list` - List TLS certificates
+- [ ] `rust-proxy cert renew <domain>` - Manual certificate renewal
 
 **Interactive Configuration Wizard**:
 ```bash
-$ highper-gateway init
+$ rust-proxy init
 
-Welcome to Highper Gateway configuration wizard!
+Welcome to Rust Proxy configuration wizard!
 
 ? What's your domain? example.com
 ? What's your backend URL? localhost:3000
@@ -519,23 +519,23 @@ Welcome to Highper Gateway configuration wizard!
 Configuration saved to: config.dsl
 
 To start the proxy:
-  highper-gateway --config config.dsl
+  rust-proxy --config config.dsl
 
 To test the configuration:
-  highper-gateway test config.dsl
+  rust-proxy test config.dsl
 ```
 
 ##### Documentation Generation
-**File**: `highper-gateway/src/config/docs.rs`
+**File**: `rust-proxy/src/config/docs.rs`
 
 - [ ] Self-documenting configuration
-- [ ] `highper-gateway config docs` - Show all directives
-- [ ] `highper-gateway config example <directive>` - Show examples
+- [ ] `rust-proxy config docs` - Show all directives
+- [ ] `rust-proxy config example <directive>` - Show examples
 - [ ] Markdown documentation generator
 
 **Usage**:
 ```bash
-$ highper-gateway config docs reverse_proxy
+$ rust-proxy config docs reverse_proxy
 
 Directive: reverse_proxy
 Usage: reverse_proxy <backend> [options]
@@ -587,7 +587,7 @@ wit-bindgen = "0.18"
 **Implementation**:
 
 ##### Step 1: Plugin API Definition
-**File**: `highper-gateway/src/plugins/api.wit` (WebAssembly Interface Types)
+**File**: `rust-proxy/src/plugins/api.wit` (WebAssembly Interface Types)
 
 ```wit
 // Plugin API using WIT (WebAssembly Interface Types)
@@ -625,7 +625,7 @@ record backend {
 ```
 
 ##### Step 2: Plugin Runtime
-**File**: `highper-gateway/src/plugins/runtime.rs`
+**File**: `rust-proxy/src/plugins/runtime.rs`
 
 ```rust
 pub struct PluginRuntime {
@@ -720,14 +720,14 @@ struct PluginState {
 plugins:
   # Load plugins from files
   - name: "auth_plugin"
-    path: "/etc/highper-gateway/plugins/auth.wasm"
+    path: "/etc/rust-proxy/plugins/auth.wasm"
     enabled: true
     config:
       secret: "..."
 
   # Or from plugin repository
   - name: "rate_limiter"
-    source: "https://plugins.highper-gateway.dev/rate_limiter/v1.0.0.wasm"
+    source: "https://plugins.rust-proxy.dev/rate_limiter/v1.0.0.wasm"
     enabled: true
     config:
       rate: "100/s"
@@ -750,7 +750,7 @@ example.com {
 **Time**: 2 weeks
 
 ##### Create Plugin SDK
-**Repository**: `highper-gateway-plugin-sdk`
+**Repository**: `rust-proxy-plugin-sdk`
 
 **Provide templates for common plugin types**:
 1. **Authentication Plugin Template**
@@ -761,7 +761,7 @@ example.com {
 **Example: Rate Limiting Plugin** (Rust → WASM):
 ```rust
 // plugins/rate_limiter/src/lib.rs
-use highper_gateway_plugin_sdk::*;
+use rust_proxy_plugin_sdk::*;
 
 struct RateLimiter {
     requests: HashMap<String, VecDeque<Instant>>,
@@ -803,7 +803,7 @@ impl Plugin for RateLimiter {
 ```
 
 ##### Plugin Examples Repository
-**Create**: `highper-gateway-plugins` repository
+**Create**: `rust-proxy-plugins` repository
 
 **Community-contributed plugins**:
 - [ ] OAuth2 authentication
@@ -818,7 +818,7 @@ impl Plugin for RateLimiter {
 - [ ] Tracing (Jaeger)
 
 ##### Plugin Marketplace (Future)
-**Website**: `plugins.highper-gateway.dev`
+**Website**: `plugins.rust-proxy.dev`
 
 - Browse plugins by category
 - Search and filter
@@ -845,7 +845,7 @@ impl Plugin for RateLimiter {
 **Use Case**: Direct kernel-to-kernel data transfer
 
 ```rust
-// File: highper-gateway/src/runtime/zero_copy.rs
+// File: rust-proxy/src/runtime/zero_copy.rs
 pub async fn splice_connection(
     client_fd: RawFd,
     backend_fd: RawFd,
@@ -918,7 +918,7 @@ pub async fn send_zerocopy(
 **Use Cases**:
 
 ##### 1. HTTP Header Parsing
-**File**: `highper-gateway/src/http/simd_parser.rs`
+**File**: `rust-proxy/src/http/simd_parser.rs`
 
 ```rust
 #[cfg(target_arch = "x86_64")]
@@ -981,7 +981,7 @@ pub fn eq_ignore_ascii_case_simd(a: &[u8], b: &[u8]) -> bool {
 
 **Replace DashMap with flurry (lock-free hash map)**:
 
-**File**: `highper-gateway/src/state/lock_free.rs`
+**File**: `rust-proxy/src/state/lock_free.rs`
 
 ```rust
 use flurry::HashMap;
@@ -1042,7 +1042,7 @@ impl LockFreeRoundRobin {
 **Timeline**: Ongoing
 
 #### Kubernetes Operator (2-3 weeks)
-**Repository**: `highper-gateway-operator`
+**Repository**: `rust-proxy-operator`
 
 **Features**:
 - Custom Resource Definitions (CRDs)
@@ -1054,7 +1054,7 @@ impl LockFreeRoundRobin {
 
 **Example CRD**:
 ```yaml
-apiVersion: proxy.highper-gateway.dev/v1
+apiVersion: proxy.rust-proxy.dev/v1
 kind: ReverseProxy
 metadata:
   name: api-gateway
@@ -1075,7 +1075,7 @@ spec:
 ```
 
 #### Helm Charts (3-5 days)
-**Repository**: `highper-gateway-helm`
+**Repository**: `rust-proxy-helm`
 
 **Features**:
 - Production-ready Helm chart
@@ -1086,7 +1086,7 @@ spec:
 - Prometheus monitoring integration
 
 #### Terraform Modules (1 week)
-**Repository**: `highper-gateway-terraform`
+**Repository**: `rust-proxy-terraform`
 
 **Modules**:
 - AWS (ALB + EC2/ECS/EKS)

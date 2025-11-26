@@ -283,7 +283,7 @@ pub use http3_quiche::Http3Server;
 # Clean build successful
 $ cargo build --release
    Compiling quiche v0.24.6
-   Compiling highper-gateway v0.1.0
+   Compiling rust-proxy v0.1.0
     Finished `release` profile [optimized] target(s) in 2m 14s
 ✅ SUCCESS
 ```
@@ -291,14 +291,14 @@ $ cargo build --release
 ### Binary Validation ✅
 
 ```bash
-$ ls -lh target/release/highper-gateway
--rwxr-xr-x 2 infy infy 13M Nov  2 18:04 target/release/highper-gateway
+$ ls -lh target/release/rust-proxy
+-rwxr-xr-x 2 infy infy 13M Nov  2 18:04 target/release/rust-proxy
 
-$ file target/release/highper-gateway
+$ file target/release/rust-proxy
 ELF 64-bit LSB pie executable, x86-64, stripped
 
-$ ./target/release/highper-gateway --version
-highper-gateway 0.1.0
+$ ./target/release/rust-proxy --version
+rust-proxy 0.1.0
 ✅ SUCCESS
 ```
 
@@ -549,7 +549,7 @@ HTTP/3 with QUIC protocol support using Cloudflare's quiche is **fully implement
 cargo build --release
 
 # Run binary
-./target/release/highper-gateway --config config/config.yaml
+./target/release/rust-proxy --config config/config.yaml
 
 # Run tests
 cargo test --lib http3_quiche
@@ -568,7 +568,7 @@ cargo tree -p quiche | head -10
 cargo tree -p quinn  # Should error ✅
 
 # Check binary size
-ls -lh target/release/highper-gateway
+ls -lh target/release/rust-proxy
 ```
 
 ### Monitor HTTP/3 Connections

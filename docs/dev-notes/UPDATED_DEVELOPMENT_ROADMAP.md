@@ -486,7 +486,7 @@ connection_pool:
        │ TCP connection
        │
 ┌──────▼───────┐
-│ Highper Gateway   │
+│ Rust Proxy   │
 │ TCP Mode     │
 │              │
 │ - Protocol   │

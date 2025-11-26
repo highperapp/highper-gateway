@@ -229,7 +229,7 @@ example.com {
 
 #### Week 7: Zero-Config Mode
 - Sensible defaults for everything
-- `highper-gateway --domain example.com --backend localhost:3000`
+- `rust-proxy --domain example.com --backend localhost:3000`
 
 #### Week 8: Enhanced CLI
 - Interactive configuration wizard
@@ -295,7 +295,7 @@ example.com {
 
 **Monday AM** (4-6 hours):
 1. ✅ Complete HTTP/3 proxy handler integration
-   - File: `highper-gateway/src/http/http3_quiche.rs` line 363
+   - File: `rust-proxy/src/http/http3_quiche.rs` line 363
    - Integrate existing proxy handler
    - Test with h3 client
 

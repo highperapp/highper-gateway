@@ -73,7 +73,7 @@ jsonwebtoken = "9.3"
 ### Module Structure
 
 ```
-highper-gateway/src/
+rust-proxy/src/
 ├── admin/          # Admin API server
 │   ├── server.rs   # HTTP server (400+ lines)
 │   ├── routes.rs   # Route definitions
@@ -397,23 +397,23 @@ cargo clippy
 
 ```bash
 # Basic usage
-./target/release/highper-gateway -c config/config.yaml
+./target/release/rust-proxy -c config/config.yaml
 
 # With hot reload (enabled by default)
-./target/release/highper-gateway -c config/config.yaml
+./target/release/rust-proxy -c config/config.yaml
 
 # With custom log level
-RUST_LOG=debug ./target/release/highper-gateway -c config/config.yaml
+RUST_LOG=debug ./target/release/rust-proxy -c config/config.yaml
 
 # JSON logging
-./target/release/highper-gateway -c config/config.yaml --json-logs
+./target/release/rust-proxy -c config/config.yaml --json-logs
 ```
 
 ### Docker
 
 ```bash
 # Build image
-docker build -t highper-gateway .
+docker build -t rust-proxy .
 
 # Run container
 docker run -d \
@@ -422,7 +422,7 @@ docker run -d \
   -p 9000:9000 \
   -v $(pwd)/config:/app/config \
   -v $(pwd)/certs:/app/certs \
-  highper-gateway
+  rust-proxy
 ```
 
 ---
@@ -545,8 +545,8 @@ This is an open-source project under MIT license.
 
 ```bash
 # Clone repository
-git clone https://github.com/anthropics/highper-gateway
-cd highper-gateway
+git clone https://github.com/anthropics/rust-proxy
+cd rust-proxy
 
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -603,10 +603,10 @@ MIT License - See LICENSE file for details
 
 ## Links
 
-- **Repository:** https://github.com/anthropics/highper-gateway
-- **Documentation:** https://docs.highper-gateway.dev
-- **Issues:** https://github.com/anthropics/highper-gateway/issues
-- **Discussions:** https://github.com/anthropics/highper-gateway/discussions
+- **Repository:** https://github.com/anthropics/rust-proxy
+- **Documentation:** https://docs.rust-proxy.dev
+- **Issues:** https://github.com/anthropics/rust-proxy/issues
+- **Discussions:** https://github.com/anthropics/rust-proxy/discussions
 
 ---
 

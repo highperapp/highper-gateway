@@ -57,7 +57,7 @@ The E2E testing framework validates real-world proxy behavior with actual HTTP c
 
 ```bash
 # Ensure proxy is built in release mode
-cd highper-gateway
+cd rust-proxy
 cargo build --release
 
 # Check test dependencies
@@ -113,7 +113,7 @@ async fn test_e2e_scenario() {
     std::fs::write("/tmp/test_config.toml", config).unwrap();
 
     // 3. Start proxy (manual for now, future: programmatic)
-    // ./target/release/highper-gateway start --config /tmp/test_config.toml &
+    // ./target/release/rust-proxy start --config /tmp/test_config.toml &
 
     // 4. Make test requests
     let client = reqwest::Client::new();
@@ -209,7 +209,7 @@ async fn wait_for_server(addr: &str, max_attempts: u32) -> bool {
 
 ```rust
 // Future API
-use highper_gateway::{ProxyServer, Config};
+use rust_proxy::{ProxyServer, Config};
 
 let config = Config::from_str(config_toml)?;
 let proxy = ProxyServer::new(config);
@@ -468,7 +468,7 @@ cd load-tests
 node simple-backend.js  # Port 9000
 
 # Terminal 2: Start proxy
-./target/release/highper-gateway start --config /tmp/test_config.toml
+./target/release/rust-proxy start --config /tmp/test_config.toml
 
 # Terminal 3: Make requests
 curl -v http://localhost:8081/test

@@ -115,14 +115,14 @@ cargo test --lib tls::passthrough
 ## ✅ Test Files Created
 
 ### **Test Files**
-1. ✅ `highper-gateway/src/websocket/handler.rs` - Contains WebSocket unit tests
-2. ✅ `highper-gateway/src/grpc/detector.rs` - Contains gRPC detection tests
-3. ✅ `highper-gateway/src/grpc/handler.rs` - Contains gRPC handler tests
-4. ✅ `highper-gateway/src/tls/passthrough.rs` - Contains SNI extraction tests
-5. ✅ `highper-gateway/src/proxy/loadbalancer.rs` - Contains load balancing tests
-6. ✅ `highper-gateway/src/proxy/circuit_breaker.rs` - Contains circuit breaker tests
-7. ✅ `highper-gateway/src/proxy/retry.rs` - Contains retry logic tests
-8. ✅ `highper-gateway/tests/integration_tests.rs` - **NEW** Integration test suite
+1. ✅ `rust-proxy/src/websocket/handler.rs` - Contains WebSocket unit tests
+2. ✅ `rust-proxy/src/grpc/detector.rs` - Contains gRPC detection tests
+3. ✅ `rust-proxy/src/grpc/handler.rs` - Contains gRPC handler tests
+4. ✅ `rust-proxy/src/tls/passthrough.rs` - Contains SNI extraction tests
+5. ✅ `rust-proxy/src/proxy/loadbalancer.rs` - Contains load balancing tests
+6. ✅ `rust-proxy/src/proxy/circuit_breaker.rs` - Contains circuit breaker tests
+7. ✅ `rust-proxy/src/proxy/retry.rs` - Contains retry logic tests
+8. ✅ `rust-proxy/tests/integration_tests.rs` - **NEW** Integration test suite
 9. ✅ Many other module test files throughout the codebase
 
 ### **Test Documentation**

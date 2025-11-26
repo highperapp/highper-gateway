@@ -656,7 +656,7 @@ docker run -d --name mysql1 -e MYSQL_ROOT_PASSWORD=test -p 3307:3306 mysql:8.0
 docker run -d --name mysql2 -e MYSQL_ROOT_PASSWORD=test -p 3308:3306 mysql:8.0
 docker run -d --name mysql3 -e MYSQL_ROOT_PASSWORD=test -p 3309:3306 mysql:8.0
 
-# Configure highper-gateway
+# Configure rust-proxy
 cat > config/tcp-mysql.yaml <<EOF
 tcp_proxies:
   - name: mysql-lb
@@ -671,7 +671,7 @@ tcp_proxies:
 EOF
 
 # Start proxy
-./target/release/highper-gateway --config config/tcp-mysql.yaml
+./target/release/rust-proxy --config config/tcp-mysql.yaml
 ```
 
 **Run Benchmark:**
@@ -766,7 +766,7 @@ backend mysql-back
 
 **Compare Results:**
 
-| Metric | highper-gateway | HAProxy 2.8 | Target | Status |
+| Metric | rust-proxy | HAProxy 2.8 | Target | Status |
 |--------|------------|-------------|--------|--------|
 | Throughput (QPS) | TBD | 65,000 | >63,000 | ⏳ |
 | p99 Latency | TBD | 1.8ms | <1.8ms | ⏳ |
@@ -788,7 +788,7 @@ backend mysql-back
 
 ### Competitive Position:
 
-| Feature | HAProxy | Nginx Plus | highper-gateway |
+| Feature | HAProxy | Nginx Plus | rust-proxy |
 |---------|---------|------------|------------|
 | Layer 4 LB | ✅ | ✅ | 🎯 Target |
 | Performance | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 🎯 ⭐⭐⭐⭐⭐ |

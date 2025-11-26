@@ -88,8 +88,8 @@ curl http://localhost:9090/metrics | grep connection_pool_active
 ulimit -n
 
 # Increase limit
-sudo sh -c 'echo "highper-gateway soft nofile 65536" >> /etc/security/limits.conf'
-sudo sh -c 'echo "highper-gateway hard nofile 65536" >> /etc/security/limits.conf'
+sudo sh -c 'echo "rust-proxy soft nofile 65536" >> /etc/security/limits.conf'
+sudo sh -c 'echo "rust-proxy hard nofile 65536" >> /etc/security/limits.conf'
 
 # Or use script
 sudo ./scripts/performance-tune.sh apply
@@ -102,7 +102,7 @@ sudo ./scripts/performance-tune.sh apply
 **Fix:**
 ```bash
 # Check CPU usage
-top -p $(pgrep highper-gateway)
+top -p $(pgrep rust-proxy)
 
 # If > 80%, scale horizontally or increase workers
 # config.toml:
@@ -120,7 +120,7 @@ iftop -i eth0
 **Fix:**
 ```bash
 # Monitor memory
-watch -n 1 'ps aux | grep highper-gateway'
+watch -n 1 'ps aux | grep rust-proxy'
 
 # Reduce connection pool
 [upstreams.connection]
@@ -174,7 +174,7 @@ curl http://localhost:9090/metrics
 ss -tan | awk '{print $1}' | sort | uniq -c
 
 # File descriptors
-lsof -p $(pgrep highper-gateway) | wc -l
+lsof -p $(pgrep rust-proxy) | wc -l
 ```
 
 ## Performance Targets
@@ -265,10 +265,10 @@ request = "20s"
 
 ```bash
 # Check configuration
-./highper-gateway validate --config config.toml
+./rust-proxy validate --config config.toml
 
 # View logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # Check health
 curl http://localhost:9090/health
@@ -282,14 +282,14 @@ iotop
 iftop
 
 # Profile CPU
-sudo perf record -F 99 -p $(pgrep highper-gateway) -g -- sleep 30
+sudo perf record -F 99 -p $(pgrep rust-proxy) -g -- sleep 30
 sudo perf report
 
 # Check connections
 ss -tan | grep :8080
 
 # Check file descriptors
-ls /proc/$(pgrep highper-gateway)/fd | wc -l
+ls /proc/$(pgrep rust-proxy)/fd | wc -l
 ```
 
 ## Quick Decision Tree

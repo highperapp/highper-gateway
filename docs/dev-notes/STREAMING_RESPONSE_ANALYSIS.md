@@ -224,7 +224,7 @@ tokio-util = { version = "0.7", features = ["io"] }
    wrk -t4 -c100 -d30s http://localhost:8080/large-file.bin
 
    # Monitor with:
-   ps aux | grep highper-gateway  # RSS should stay constant
+   ps aux | grep rust-proxy  # RSS should stay constant
    ```
 
 4. **Load Testing** (TODO)

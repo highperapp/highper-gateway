@@ -295,7 +295,7 @@ curl http://localhost:9090/metrics | grep proxy_pool
 ```bash
 curl -X POST http://admin:admin@localhost:3000/api/dashboards/db \
   -H "Content-Type: application/json" \
-  -d @highper-gateway/dashboards/connection-pool-metrics.json
+  -d @rust-proxy/dashboards/connection-pool-metrics.json
 ```
 
 ---

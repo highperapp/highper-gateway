@@ -80,7 +80,7 @@ SECURITY_HARDENING_GUIDE.md
 
 ✅ **Prometheus Configuration Created**
 - `monitoring/prometheus.yml` (scrape configuration)
-- `monitoring/highper_gateway_alerts.yml` (4 critical alert rules)
+- `monitoring/rust_proxy_alerts.yml` (4 critical alert rules)
 - 15-second scrape interval
 - 90-day retention for production
 
@@ -121,7 +121,7 @@ SECURITY_HARDENING_GUIDE.md
 
 ```
 monitoring/prometheus.yml
-monitoring/highper_gateway_alerts.yml
+monitoring/rust_proxy_alerts.yml
 monitoring/grafana-dashboard.json
 monitoring/start-monitoring.sh
 PROMETHEUS_GRAFANA_GUIDE.md
@@ -172,8 +172,8 @@ connection_pool_active / connection_pool_max * 100
 - Backup and disaster recovery
 
 ✅ **Systemd Service Files**
-- `deployment/systemd/highper-gateway.service` (basic, unprivileged ports)
-- `deployment/systemd/highper-gateway-privileged.service` (CAP_NET_BIND_SERVICE for ports 80/443)
+- `deployment/systemd/rust-proxy.service` (basic, unprivileged ports)
+- `deployment/systemd/rust-proxy-privileged.service` (CAP_NET_BIND_SERVICE for ports 80/443)
 - Security hardening (NoNewPrivileges, PrivateTmp, ProtectSystem)
 - Resource limits (LimitNOFILE=65536)
 - Auto-restart on failure
@@ -232,8 +232,8 @@ connection_pool_active / connection_pool_max * 100
 
 ```
 PRODUCTION_DEPLOYMENT_GUIDE.md
-deployment/systemd/highper-gateway.service
-deployment/systemd/highper-gateway-privileged.service
+deployment/systemd/rust-proxy.service
+deployment/systemd/rust-proxy-privileged.service
 deployment/systemd/README.md
 deployment/docker/Dockerfile
 deployment/docker/Dockerfile.ubuntu

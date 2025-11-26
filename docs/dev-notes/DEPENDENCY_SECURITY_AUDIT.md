@@ -208,7 +208,7 @@ cargo deny check advisories
 ## Configuration Files
 
 ### deny.toml
-Located at: `highper-gateway/deny.toml`
+Located at: `rust-proxy/deny.toml`
 
 **Key Settings:**
 - Advisories: 2 ignored with documented reasons

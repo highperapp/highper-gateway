@@ -16,7 +16,7 @@ Based on comprehensive benchmark analysis (see `WEEK10_BENCHMARK_RESULTS.md`), w
 
 ```rust
 // ❌ OLD (slow)
-use highper_gateway::runtime::simd_memcpy;
+use rust_proxy::runtime::simd_memcpy;
 simd_memcpy(&mut dst, &src);
 
 // ✅ NEW (2-3x faster)
@@ -41,7 +41,7 @@ unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), len); }
 
 ```rust
 // ❌ OLD (slow)
-use highper_gateway::runtime::simd_memcmp;
+use rust_proxy::runtime::simd_memcmp;
 if simd_memcmp(&a, &b) { ... }
 
 // ✅ NEW (1.5-2x faster)
@@ -67,7 +67,7 @@ if a.eq(&b) { ... }
 **Use Cases**: HTTP header parsing, WAF pattern matching
 
 ```rust
-use highper_gateway::runtime::simd_find_pattern;
+use rust_proxy::runtime::simd_find_pattern;
 
 // Find byte pattern in haystack
 if let Some(pos) = simd_find_pattern(haystack, b':') {
@@ -90,7 +90,7 @@ if let Some(pos) = simd_find_pattern(haystack, b':') {
 **Use Cases**: Request validation, data integrity checks
 
 ```rust
-use highper_gateway::runtime::simd_checksum;
+use rust_proxy::runtime::simd_checksum;
 
 // Calculate XOR checksum
 let checksum = simd_checksum(&data);
@@ -131,7 +131,7 @@ If you were using the deprecated functions (unlikely, as they weren't exported),
 
 ```rust
 // Before
-use highper_gateway::runtime::{simd_memcpy, simd_memcmp};
+use rust_proxy::runtime::{simd_memcpy, simd_memcmp};
 
 // After - these are no longer exported!
 // Use stdlib instead (which is faster anyway)
@@ -153,7 +153,7 @@ use highper_gateway::runtime::{simd_memcpy, simd_memcmp};
 
 ## Code Changes Made
 
-### 1. Updated `highper-gateway/src/runtime/mod.rs`
+### 1. Updated `rust-proxy/src/runtime/mod.rs`
 
 ```diff
 - pub use simd_opt::{simd_memcpy, simd_memcmp, simd_find_pattern, simd_checksum};
@@ -162,7 +162,7 @@ use highper_gateway::runtime::{simd_memcpy, simd_memcmp};
 + pub use simd_opt::{simd_find_pattern, simd_checksum};
 ```
 
-### 2. Deprecated Functions in `highper-gateway/src/runtime/simd_opt.rs`
+### 2. Deprecated Functions in `rust-proxy/src/runtime/simd_opt.rs`
 
 Added `#[deprecated]` attributes to `simd_memcpy` and `simd_memcmp` with clear warnings.
 
@@ -190,7 +190,7 @@ Added `#[deprecated]` attributes to `simd_memcpy` and `simd_memcmp` with clear w
 
 - Full benchmark results: `WEEK10_BENCHMARK_RESULTS.md`
 - Benchmark code: `benches/optimization_bench.rs`
-- SIMD implementation: `highper-gateway/src/runtime/simd_opt.rs`
+- SIMD implementation: `rust-proxy/src/runtime/simd_opt.rs`
 
 ---
 

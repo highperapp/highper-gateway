@@ -59,7 +59,7 @@ join_threads(workers);
 
 ### 3. Fixed Compilation Errors ✅
 
-**File**: `highper-gateway/examples/benchmark_demo.rs`
+**File**: `rust-proxy/examples/benchmark_demo.rs`
 
 **Issues Fixed**:
 1. Missing format specifier: `println!("=".repeat(70))` → `println!("{}", "=".repeat(70))`
@@ -82,7 +82,7 @@ join_threads(workers);
 
 ### 5. Created Corrected Benchmark ✅
 
-**New File**: `highper-gateway/benches/buffer_pool_steady_state.rs` (107 lines)
+**New File**: `rust-proxy/benches/buffer_pool_steady_state.rs` (107 lines)
 
 **Features**:
 - Long-lived worker threads
@@ -97,12 +97,12 @@ join_threads(workers);
 ## Files Modified/Created
 
 ### Code Files Modified (3)
-1. `highper-gateway/benches/optimization_bench.rs` - Removed deprecated SIMD benchmarks
-2. `highper-gateway/examples/benchmark_demo.rs` - Fixed compilation, updated SIMD showcase
-3. `highper-gateway/Cargo.toml` - Added buffer_pool_steady_state benchmark
+1. `rust-proxy/benches/optimization_bench.rs` - Removed deprecated SIMD benchmarks
+2. `rust-proxy/examples/benchmark_demo.rs` - Fixed compilation, updated SIMD showcase
+3. `rust-proxy/Cargo.toml` - Added buffer_pool_steady_state benchmark
 
 ### Code Files Created (1)
-1. `highper-gateway/benches/buffer_pool_steady_state.rs` - NEW: Corrected benchmark (107 lines)
+1. `rust-proxy/benches/buffer_pool_steady_state.rs` - NEW: Corrected benchmark (107 lines)
 
 ### Documentation Created (4)
 1. `BUFFER_POOL_BENCHMARK_ANALYSIS.md` - Root cause analysis (220 lines)

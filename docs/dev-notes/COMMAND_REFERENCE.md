@@ -4,19 +4,19 @@
 
 ### Build
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 ```
 
 ### Run
 ```bash
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 ### Check Version
 ```bash
-./target/release/highper-gateway --version
+./target/release/rust-proxy --version
 ```
 
 ---
@@ -88,7 +88,7 @@ curl --http2 https://localhost:8443/
 ### Check Ports
 ```bash
 # List all listening ports
-sudo ss -tlnp | grep highper-gateway
+sudo ss -tlnp | grep rust-proxy
 
 # Check specific port
 sudo lsof -i :8080
@@ -99,13 +99,13 @@ sudo lsof -i :9443
 ### View Logs
 ```bash
 # Tail logs (if logging to file)
-tail -f /var/log/highper-gateway.log
+tail -f /var/log/rust-proxy.log
 
 # With systemd
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # Filter for errors
-journalctl -u highper-gateway | grep ERROR
+journalctl -u rust-proxy | grep ERROR
 ```
 
 ### Prometheus Metrics
@@ -139,19 +139,19 @@ curl -v http://localhost:8080/health
 ### Validate Configuration
 ```bash
 # Check syntax (will fail on missing backends, but validates YAML)
-./target/release/highper-gateway --config config/test-minimal.yaml --check
+./target/release/rust-proxy --config config/test-minimal.yaml --check
 
 # Dry run (starts then exits)
-timeout 5 ./target/release/highper-gateway --config config/test-minimal.yaml || true
+timeout 5 ./target/release/rust-proxy --config config/test-minimal.yaml || true
 ```
 
 ### Reload Configuration
 ```bash
 # Send HUP signal
-kill -HUP $(pgrep highper-gateway)
+kill -HUP $(pgrep rust-proxy)
 
 # Or restart service
-systemctl restart highper-gateway
+systemctl restart rust-proxy
 ```
 
 ---
@@ -161,13 +161,13 @@ systemctl restart highper-gateway
 ### Verbose Logging
 ```bash
 # Set log level
-RUST_LOG=debug ./target/release/highper-gateway --config config/test-minimal.yaml
+RUST_LOG=debug ./target/release/rust-proxy --config config/test-minimal.yaml
 
 # Specific module
-RUST_LOG=highper_gateway::proxy=trace ./target/release/highper-gateway --config config/test-minimal.yaml
+RUST_LOG=rust_proxy::proxy=trace ./target/release/rust-proxy --config config/test-minimal.yaml
 
 # Multiple modules
-RUST_LOG=highper_gateway::tls=debug,highper_gateway::websocket=trace ./target/release/highper-gateway --config config/test-minimal.yaml
+RUST_LOG=rust_proxy::tls=debug,rust_proxy::websocket=trace ./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 ### Check for Errors
@@ -176,7 +176,7 @@ RUST_LOG=highper_gateway::tls=debug,highper_gateway::websocket=trace ./target/re
 cargo build 2>&1 | grep error
 
 # Run and capture stderr
-./target/release/highper-gateway --config config/test-minimal.yaml 2>&1 | tee error.log
+./target/release/rust-proxy --config config/test-minimal.yaml 2>&1 | tee error.log
 
 # Check for panics
 grep -i "panic\|abort\|fatal" error.log
@@ -244,35 +244,35 @@ du -sh target/
 cargo build --release --locked
 
 # Strip symbols (smaller binary)
-strip target/release/highper-gateway
+strip target/release/rust-proxy
 
 # Check binary size
-ls -lh target/release/highper-gateway
+ls -lh target/release/rust-proxy
 
 # Verify it works
-./target/release/highper-gateway --version
+./target/release/rust-proxy --version
 ```
 
 ### Install as System Service
 ```bash
 # Copy binary
-sudo cp target/release/highper-gateway /usr/local/bin/
+sudo cp target/release/rust-proxy /usr/local/bin/
 
 # Copy config
-sudo mkdir -p /etc/highper-gateway
-sudo cp config/integrated-example.yaml /etc/highper-gateway/config.yaml
+sudo mkdir -p /etc/rust-proxy
+sudo cp config/integrated-example.yaml /etc/rust-proxy/config.yaml
 
 # Create systemd service
-sudo tee /etc/systemd/system/highper-gateway.service << 'EOF'
+sudo tee /etc/systemd/system/rust-proxy.service << 'EOF'
 [Unit]
 Description=Rust Reverse Proxy
 After=network.target
 
 [Service]
 Type=simple
-User=highper-gateway
-Group=highper-gateway
-ExecStart=/usr/local/bin/highper-gateway --config /etc/highper-gateway/config.yaml
+User=rust-proxy
+Group=rust-proxy
+ExecStart=/usr/local/bin/rust-proxy --config /etc/rust-proxy/config.yaml
 Restart=always
 RestartSec=5
 
@@ -281,15 +281,15 @@ WantedBy=multi-user.target
 EOF
 
 # Create user
-sudo useradd -r -s /bin/false highper-gateway
+sudo useradd -r -s /bin/false rust-proxy
 
 # Enable and start
 sudo systemctl daemon-reload
-sudo systemctl enable highper-gateway
-sudo systemctl start highper-gateway
+sudo systemctl enable rust-proxy
+sudo systemctl start rust-proxy
 
 # Check status
-sudo systemctl status highper-gateway
+sudo systemctl status rust-proxy
 ```
 
 ---
@@ -299,37 +299,37 @@ sudo systemctl status highper-gateway
 ### Start/Stop/Restart
 ```bash
 # Foreground (Ctrl+C to stop)
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 
 # Background
-./target/release/highper-gateway --config config/test-minimal.yaml &
+./target/release/rust-proxy --config config/test-minimal.yaml &
 
 # With nohup
-nohup ./target/release/highper-gateway --config config/test-minimal.yaml > proxy.log 2>&1 &
+nohup ./target/release/rust-proxy --config config/test-minimal.yaml > proxy.log 2>&1 &
 
 # Stop
-killall highper-gateway
+killall rust-proxy
 
 # Graceful restart
-kill -HUP $(pgrep highper-gateway)
+kill -HUP $(pgrep rust-proxy)
 
 # Force stop
-kill -9 $(pgrep highper-gateway)
+kill -9 $(pgrep rust-proxy)
 ```
 
 ### View Running Process
 ```bash
 # Process info
-ps aux | grep highper-gateway
+ps aux | grep rust-proxy
 
 # With details
-ps -fp $(pgrep highper-gateway)
+ps -fp $(pgrep rust-proxy)
 
 # Memory usage
-ps -o pid,vsz,rss,comm -p $(pgrep highper-gateway)
+ps -o pid,vsz,rss,comm -p $(pgrep rust-proxy)
 
 # Open files
-lsof -p $(pgrep highper-gateway) | head -20
+lsof -p $(pgrep rust-proxy) | head -20
 ```
 
 ---
@@ -423,15 +423,15 @@ curl http://$(hostname -I | awk '{print $1}'):8080/
 | Command | Purpose |
 |---------|---------|
 | `cargo build --release` | Build optimized binary |
-| `./target/release/highper-gateway --config <file>` | Run proxy |
+| `./target/release/rust-proxy --config <file>` | Run proxy |
 | `curl http://localhost:8080/health` | Check health |
 | `curl http://localhost:9090/metrics` | Get metrics |
 | `openssl s_client -connect localhost:9443 -servername <sni>` | Test TLS passthrough |
 | `curl --http2 -H "Content-Type: application/grpc" localhost:8080/<path>` | Test gRPC |
 | `curl -H "Upgrade: websocket" localhost:8080/ws` | Test WebSocket |
-| `RUST_LOG=debug ./target/release/highper-gateway` | Debug mode |
-| `kill -HUP $(pgrep highper-gateway)` | Reload config |
-| `ss -tlnp \| grep highper-gateway` | Check ports |
+| `RUST_LOG=debug ./target/release/rust-proxy` | Debug mode |
+| `kill -HUP $(pgrep rust-proxy)` | Reload config |
+| `ss -tlnp \| grep rust-proxy` | Check ports |
 
 ---
 

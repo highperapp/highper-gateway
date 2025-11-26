@@ -597,7 +597,7 @@ server:
 ## Files Created
 
 ### Configuration
-1. **`highper-gateway/config-tier3.yaml`** - Optimized config (8 workers)
+1. **`rust-proxy/config-tier3.yaml`** - Optimized config (8 workers)
    - Result: Worse performance than baseline
    - Recommendation: Don't use, revert to 4 workers
 

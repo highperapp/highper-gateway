@@ -12,7 +12,7 @@
 
 ### 1. ✅ Added io-uring Dependency
 
-**File**: `highper-gateway/Cargo.toml`
+**File**: `rust-proxy/Cargo.toml`
 
 **Changes**:
 ```toml
@@ -35,7 +35,7 @@ io-uring = ["dep:io-uring"]
 
 ### 2. ✅ Created io_uring Shim Layer
 
-**File**: `highper-gateway/src/runtime/io_uring_shim.rs` (459 lines)
+**File**: `rust-proxy/src/runtime/io_uring_shim.rs` (459 lines)
 
 **Architecture**:
 ```
@@ -165,7 +165,7 @@ tokio::spawn(async move {
 
 ### 6. ✅ Added to Module Exports
 
-**File**: `highper-gateway/src/runtime/mod.rs`
+**File**: `rust-proxy/src/runtime/mod.rs`
 
 **Changes**:
 ```rust
@@ -402,7 +402,7 @@ cargo build --release --features io-uring
 ### Check binary has io_uring:
 ```bash
 # Will show io_uring symbols
-nm target/release/highper-gateway | grep io_uring
+nm target/release/rust-proxy | grep io_uring
 ```
 
 ---
@@ -462,11 +462,11 @@ nm target/release/highper-gateway | grep io_uring
 ## 📚 Files Modified/Created
 
 ### Modified Files:
-1. `highper-gateway/Cargo.toml` - Added io-uring dependency and feature flag
-2. `highper-gateway/src/runtime/mod.rs` - Added io_uring_shim module export
+1. `rust-proxy/Cargo.toml` - Added io-uring dependency and feature flag
+2. `rust-proxy/src/runtime/mod.rs` - Added io_uring_shim module export
 
 ### Created Files:
-1. `highper-gateway/src/runtime/io_uring_shim.rs` (459 lines) - Core io_uring shim layer
+1. `rust-proxy/src/runtime/io_uring_shim.rs` (459 lines) - Core io_uring shim layer
 2. `WEEK2_IMPLEMENTATION_PLAN.md` (873 lines) - Week 2 detailed plan
 3. `WEEK2_DAY1_PROGRESS.md` (this document)
 

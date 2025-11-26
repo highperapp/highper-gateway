@@ -1,4 +1,4 @@
-# Highper Gateway Enhancement Plan
+# Rust Proxy Enhancement Plan
 ## Making it as Easy as Caddy, as Fast as HAProxy, with Powerful Plugin System
 
 **Date**: November 3, 2025
@@ -59,7 +59,7 @@ reverse_proxy localhost:3000
 
 ### Performance Gaps vs HAProxy
 
-| Metric | HAProxy | Current Highper Gateway | Target |
+| Metric | HAProxy | Current Rust Proxy | Target |
 |--------|---------|-------------------|--------|
 | **Throughput** | 500K RPS | ~150K RPS | 500K+ RPS |
 | **Latency (p50)** | 0.3ms | 1.2ms | <0.5ms |
@@ -98,7 +98,7 @@ reverse_proxy localhost:3000
 - Self-documenting configuration format
 
 **Target**:
-```highper-gateway
+```rust-proxy
 # Simple reverse proxy (auto HTTPS)
 example.com
 reverse_proxy localhost:3000
@@ -220,7 +220,7 @@ use flurry::HashMap;
 
 ```
 ┌─────────────────────────────────────────────┐
-│           Highper Gateway Core                   │
+│           Rust Proxy Core                   │
 ├─────────────────────────────────────────────┤
 │                                             │
 │  ┌──────────────────────────────────────┐  │
@@ -271,7 +271,7 @@ use flurry::HashMap;
 
 **Plugin Example** (WASM in Rust):
 ```rust
-use highper_gateway_plugin_api::*;
+use rust_proxy_plugin_api::*;
 
 #[plugin_export]
 pub struct CustomAuthPlugin;
@@ -325,7 +325,7 @@ impl Plugin for CustomAuthPlugin {
    - Zero-touch TLS configuration
 
 **Deliverables**:
-- New `highper-gateway/src/config/dsl/` module
+- New `rust-proxy/src/config/dsl/` module
 - Caddyfile parser and transformer
 - Migration guide from YAML to DSL
 - 10+ example configurations
@@ -364,7 +364,7 @@ impl Plugin for CustomAuthPlugin {
    - RCU patterns for config reload
 
 **Deliverables**:
-- New `highper-gateway/src/runtime/uring.rs` module
+- New `rust-proxy/src/runtime/uring.rs` module
 - Zero-copy proxy implementation
 - Memory pool allocator
 - SIMD parsing modules
@@ -405,8 +405,8 @@ impl Plugin for CustomAuthPlugin {
    - Testing framework
 
 **Deliverables**:
-- New `highper-gateway-plugin` crate
-- New `highper-gateway-plugin-api` crate
+- New `rust-proxy-plugin` crate
+- New `rust-proxy-plugin-api` crate
 - Plugin manager implementation
 - WASM runtime integration
 - 5 example plugins
@@ -578,7 +578,7 @@ api.example.com {
 ### Zero-Config Mode
 ```bash
 # Automatic detection and configuration
-highper-gateway --upstream localhost:3000
+rust-proxy --upstream localhost:3000
 
 # Automatically:
 # - Binds to 80/443
@@ -596,7 +596,7 @@ highper-gateway --upstream localhost:3000
 
 **Plugin** (`plugins/jwt_auth.rs`):
 ```rust
-use highper_gateway_plugin_api::*;
+use rust_proxy_plugin_api::*;
 
 #[plugin]
 pub struct JwtAuthPlugin {
@@ -642,7 +642,7 @@ api.example.com {
 
 **Plugin** (`plugins/geo_lb.rs`):
 ```rust
-use highper_gateway_plugin_api::*;
+use rust_proxy_plugin_api::*;
 
 #[plugin]
 pub struct GeoLoadBalancerPlugin {
@@ -668,7 +668,7 @@ impl Plugin for GeoLoadBalancerPlugin {
 
 **Plugin** (`plugins/business_metrics.rs`):
 ```rust
-use highper_gateway_plugin_api::*;
+use rust_proxy_plugin_api::*;
 
 #[plugin]
 pub struct BusinessMetricsPlugin {

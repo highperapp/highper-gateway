@@ -100,7 +100,7 @@ To enable authentication, initialize the `AuthDb` and attach it to the `AdminSer
 ### Using Default Bcrypt Algorithm
 
 ```rust
-use highper_gateway::admin::auth::AuthDb;
+use rust_proxy::admin::auth::AuthDb;
 use std::sync::Arc;
 
 // Initialize auth database with default bcrypt hashing
@@ -118,7 +118,7 @@ let admin_server = AdminServer::new(config, proxy_config)
 ### Using Argon2id Algorithm (Recommended for New Deployments)
 
 ```rust
-use highper_gateway::admin::auth::{AuthDb, PasswordHashAlgorithm};
+use rust_proxy::admin::auth::{AuthDb, PasswordHashAlgorithm};
 use std::sync::Arc;
 
 // Initialize auth database with Argon2id hashing

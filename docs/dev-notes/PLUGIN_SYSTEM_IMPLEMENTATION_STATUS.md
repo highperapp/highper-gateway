@@ -5,7 +5,7 @@
 
 ## Overview
 
-We have successfully implemented the foundation of a hybrid WASM/FFI plugin system for highper-gateway, following the architecture outlined in `PLUGIN_SYSTEM_DESIGN.md`.
+We have successfully implemented the foundation of a hybrid WASM/FFI plugin system for rust-proxy, following the architecture outlined in `PLUGIN_SYSTEM_DESIGN.md`.
 
 ## Architecture
 
@@ -235,7 +235,7 @@ Features:
 3. ⏳ Performance tuning guide
 4. ⏳ Security best practices
 
-## Integration with highper-gateway
+## Integration with rust-proxy
 
 The plugin system integrates at the proxy handler level:
 

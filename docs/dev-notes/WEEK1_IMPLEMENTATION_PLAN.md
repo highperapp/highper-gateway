@@ -130,7 +130,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 **Verify**:
 ```bash
 cargo build --release
-ldd target/release/highper-gateway | grep jemalloc
+ldd target/release/rust-proxy | grep jemalloc
 # Should show: libjemalloc.so.2 => /usr/lib/...
 ```
 
@@ -240,7 +240,7 @@ let listener = tokio::net::TcpListener::from_std(std_listener)?;
 
 set -e
 
-echo "Applying kernel optimizations for highper-gateway..."
+echo "Applying kernel optimizations for rust-proxy..."
 
 # TCP TIME_WAIT optimization
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
@@ -304,7 +304,7 @@ sudo ./scripts/kernel_tuning.sh
 
 **Commands**:
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 
 # Add dependency
 cargo add once_cell
@@ -363,7 +363,7 @@ wrk -t8 -c200 -d60s http://localhost:8080/
 h2load -t8 -c200 -n100000 http://localhost:8080/
 
 # Memory profiling
-valgrind --tool=massif ./target/release/highper-gateway config/config.yaml
+valgrind --tool=massif ./target/release/rust-proxy config/config.yaml
 ```
 
 ---
@@ -394,19 +394,19 @@ valgrind --tool=massif ./target/release/highper-gateway config/config.yaml
 
 ## Files to Modify
 
-1. **`highper-gateway/Cargo.toml`**
+1. **`rust-proxy/Cargo.toml`**
    - Add: `once_cell = "1.19"`
 
-2. **`highper-gateway/src/lib.rs`** (or `main.rs`)
+2. **`rust-proxy/src/lib.rs`** (or `main.rs`)
    - Add: `#[global_allocator]` for jemalloc
 
-3. **`highper-gateway/src/runtime/buffer_pool.rs`**
+3. **`rust-proxy/src/runtime/buffer_pool.rs`**
    - Add: `GLOBAL_BUFFER_POOL` singleton
 
-4. **`highper-gateway/src/proxy/handler.rs`**
+4. **`rust-proxy/src/proxy/handler.rs`**
    - Modify: Lines 345-375 (use BufferPool)
 
-5. **`highper-gateway/src/utils/socket.rs`**
+5. **`rust-proxy/src/utils/socket.rs`**
    - Add: `create_optimized_socket()` function
 
 6. **`scripts/kernel_tuning.sh`** (NEW)
@@ -431,7 +431,7 @@ cargo test --all
 ### Integration Tests:
 ```bash
 # Start proxy
-./target/release/highper-gateway config/config.yaml
+./target/release/rust-proxy config/config.yaml
 
 # Test with wrk
 wrk -t4 -c100 -d30s http://localhost:8080/
@@ -443,10 +443,10 @@ h2load -t4 -c100 -n10000 http://localhost:8080/
 ### Memory Profiling:
 ```bash
 # Check for leaks
-valgrind --leak-check=full ./target/release/highper-gateway config/config.yaml
+valgrind --leak-check=full ./target/release/rust-proxy config/config.yaml
 
 # Memory usage over time
-valgrind --tool=massif ./target/release/highper-gateway config/config.yaml
+valgrind --tool=massif ./target/release/rust-proxy config/config.yaml
 ```
 
 ---

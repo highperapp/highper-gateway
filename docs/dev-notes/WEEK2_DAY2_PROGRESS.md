@@ -12,7 +12,7 @@
 
 ### 1. ✅ Designed and Implemented AsyncIoBackend Trait
 
-**File**: `highper-gateway/src/runtime/io_backend.rs` (202 lines)
+**File**: `rust-proxy/src/runtime/io_backend.rs` (202 lines)
 
 **Architecture**:
 ```rust
@@ -59,7 +59,7 @@ fn select_best_backend() -> Box<dyn AsyncIoBackend> {
 
 ### 2. ✅ Created io_uring Backend Implementation
 
-**File**: `highper-gateway/src/runtime/io_uring_backend.rs` (83 lines)
+**File**: `rust-proxy/src/runtime/io_uring_backend.rs` (83 lines)
 
 **Implementation**:
 ```rust
@@ -93,7 +93,7 @@ impl AsyncIoBackend for IoUringBackend {
 
 ### 3. ✅ Created epoll/kqueue Fallback Backend
 
-**File**: `highper-gateway/src/runtime/epoll_backend.rs` (145 lines)
+**File**: `rust-proxy/src/runtime/epoll_backend.rs` (145 lines)
 
 **Implementation**:
 ```rust
@@ -170,7 +170,7 @@ pub fn is_io_uring_available() -> bool {
 
 ### 5. ✅ Updated Module Exports
 
-**File**: `highper-gateway/src/runtime/mod.rs`
+**File**: `rust-proxy/src/runtime/mod.rs`
 
 **Changes**:
 ```rust
@@ -460,13 +460,13 @@ async fn accept(&self, fd: RawFd) -> io::Result<(TcpStream, SocketAddr)> {
 ## 📚 Files Modified/Created
 
 ### Created Files:
-1. `highper-gateway/src/runtime/io_backend.rs` (202 lines) - Trait and auto-selection
-2. `highper-gateway/src/runtime/io_uring_backend.rs` (83 lines) - io_uring adapter
-3. `highper-gateway/src/runtime/epoll_backend.rs` (145 lines) - epoll/kqueue adapter
-4. `highper-gateway/src/runtime/hybrid_stream.rs` (287 lines) - TCP stream wrapper (TODO: fix borrow checker)
+1. `rust-proxy/src/runtime/io_backend.rs` (202 lines) - Trait and auto-selection
+2. `rust-proxy/src/runtime/io_uring_backend.rs` (83 lines) - io_uring adapter
+3. `rust-proxy/src/runtime/epoll_backend.rs` (145 lines) - epoll/kqueue adapter
+4. `rust-proxy/src/runtime/hybrid_stream.rs` (287 lines) - TCP stream wrapper (TODO: fix borrow checker)
 
 ### Modified Files:
-1. `highper-gateway/src/runtime/mod.rs` - Added module exports
+1. `rust-proxy/src/runtime/mod.rs` - Added module exports
 
 ### Total New Code:
 - **Lines added**: ~717 lines

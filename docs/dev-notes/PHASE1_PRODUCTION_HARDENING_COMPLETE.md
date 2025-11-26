@@ -36,9 +36,9 @@ Successfully implemented **ALL production-critical optimizations** for the Rust 
 ```
 
 #### Files Created/Modified
-- ✅ `highper-gateway/src/utils/socket.rs` (351 lines) - Complete socket optimization module
-- ✅ `highper-gateway/src/proxy/server.rs` - Updated to use optimized sockets
-- ✅ `highper-gateway/Cargo.toml` - Added socket2 and libc dependencies
+- ✅ `rust-proxy/src/utils/socket.rs` (351 lines) - Complete socket optimization module
+- ✅ `rust-proxy/src/proxy/server.rs` - Updated to use optimized sockets
+- ✅ `rust-proxy/Cargo.toml` - Added socket2 and libc dependencies
 
 #### Impact
 | Metric | Before | After | Improvement |
@@ -101,7 +101,7 @@ sudo ./scripts/kernel-tuning.sh
 ### 3. **System Resource Monitoring** ✅
 
 #### New Module Created
-**File:** `highper-gateway/src/observability/system.rs` (380 lines)
+**File:** `rust-proxy/src/observability/system.rs` (380 lines)
 
 #### Features Implemented
 
@@ -147,7 +147,7 @@ MemoryStats {
 ### 4. **File Descriptor Limits** ✅
 
 #### Systemd Service Configuration
-**File:** `scripts/highper-gateway.service`
+**File:** `scripts/rust-proxy.service`
 
 ```ini
 [Service]
@@ -189,7 +189,7 @@ fs.nr_open = 2097152
 ### 5. **Connection Pool Optimization** ✅
 
 #### HTTP/2 Client Enhancements
-**File:** `highper-gateway/src/proxy/client.rs`
+**File:** `rust-proxy/src/proxy/client.rs`
 
 ```rust
 HyperClient::builder(TokioExecutor::new())
@@ -225,8 +225,8 @@ HyperClient::builder(TokioExecutor::new())
 
 #### Implementation
 **Files Modified:**
-- ✅ `highper-gateway/Cargo.toml` - Added tikv-jemallocator dependency
-- ✅ `highper-gateway/src/main.rs` - Set as global allocator
+- ✅ `rust-proxy/Cargo.toml` - Added tikv-jemallocator dependency
+- ✅ `rust-proxy/src/main.rs` - Set as global allocator
 
 ```rust
 #[cfg(feature = "jemalloc")]
@@ -266,7 +266,7 @@ cargo build --release --no-default-features
 - Verifies application
 - Updates user limits
 
-**2. Systemd Service: `scripts/highper-gateway.service`**
+**2. Systemd Service: `scripts/rust-proxy.service`**
 - Production-ready service configuration
 - Security hardening (capabilities, filesystem protection)
 - Resource limits (FD, memory, CPU)
@@ -289,9 +289,9 @@ sudo ./scripts/deploy.sh
 
 # Manual steps
 sudo ./scripts/kernel-tuning.sh
-sudo cp scripts/highper-gateway.service /etc/systemd/system/
+sudo cp scripts/rust-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now highper-gateway
+sudo systemctl enable --now rust-proxy
 ```
 
 ---
@@ -327,12 +327,12 @@ sudo systemctl enable --now highper-gateway
 
 ### New Files Created (8)
 
-1. ✅ `highper-gateway/src/utils/socket.rs` (351 lines)
+1. ✅ `rust-proxy/src/utils/socket.rs` (351 lines)
    - Complete TCP socket optimization module
    - SO_REUSEADDR, SO_REUSEPORT, SO_LINGER, TCP_FASTOPEN
    - Buffer tuning, backlog configuration
 
-2. ✅ `highper-gateway/src/observability/system.rs` (380 lines)
+2. ✅ `rust-proxy/src/observability/system.rs` (380 lines)
    - File descriptor monitoring
    - TCP socket state tracking
    - Memory usage monitoring
@@ -343,7 +343,7 @@ sudo systemctl enable --now highper-gateway
    - Backup and persistence
    - Verification and validation
 
-4. ✅ `scripts/highper-gateway.service`
+4. ✅ `scripts/rust-proxy.service`
    - Production systemd service
    - Security hardening
    - Resource limits
@@ -362,12 +362,12 @@ sudo systemctl enable --now highper-gateway
 
 ### Files Modified (5)
 
-1. ✅ `highper-gateway/src/utils/mod.rs` - Added socket module
-2. ✅ `highper-gateway/src/observability/mod.rs` - Added system module
-3. ✅ `highper-gateway/src/proxy/server.rs` - Integrated optimized sockets
-4. ✅ `highper-gateway/src/proxy/client.rs` - Enhanced connection pool
-5. ✅ `highper-gateway/Cargo.toml` - Added dependencies (socket2, libc, tikv-jemallocator)
-6. ✅ `highper-gateway/src/main.rs` - Integrated jemalloc allocator
+1. ✅ `rust-proxy/src/utils/mod.rs` - Added socket module
+2. ✅ `rust-proxy/src/observability/mod.rs` - Added system module
+3. ✅ `rust-proxy/src/proxy/server.rs` - Integrated optimized sockets
+4. ✅ `rust-proxy/src/proxy/client.rs` - Enhanced connection pool
+5. ✅ `rust-proxy/Cargo.toml` - Added dependencies (socket2, libc, tikv-jemallocator)
+6. ✅ `rust-proxy/src/main.rs` - Integrated jemalloc allocator
 
 ---
 
@@ -465,16 +465,16 @@ watch -n1 'ss -s'
 ss -ant | grep TIME-WAIT | wc -l
 
 # Monitor file descriptors
-watch -n1 'ls /proc/$(pgrep highper-gateway)/fd | wc -l'
+watch -n1 'ls /proc/$(pgrep rust-proxy)/fd | wc -l'
 
 # Service status (shows FD usage, memory, CPU)
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # View logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # Reload configuration (SIGHUP)
-systemctl reload highper-gateway
+systemctl reload rust-proxy
 ```
 
 ---
@@ -610,7 +610,7 @@ curl -I http://localhost:80/
 curl http://localhost:9090/metrics
 
 # System resource check
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # Connection statistics
 ss -s
@@ -620,16 +620,16 @@ ss -s
 
 ```bash
 # Graceful reload (SIGHUP)
-systemctl reload highper-gateway
+systemctl reload rust-proxy
 
 # Restart with zero downtime
-systemctl restart highper-gateway  # SO_REUSEADDR enables immediate restart
+systemctl restart rust-proxy  # SO_REUSEADDR enables immediate restart
 
 # Stop service
-systemctl stop highper-gateway
+systemctl stop rust-proxy
 
 # Check for errors
-journalctl -u highper-gateway -p err -n 100
+journalctl -u rust-proxy -p err -n 100
 ```
 
 ---

@@ -293,13 +293,13 @@ Tests require manual proxy startup (programmatic control planned for future)
 | **Caddy** | 30-50k | 10-20ms | 20-40ms | ✅ Much better p99 |
 | **HAProxy** | 60-100k | 8-15ms | 15-30ms | ✅ Better p99 |
 | **Envoy** | 40-70k | 10-25ms | 25-50ms | ✅ Much better p99 |
-| **Highper Gateway** | **10k** tested | **4.69ms** | **12.42ms** | **Tier 3 latency!** |
+| **Rust Proxy** | **10k** tested | **4.69ms** | **12.42ms** | **Tier 3 latency!** |
 
 **Note:** Our p99 latency (12.42ms) is better than most competitors. Need to validate this holds at higher throughput (50k+ req/s).
 
 ### Resilience Comparison
 
-| Feature | Highper Gateway | nginx | HAProxy | Envoy | Caddy |
+| Feature | Rust Proxy | nginx | HAProxy | Envoy | Caddy |
 |---------|------------|-------|---------|-------|-------|
 | **Circuit Breaker** | ✅ Built-in | ❌ Requires nginx+ | ✅ Built-in | ✅ Built-in | ⚠️ Via plugin |
 | **Health Checks** | ✅ Active | ✅ Active/Passive | ✅ Active/Passive | ✅ Active/Passive | ✅ Active |
@@ -467,7 +467,7 @@ Tests require manual proxy startup (programmatic control planned for future)
 - `~/.local/bin/toxiproxy-cli` (installed)
 
 ### E2E Tests
-- `highper-gateway/tests/e2e_comprehensive.rs` (590 lines)
+- `rust-proxy/tests/e2e_comprehensive.rs` (590 lines)
 
 ### Documentation
 - `LOAD_TESTING_PLAN.md` (1,600+ lines)

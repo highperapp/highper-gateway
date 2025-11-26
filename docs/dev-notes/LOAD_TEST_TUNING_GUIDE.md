@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document captures the OS/TCP tuning settings, architecture, and observations from load testing highper-gateway on DigitalOcean droplets.
+This document captures the OS/TCP tuning settings, architecture, and observations from load testing rust-proxy on DigitalOcean droplets.
 
 ## Architecture
 
@@ -10,13 +10,13 @@ This document captures the OS/TCP tuning settings, architecture, and observation
 
 | Component | Droplet Size | Private IP | Public IP | Count |
 |-----------|-------------|------------|-----------|-------|
-| highper-gateway | c-32 (32 vCPU, 64GB) | 10.20.0.2 | 143.110.184.230 | 1 |
+| rust-proxy | c-32 (32 vCPU, 64GB) | 10.20.0.2 | 143.110.184.230 | 1 |
 | Backend | c-8 (8 vCPU, 16GB) | 10.20.0.6-8 | Various | 3 |
 | Load Generator | c-32 (32 vCPU, 64GB) | 10.20.0.9-11 | Various | 3 |
 
 ### Network
 
-- All components in same VPC: `highper-gateway-loadtest-vpc`
+- All components in same VPC: `rust-proxy-loadtest-vpc`
 - VPC UUID: `7d4149fa-258a-4c0e-8279-7bc3e945a1ff`
 - Region: `blr1` (Bangalore)
 - Subnet: `10.20.0.0/16`
@@ -49,7 +49,7 @@ echo "* hard nofile 1000000" >> /etc/security/limits.conf
 ulimit -n 1000000
 ```
 
-### For highper-gateway
+### For rust-proxy
 
 ```bash
 # Same as load generators
@@ -72,7 +72,7 @@ sysctl -w net.core.somaxconn=65535
 sysctl -w net.ipv4.tcp_max_syn_backlog=65535
 ```
 
-## highper-gateway Configuration
+## rust-proxy Configuration
 
 ```toml
 [server]
@@ -156,7 +156,7 @@ Load generators in `default-blr1` VPC (10.122.0.x) connecting to proxy via publi
 
 ### Private IP Testing (Same VPC)
 
-Load generators in `highper-gateway-loadtest-vpc` (10.20.0.x) connecting via private IP.
+Load generators in `rust-proxy-loadtest-vpc` (10.20.0.x) connecting via private IP.
 
 | Target RPS | Generators | Actual RPS | Success | P50 | Notes |
 |------------|------------|------------|---------|-----|-------|
@@ -172,7 +172,7 @@ When comparing public vs private IP with same-VPC generators:
 - **Public IP (2 x 100k)**: ~192k RPS achieved
 - **Private IP (2 x 100k)**: ~128k RPS achieved
 
-The bottleneck is **DigitalOcean VPC internal bandwidth**, not highper-gateway. Use public IP for maximum throughput when generators are in same VPC.
+The bottleneck is **DigitalOcean VPC internal bandwidth**, not rust-proxy. Use public IP for maximum throughput when generators are in same VPC.
 
 ## Observations and Issues
 
@@ -180,7 +180,7 @@ The bottleneck is **DigitalOcean VPC internal bandwidth**, not highper-gateway. 
 
 **Problem**: Default `max_idle_per_host = 100` in Hyper client caused connection churn.
 
-**Solution**: Modified `highper-gateway/src/proxy/handler.rs` to use config pool settings:
+**Solution**: Modified `rust-proxy/src/proxy/handler.rs` to use config pool settings:
 ```rust
 let pool_config = config.server.performance.connection_pool.clone();
 let client = Client::with_config(None, Some(pool_config));
@@ -247,9 +247,9 @@ Using `perf record -F 999` during load:
 | 0.74% | __fdget | Kernel - Socket FD lookup |
 | 0.73% | aa_inet_msg_perm | Kernel - AppArmor security |
 
-**Key Finding: highper-gateway is NOT the bottleneck!**
+**Key Finding: rust-proxy is NOT the bottleneck!**
 - All userspace functions < 1% CPU each
-- No single hot spot in highper-gateway code
+- No single hot spot in rust-proxy code
 - Proxy uses only 7% total CPU at 200k RPS
 - Code is highly optimized - evenly distributed workload
 
@@ -299,7 +299,7 @@ ss -s
 
 # If many TIME_WAIT, wait 60s or restart services
 # On proxy:
-systemctl restart highper-gateway
+systemctl restart rust-proxy
 
 # On load generators - clear TIME_WAIT by waiting or rebooting
 # Verify: ss -s should show <100 total connections
@@ -318,7 +318,7 @@ sysctl net.ipv4.tcp_tw_reuse     # Should be 1
 ulimit -n                        # Should be 1000000
 
 # Verify on proxy
-systemctl show highper-gateway -p LimitNOFILE  # Should be 1048576
+systemctl show rust-proxy -p LimitNOFILE  # Should be 1048576
 ```
 
 ### Tuning Script
@@ -344,7 +344,7 @@ sysctl -w net.core.wmem_max=16777216
 
 ### Next Steps
 
-1. **Investigate degradation**: Profile highper-gateway during multi-generator load
+1. **Investigate degradation**: Profile rust-proxy during multi-generator load
 2. **Test backend scaling**: Try larger backend droplets or more instances
 3. **Connection pool debugging**: Add logging to track pool state
 4. **Consider SO_REUSEPORT**: May help with multi-generator contention

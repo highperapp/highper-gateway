@@ -260,10 +260,10 @@ async fn proxy_request(...) {
 
 #### 1.2 Verify jemalloc is Active (1 hour)
 ```bash
-cd highper-gateway
+cd rust-proxy
 cargo build --release --features jemalloc
 # Verify with:
-ldd target/release/highper-gateway | grep jemalloc
+ldd target/release/rust-proxy | grep jemalloc
 ```
 
 ---

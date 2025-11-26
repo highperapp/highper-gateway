@@ -23,8 +23,8 @@ Successfully completed all critical hardening tasks for v1.0. Pivoted from exten
 - **Result:** Zero future incompatibility warnings
 
 **Files Modified:**
-- `highper-gateway/Cargo.toml` (line 142)
-- `highper-gateway/src/cache/backends.rs` (lines 238, 242, 277)
+- `rust-proxy/Cargo.toml` (line 142)
+- `rust-proxy/src/cache/backends.rs` (lines 238, 242, 277)
 
 ### 2. Compiler Warnings - 52% REDUCTION
 **Before:**
@@ -72,7 +72,7 @@ Successfully completed all critical hardening tasks for v1.0. Pivoted from exten
 - Exception for ip2location (MIT verified)
 
 **Deliverables:**
-- `highper-gateway/deny.toml` - Security audit configuration
+- `rust-proxy/deny.toml` - Security audit configuration
 - `DEPENDENCY_SECURITY_AUDIT.md` - Comprehensive audit report
 
 ### 4. Feature Configuration Fixes - RESOLVED
@@ -251,14 +251,14 @@ echo "kernel.perf_event_paranoid = -1" | sudo tee -a /etc/sysctl.conf
 5. **WEEK4_DAY20_SESSION_SUMMARY.md** - This file
 
 ### Configuration
-6. **highper-gateway/deny.toml** - cargo-deny security configuration
+6. **rust-proxy/deny.toml** - cargo-deny security configuration
 
 ### Modified Source Files
-7. **highper-gateway/Cargo.toml** - Redis & sqlx upgrades
-8. **highper-gateway/src/cache/backends.rs** - Type annotations
-9. **highper-gateway/src/observability/system.rs** - Removed invalid feature flags
-10. **highper-gateway/src/middleware/body_access.rs** - Removed invalid feature flags
-11. **highper-gateway/src/discovery/mod.rs** - Fixed etcd feature name
+7. **rust-proxy/Cargo.toml** - Redis & sqlx upgrades
+8. **rust-proxy/src/cache/backends.rs** - Type annotations
+9. **rust-proxy/src/observability/system.rs** - Removed invalid feature flags
+10. **rust-proxy/src/middleware/body_access.rs** - Removed invalid feature flags
+11. **rust-proxy/src/discovery/mod.rs** - Fixed etcd feature name
 12. **48 auto-fixed files** - Via cargo fix
 
 ---

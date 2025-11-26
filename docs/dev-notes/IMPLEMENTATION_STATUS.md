@@ -174,37 +174,37 @@ All 12 implementation specifications have been successfully created:
 #### Test Fixes Completed (Phase 1.1):
 
 1. **✅ TLS Stream Size Test** - FIXED
-   - File: `highper-gateway/src/tls/acceptor.rs:95-108`
+   - File: `rust-proxy/src/tls/acceptor.rs:95-108`
    - Issue: Assertion expected < 1024 bytes, actual size is larger due to TLS buffers
    - Fix: Updated assertion to < 32KB with informative error message
    - Result: **Test passes** ✅
 
 2. **✅ JWT Expired Token Test** - FIXED
-   - File: `highper-gateway/src/gateway/auth/jwt.rs:304-340`
+   - File: `rust-proxy/src/gateway/auth/jwt.rs:304-340`
    - Issue: Default JwtConfig had 60-second leeway period
    - Fix: Created JwtConfig with `leeway: 0` for test
    - Result: **Test passes** ✅
 
 3. **✅ Metrics Initialization Test** - FIXED
-   - File: `highper-gateway/src/observability/metrics.rs:172-195`
+   - File: `rust-proxy/src/observability/metrics.rs:172-195`
    - Issue: Global Prometheus recorder conflict between tests
    - Fix: Used OnceLock to ensure single global recorder
    - Result: **Test passes** ✅
 
 4. **✅ Metrics Record Request Test** - FIXED
-   - File: `highper-gateway/src/observability/metrics.rs:197-203`
+   - File: `rust-proxy/src/observability/metrics.rs:197-203`
    - Issue: Test isolation with global recorder
    - Fix: Shared test metrics initialization via OnceLock
    - Result: **Test passes** ✅
 
 5. **✅ Metrics Request Timer Test** - FIXED
-   - File: `highper-gateway/src/observability/metrics.rs:205-213`
+   - File: `rust-proxy/src/observability/metrics.rs:205-213`
    - Issue: Test isolation with global recorder
    - Fix: Shared test metrics initialization via OnceLock
    - Result: **Test passes** ✅
 
 6. **✅ Metrics Creation Test** - FIXED
-   - File: `highper-gateway/src/observability/server.rs:114-129`
+   - File: `rust-proxy/src/observability/server.rs:114-129`
    - Issue: Duplicate Prometheus recorder installation
    - Fix: Rewrote test to avoid creating duplicate recorder
    - Result: **Test passes** ✅
@@ -244,19 +244,19 @@ Pass rate: 99.2% (1 known flaky watcher test)
 
 ## Files Modified
 
-1. ✅ `highper-gateway/src/tls/acceptor.rs`
+1. ✅ `rust-proxy/src/tls/acceptor.rs`
    - Lines 95-108 (test_maybe_tls_stream_size)
    - Status: Complete and passing
 
-2. ✅ `highper-gateway/src/gateway/auth/jwt.rs`
+2. ✅ `rust-proxy/src/gateway/auth/jwt.rs`
    - Lines 304-340 (test_jwt_expired_token)
    - Status: Complete and passing
 
-3. ✅ `highper-gateway/src/observability/metrics.rs`
+3. ✅ `rust-proxy/src/observability/metrics.rs`
    - Lines 172-213 (metrics test isolation)
    - Status: Complete and passing
 
-4. ✅ `highper-gateway/src/observability/server.rs`
+4. ✅ `rust-proxy/src/observability/server.rs`
    - Lines 114-129 (test_observability_server_creation)
    - Status: Complete and passing
 
@@ -411,10 +411,10 @@ All located in `specs/` directory:
 - Git History: `GIT_COMMIT_SUMMARY.md`
 
 ### Code Locations:
-- Tests: `highper-gateway/src/*/tests.rs`
-- Metrics: `highper-gateway/src/observability/`
-- TLS: `highper-gateway/src/tls/`
-- Auth: `highper-gateway/src/gateway/auth/`
+- Tests: `rust-proxy/src/*/tests.rs`
+- Metrics: `rust-proxy/src/observability/`
+- TLS: `rust-proxy/src/tls/`
+- Auth: `rust-proxy/src/gateway/auth/`
 
 ---
 

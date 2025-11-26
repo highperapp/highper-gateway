@@ -31,7 +31,7 @@
 - [ ] **Obtain TLS certificates** (Let's Encrypt, commercial CA)
 - [ ] **Configure DNS** (A/AAAA records pointing to proxy)
 - [ ] **Setup firewall rules** (allow 80/443, block admin port)
-- [ ] **Test configuration** (`highper-gateway check --config config.toml`)
+- [ ] **Test configuration** (`rust-proxy check --config config.toml`)
 - [ ] **Run security validation** (`./load-tests/security-validation.sh`)
 - [ ] **Setup monitoring** (Prometheus + Grafana)
 - [ ] **Configure alerting** (PagerDuty, Slack, email)
@@ -121,50 +121,50 @@ source $HOME/.cargo/env
 
 # 2. Clone repository
 git clone https://github.com/your-org/reverse_proxy.git
-cd reverse_proxy/highper-gateway
+cd reverse_proxy/rust-proxy
 
 # 3. Build release binary (optimized)
 cargo build --release
 
 # 4. Install binary
-sudo cp target/release/highper-gateway /usr/local/bin/
-sudo chmod +x /usr/local/bin/highper-gateway
+sudo cp target/release/rust-proxy /usr/local/bin/
+sudo chmod +x /usr/local/bin/rust-proxy
 
 # 5. Verify installation
-highper-gateway --version
+rust-proxy --version
 ```
 
 ### Method 2: Binary Package (Quick Deploy)
 
 ```bash
 # Download pre-built binary
-wget https://releases.example.com/highper-gateway-v0.1.0-linux-amd64.tar.gz
-tar xzf highper-gateway-v0.1.0-linux-amd64.tar.gz
+wget https://releases.example.com/rust-proxy-v0.1.0-linux-amd64.tar.gz
+tar xzf rust-proxy-v0.1.0-linux-amd64.tar.gz
 
 # Install
-sudo mv highper-gateway /usr/local/bin/
-sudo chmod +x /usr/local/bin/highper-gateway
+sudo mv rust-proxy /usr/local/bin/
+sudo chmod +x /usr/local/bin/rust-proxy
 ```
 
 ### Directory Structure
 
 ```bash
 # Create directory structure
-sudo mkdir -p /etc/highper-gateway
-sudo mkdir -p /var/log/highper-gateway
-sudo mkdir -p /var/lib/highper-gateway
+sudo mkdir -p /etc/rust-proxy
+sudo mkdir -p /var/log/rust-proxy
+sudo mkdir -p /var/lib/rust-proxy
 
 # Set permissions
-sudo chown -R highper-gateway:highper-gateway /etc/highper-gateway
-sudo chown -R highper-gateway:highper-gateway /var/log/highper-gateway
-sudo chown -R highper-gateway:highper-gateway /var/lib/highper-gateway
+sudo chown -R rust-proxy:rust-proxy /etc/rust-proxy
+sudo chown -R rust-proxy:rust-proxy /var/log/rust-proxy
+sudo chown -R rust-proxy:rust-proxy /var/lib/rust-proxy
 ```
 
 ### Create Service User
 
 ```bash
 # Create dedicated user for security
-sudo useradd -r -s /bin/false -d /var/lib/highper-gateway highper-gateway
+sudo useradd -r -s /bin/false -d /var/lib/rust-proxy rust-proxy
 ```
 
 ---
@@ -173,7 +173,7 @@ sudo useradd -r -s /bin/false -d /var/lib/highper-gateway highper-gateway
 
 ### Production Configuration Template
 
-Copy `config-production-secure.toml` to `/etc/highper-gateway/config.toml` and customize:
+Copy `config-production-secure.toml` to `/etc/rust-proxy/config.toml` and customize:
 
 ```toml
 [server]
@@ -205,7 +205,7 @@ bind = "127.0.0.1:9090"  # Localhost only!
 
 ```bash
 # Check configuration syntax
-highper-gateway check --config /etc/highper-gateway/config.toml
+rust-proxy check --config /etc/rust-proxy/config.toml
 
 # Expected output:
 # ✅ Configuration is valid
@@ -217,7 +217,7 @@ highper-gateway check --config /etc/highper-gateway/config.toml
 
 ### Method 1: Systemd Service (Recommended)
 
-Create `/etc/systemd/system/highper-gateway.service`:
+Create `/etc/systemd/system/rust-proxy.service`:
 
 ```ini
 [Unit]
@@ -228,11 +228,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=highper-gateway
-Group=highper-gateway
+User=rust-proxy
+Group=rust-proxy
 
 # Binary location
-ExecStart=/usr/local/bin/highper-gateway start --config /etc/highper-gateway/config.toml
+ExecStart=/usr/local/bin/rust-proxy start --config /etc/rust-proxy/config.toml
 
 # Restart policy
 Restart=always
@@ -249,12 +249,12 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/highper-gateway /var/lib/highper-gateway
+ReadWritePaths=/var/log/rust-proxy /var/lib/rust-proxy
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=highper-gateway
+SyslogIdentifier=rust-proxy
 
 # Environment
 Environment="RUST_LOG=info"
@@ -271,16 +271,16 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 
 # Enable on boot
-sudo systemctl enable highper-gateway
+sudo systemctl enable rust-proxy
 
 # Start service
-sudo systemctl start highper-gateway
+sudo systemctl start rust-proxy
 
 # Check status
-sudo systemctl status highper-gateway
+sudo systemctl status rust-proxy
 
 # View logs
-sudo journalctl -u highper-gateway -f
+sudo journalctl -u rust-proxy -f
 ```
 
 ### Method 2: Docker Container
@@ -306,17 +306,17 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create user
-RUN useradd -r -s /bin/false highper-gateway
+RUN useradd -r -s /bin/false rust-proxy
 
 # Copy binary
-COPY --from=builder /build/target/release/highper-gateway /usr/local/bin/
+COPY --from=builder /build/target/release/rust-proxy /usr/local/bin/
 
 # Create directories
-RUN mkdir -p /etc/highper-gateway /var/log/highper-gateway && \
-    chown highper-gateway:highper-gateway /var/log/highper-gateway
+RUN mkdir -p /etc/rust-proxy /var/log/rust-proxy && \
+    chown rust-proxy:rust-proxy /var/log/rust-proxy
 
 # Switch to non-root user
-USER highper-gateway
+USER rust-proxy
 
 # Expose ports
 EXPOSE 80 443 9090
@@ -326,29 +326,29 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD curl -f http://localhost:9090/health || exit 1
 
 # Start proxy
-ENTRYPOINT ["/usr/local/bin/highper-gateway"]
-CMD ["start", "--config", "/etc/highper-gateway/config.toml"]
+ENTRYPOINT ["/usr/local/bin/rust-proxy"]
+CMD ["start", "--config", "/etc/rust-proxy/config.toml"]
 ```
 
 **Build and Run:**
 
 ```bash
 # Build image
-docker build -t highper-gateway:latest .
+docker build -t rust-proxy:latest .
 
 # Run container
 docker run -d \
-  --name highper-gateway \
+  --name rust-proxy \
   -p 80:80 \
   -p 443:443 \
   -p 9090:9090 \
-  -v /etc/highper-gateway:/etc/highper-gateway:ro \
-  -v /var/log/highper-gateway:/var/log/highper-gateway \
+  -v /etc/rust-proxy:/etc/rust-proxy:ro \
+  -v /var/log/rust-proxy:/var/log/rust-proxy \
   --restart unless-stopped \
-  highper-gateway:latest
+  rust-proxy:latest
 
 # View logs
-docker logs -f highper-gateway
+docker logs -f rust-proxy
 ```
 
 ### Method 3: Docker Compose
@@ -359,17 +359,17 @@ Create `docker-compose.yml`:
 version: '3.8'
 
 services:
-  highper-gateway:
-    image: highper-gateway:latest
-    container_name: highper-gateway
+  rust-proxy:
+    image: rust-proxy:latest
+    container_name: rust-proxy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
       - "127.0.0.1:9090:9090"
     volumes:
-      - ./config:/etc/highper-gateway:ro
-      - ./logs:/var/log/highper-gateway
+      - ./config:/etc/rust-proxy:ro
+      - ./logs:/var/log/rust-proxy
       - ./certs:/etc/ssl/certs:ro
     environment:
       - RUST_LOG=info
@@ -433,21 +433,21 @@ Create `k8s-deployment.yaml`:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: highper-gateway
+  name: rust-proxy
   namespace: default
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: highper-gateway
+      app: rust-proxy
   template:
     metadata:
       labels:
-        app: highper-gateway
+        app: rust-proxy
     spec:
       containers:
-      - name: highper-gateway
-        image: highper-gateway:latest
+      - name: rust-proxy
+        image: rust-proxy:latest
         ports:
         - containerPort: 80
         - containerPort: 443
@@ -473,23 +473,23 @@ spec:
           periodSeconds: 5
         volumeMounts:
         - name: config
-          mountPath: /etc/highper-gateway
+          mountPath: /etc/rust-proxy
           readOnly: true
       volumes:
       - name: config
         configMap:
-          name: highper-gateway-config
+          name: rust-proxy-config
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: highper-gateway
+  name: rust-proxy
   namespace: default
 spec:
   type: LoadBalancer
   selector:
-    app: highper-gateway
+    app: rust-proxy
   ports:
   - name: http
     port: 80
@@ -503,8 +503,8 @@ spec:
 
 ```bash
 kubectl apply -f k8s-deployment.yaml
-kubectl get pods -l app=highper-gateway
-kubectl logs -f deployment/highper-gateway
+kubectl get pods -l app=rust-proxy
+kubectl logs -f deployment/rust-proxy
 ```
 
 ---
@@ -581,7 +581,7 @@ echo "GET https://yourdomain.com/" | vegeta attack \
 
 ### Alert Configuration
 
-See `monitoring/highper_gateway_alerts.yml` for pre-configured alerts.
+See `monitoring/rust_proxy_alerts.yml` for pre-configured alerts.
 
 **Critical Alerts:**
 - P99 latency > 2s for 5min
@@ -627,7 +627,7 @@ See `monitoring/highper_gateway_alerts.yml` for pre-configured alerts.
 
 ```bash
 # Graceful reload (no downtime)
-sudo systemctl reload highper-gateway
+sudo systemctl reload rust-proxy
 
 # Or via admin API
 curl -X POST http://localhost:9090/reload
@@ -635,19 +635,19 @@ curl -X POST http://localhost:9090/reload
 
 ### Log Rotation
 
-Create `/etc/logrotate.d/highper-gateway`:
+Create `/etc/logrotate.d/rust-proxy`:
 
 ```
-/var/log/highper-gateway/*.log {
+/var/log/rust-proxy/*.log {
     daily
     rotate 14
     compress
     delaycompress
     notifempty
-    create 0640 highper-gateway highper-gateway
+    create 0640 rust-proxy rust-proxy
     sharedscripts
     postrotate
-        systemctl reload highper-gateway
+        systemctl reload rust-proxy
     endscript
 }
 ```
@@ -660,11 +660,11 @@ Create `/etc/logrotate.d/highper-gateway`:
 
 **Check logs:**
 ```bash
-sudo journalctl -u highper-gateway -n 50
+sudo journalctl -u rust-proxy -n 50
 ```
 
 **Common causes:**
-- Configuration error → Run `highper-gateway check --config config.toml`
+- Configuration error → Run `rust-proxy check --config config.toml`
 - Port already in use → Check with `sudo lsof -i :443`
 - Permission denied → Check file permissions and user
 - Missing certificates → Verify cert/key paths
@@ -691,7 +691,7 @@ curl http://localhost:9090/metrics | grep connection_pool
 **Diagnosis:**
 ```bash
 # Monitor memory usage
-watch -n 1 'ps aux | grep highper-gateway'
+watch -n 1 'ps aux | grep rust-proxy'
 
 # Check for connection leaks
 ss -ant | grep ESTABLISHED | wc -l
@@ -769,12 +769,12 @@ max_connections_per_upstream = 1000  # Scale per backend
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: highper-gateway-hpa
+  name: rust-proxy-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: highper-gateway
+    name: rust-proxy
   minReplicas: 3
   maxReplicas: 10
   metrics:
@@ -798,7 +798,7 @@ spec:
 
 ### What to Backup
 
-- [ ] Configuration files (`/etc/highper-gateway/`)
+- [ ] Configuration files (`/etc/rust-proxy/`)
 - [ ] TLS certificates (`/etc/ssl/`)
 - [ ] Metrics data (Prometheus)
 - [ ] Logs (if needed for compliance)
@@ -807,13 +807,13 @@ spec:
 
 ```bash
 #!/bin/bash
-BACKUP_DIR="/var/backups/highper-gateway"
+BACKUP_DIR="/var/backups/rust-proxy"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
 # Backup configuration
-tar czf "$BACKUP_DIR/config_$DATE.tar.gz" /etc/highper-gateway/
+tar czf "$BACKUP_DIR/config_$DATE.tar.gz" /etc/rust-proxy/
 
 # Backup certificates
 tar czf "$BACKUP_DIR/certs_$DATE.tar.gz" /etc/ssl/certs/ /etc/ssl/private/

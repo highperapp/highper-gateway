@@ -5,7 +5,7 @@
 
 ## Overview
 
-Highper Gateway supports mutual TLS (mTLS) authentication, allowing you to verify client certificates and implement certificate-based authentication and authorization. This enables secure machine-to-machine communication and fine-grained access control.
+Rust Proxy supports mutual TLS (mTLS) authentication, allowing you to verify client certificates and implement certificate-based authentication and authorization. This enables secure machine-to-machine communication and fine-grained access control.
 
 ## Features
 
@@ -218,7 +218,7 @@ mtls:
 
 ## Certificate Information Headers
 
-When a client certificate is provided, Highper Gateway extracts information and forwards it to backend services as HTTP headers:
+When a client certificate is provided, Rust Proxy extracts information and forwards it to backend services as HTTP headers:
 
 | Header | Description | Example |
 |--------|-------------|---------|
@@ -416,7 +416,7 @@ curl: (35) error:14094410:SSL routines:ssl3_read_bytes:sslv3 alert handshake fai
 
 ### Log Messages
 
-Highper Gateway logs mTLS events:
+Rust Proxy logs mTLS events:
 
 ```
 INFO  TLS handshake completed successfully

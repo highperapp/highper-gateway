@@ -32,7 +32,7 @@ This session focused on **verifying the buffer pool per-thread caching improveme
 
 ### 3. Root Cause Analysis: Benchmark Design Flaw
 
-**Investigation**: Analyzed the benchmark code in `highper-gateway/benches/optimization_bench.rs` (lines 34-66)
+**Investigation**: Analyzed the benchmark code in `rust-proxy/benches/optimization_bench.rs` (lines 34-66)
 
 **Finding**: The benchmark had a **fundamental design flaw**:
 
@@ -64,7 +64,7 @@ b.iter(|| {
 
 ### 4. Solution: Create Correct Benchmark
 
-**Created**: `highper-gateway/benches/buffer_pool_steady_state.rs` (new file)
+**Created**: `rust-proxy/benches/buffer_pool_steady_state.rs` (new file)
 
 **Key Improvements**:
 1. **Long-lived worker threads** - Spawned once, reused for all iterations
@@ -74,7 +74,7 @@ b.iter(|| {
 
 **Code Changes**:
 - Added new benchmark file (107 lines)
-- Registered in `highper-gateway/Cargo.toml`
+- Registered in `rust-proxy/Cargo.toml`
 - Fixed original benchmark by removing deprecated SIMD functions
 
 ### 5. Results: Dramatic Performance Verification
@@ -156,7 +156,7 @@ With 95% hit rate on thread-local cache → **Average ~10-15 ns per operation**
 
 ### 1. Fixed Benchmark Compilation Error
 
-**File**: `highper-gateway/benches/optimization_bench.rs`
+**File**: `rust-proxy/benches/optimization_bench.rs`
 - **Removed**: References to deprecated `simd_memcpy` and `simd_memcmp`
 - **Updated**: Import to only include beneficial SIMD functions
 - **Removed**: Benchmark functions for harmful SIMD operations (lines 113-182)
@@ -164,14 +164,14 @@ With 95% hit rate on thread-local cache → **Average ~10-15 ns per operation**
 
 ### 2. Created Steady-State Benchmark
 
-**File**: `highper-gateway/benches/buffer_pool_steady_state.rs` (NEW)
+**File**: `rust-proxy/benches/buffer_pool_steady_state.rs` (NEW)
 - **Lines**: 107 lines of new benchmark code
 - **Functions**: 2 benchmark variants (steady-state with barriers, per-thread timing)
 - **Features**: Long-lived threads, cache warmup, realistic workload simulation
 
 ### 3. Updated Build Configuration
 
-**File**: `highper-gateway/Cargo.toml`
+**File**: `rust-proxy/Cargo.toml`
 - **Added**: New benchmark entry for `buffer_pool_steady_state`
 
 ### 4. Created Comprehensive Documentation
@@ -468,9 +468,9 @@ This session successfully **verified that the buffer pool per-thread caching opt
 ## Files Modified/Created This Session
 
 ### Code Files
-1. `highper-gateway/benches/optimization_bench.rs` - Fixed deprecated SIMD references
-2. `highper-gateway/benches/buffer_pool_steady_state.rs` - NEW: Correct benchmark (107 lines)
-3. `highper-gateway/Cargo.toml` - Added buffer_pool_steady_state benchmark entry
+1. `rust-proxy/benches/optimization_bench.rs` - Fixed deprecated SIMD references
+2. `rust-proxy/benches/buffer_pool_steady_state.rs` - NEW: Correct benchmark (107 lines)
+3. `rust-proxy/Cargo.toml` - Added buffer_pool_steady_state benchmark entry
 
 ### Documentation Files
 1. `BUFFER_POOL_BENCHMARK_ANALYSIS.md` - NEW: 220 lines of technical analysis

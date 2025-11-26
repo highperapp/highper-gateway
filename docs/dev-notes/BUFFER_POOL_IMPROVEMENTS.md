@@ -85,7 +85,7 @@ const NUM_SIZE_CLASSES: usize = 8;
 
 ### Code Changes
 
-**File**: `highper-gateway/src/runtime/buffer_pool.rs`
+**File**: `rust-proxy/src/runtime/buffer_pool.rs`
 
 #### 1. Added Thread-Local Cache Structure
 

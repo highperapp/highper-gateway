@@ -2,12 +2,12 @@
 
 ## Overview
 
-We have successfully implemented a comprehensive multi-engine Web Application Firewall (WAF) system for the Highper Gateway using the adapter pattern. This implementation provides flexibility, security, and performance while allowing users to choose the WAF engine that best suits their needs.
+We have successfully implemented a comprehensive multi-engine Web Application Firewall (WAF) system for the Rust Proxy using the adapter pattern. This implementation provides flexibility, security, and performance while allowing users to choose the WAF engine that best suits their needs.
 
 ## Implemented Engines
 
 ### 1. Custom Engine ✅
-- **Location**: `highper-gateway/src/middleware/waf/custom_engine.rs`
+- **Location**: `rust-proxy/src/middleware/waf/custom_engine.rs`
 - **Features**:
   - SQL Injection detection
   - XSS protection
@@ -19,7 +19,7 @@ We have successfully implemented a comprehensive multi-engine Web Application Fi
 - **Use Case**: Development, simple applications, first line of defense
 
 ### 2. Coraza Engine ✅
-- **Location**: `highper-gateway/src/middleware/waf/coraza_engine.rs`
+- **Location**: `rust-proxy/src/middleware/waf/coraza_engine.rs`
 - **Features**:
   - OWASP CRS v4.x compatible rules
   - Anomaly scoring system
@@ -31,7 +31,7 @@ We have successfully implemented a comprehensive multi-engine Web Application Fi
 - **Use Case**: Production applications requiring comprehensive security
 
 ### 3. ModSecurity Engine ✅
-- **Location**: `highper-gateway/src/middleware/waf/modsecurity_engine.rs`
+- **Location**: `rust-proxy/src/middleware/waf/modsecurity_engine.rs`
 - **Features**:
   - ModSecurity v3 compatible rule syntax
   - SecRule directives
@@ -43,7 +43,7 @@ We have successfully implemented a comprehensive multi-engine Web Application Fi
 - **Use Case**: Organizations with existing ModSecurity rules
 
 ### 4. AWS WAF Engine ✅
-- **Location**: `highper-gateway/src/middleware/waf/aws_engine.rs`
+- **Location**: `rust-proxy/src/middleware/waf/aws_engine.rs`
 - **Features**:
   - AWS WAF v2 API integration
   - Managed rule groups (AWS and Marketplace)
@@ -78,10 +78,10 @@ This provides:
 ## Files Created/Modified
 
 ### New Files
-1. `highper-gateway/src/middleware/waf/coraza_engine.rs` (690 lines)
-2. `highper-gateway/src/middleware/waf/modsecurity_engine.rs` (640 lines)
-3. `highper-gateway/src/middleware/waf/aws_engine.rs` (380 lines)
-4. `highper-gateway/tests/waf_integration_tests.rs` (650+ lines of tests)
+1. `rust-proxy/src/middleware/waf/coraza_engine.rs` (690 lines)
+2. `rust-proxy/src/middleware/waf/modsecurity_engine.rs` (640 lines)
+3. `rust-proxy/src/middleware/waf/aws_engine.rs` (380 lines)
+4. `rust-proxy/tests/waf_integration_tests.rs` (650+ lines of tests)
 5. `docs/WAF_IMPLEMENTATION.md` (Comprehensive documentation)
 6. `examples/waf-custom.yaml`
 7. `examples/waf-coraza.yaml`
@@ -89,10 +89,10 @@ This provides:
 9. `examples/waf-aws.yaml`
 
 ### Modified Files
-1. `highper-gateway/Cargo.toml` - Added regex and optional AWS SDK dependencies
-2. `highper-gateway/src/middleware/waf/mod.rs` - Added new engine support
-3. `highper-gateway/src/config/schema.rs` - Added ModSecurity config field
-4. `highper-gateway/src/proxy/handler.rs` - Added waf field to Config initialization
+1. `rust-proxy/Cargo.toml` - Added regex and optional AWS SDK dependencies
+2. `rust-proxy/src/middleware/waf/mod.rs` - Added new engine support
+3. `rust-proxy/src/config/schema.rs` - Added ModSecurity config field
+4. `rust-proxy/src/proxy/handler.rs` - Added waf field to Config initialization
 
 ## Configuration Examples
 

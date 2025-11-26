@@ -5,7 +5,7 @@
 
 ## Overview
 
-Highper Gateway supports hot reload of configuration without requiring a restart or dropping active connections. Configuration changes are automatically detected, validated, and applied at runtime with zero downtime.
+Rust Proxy supports hot reload of configuration without requiring a restart or dropping active connections. Configuration changes are automatically detected, validated, and applied at runtime with zero downtime.
 
 ## Features
 
@@ -23,7 +23,7 @@ Highper Gateway supports hot reload of configuration without requiring a restart
 Hot reload is enabled by default when starting the proxy:
 
 ```bash
-./highper-gateway -c config.yaml
+./rust-proxy -c config.yaml
 ```
 
 You'll see confirmation messages:
@@ -39,7 +39,7 @@ Started watching config file: "config.yaml"
 To run without hot reload (requires restart for config changes):
 
 ```bash
-./highper-gateway -c config.yaml --hot-reload=false
+./rust-proxy -c config.yaml --hot-reload=false
 ```
 
 ### Manual Reload via SIGHUP
@@ -48,16 +48,16 @@ You can manually trigger a reload at any time using the SIGHUP signal:
 
 ```bash
 # Find the proxy process ID
-pidof highper-gateway
+pidof rust-proxy
 
 # Send SIGHUP signal
-kill -HUP $(pidof highper-gateway)
+kill -HUP $(pidof rust-proxy)
 ```
 
 Or use:
 
 ```bash
-pkill -HUP highper-gateway
+pkill -HUP rust-proxy
 ```
 
 The proxy will reload the configuration and log:
@@ -268,7 +268,7 @@ Watch for reload events in logs:
 
 ```bash
 # Follow logs for reload events
-tail -f /var/log/highper-gateway.log | grep -i reload
+tail -f /var/log/rust-proxy.log | grep -i reload
 ```
 
 Expected messages:
@@ -300,7 +300,7 @@ config_version_info{file="config.yaml"} 1
 Use the `--validate` flag to test configuration without starting the proxy:
 
 ```bash
-./highper-gateway -c new-config.yaml --validate
+./rust-proxy -c new-config.yaml --validate
 ```
 
 ### 2. Use Version Control
@@ -367,7 +367,7 @@ For large changes, update configuration in stages:
 
 4. Try manual reload:
    ```bash
-   kill -HUP $(pidof highper-gateway)
+   kill -HUP $(pidof rust-proxy)
    ```
 
 ### Validation Errors
@@ -383,7 +383,7 @@ For large changes, update configuration in stages:
 
 2. Validate manually:
    ```bash
-   ./highper-gateway -c config.yaml --validate
+   ./rust-proxy -c config.yaml --validate
    ```
 
 3. Check logs for specific error:

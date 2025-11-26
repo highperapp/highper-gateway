@@ -60,7 +60,7 @@ Based on public benchmarks and architectural capabilities:
 | **HAProxy** | 60,000-100,000 | 1-3ms | 8-15ms | ~15 MB | ~50% @ 60k req/s |
 | **Envoy** | 40,000-70,000 | 2-4ms | 10-25ms | ~30 MB | ~80% @ 40k req/s |
 
-### Highper Gateway Performance Targets
+### Rust Proxy Performance Targets
 
 Based on Rust's zero-cost abstractions, async runtime efficiency, and current architecture:
 
@@ -511,7 +511,7 @@ load-tests/results/
 │   ├── soak_20251119_140000.json
 │   └── breakpoint_20251119_183045.json
 └── comparative/
-    ├── highper-gateway_20251120_100000.json
+    ├── rust-proxy_20251120_100000.json
     ├── nginx_20251120_110000.json
     └── comparison_report.md
 ```
@@ -550,9 +550,9 @@ Create `LOAD_TEST_RESULTS.md` with:
 
 ```bash
 # 1. Start the proxy
-cd highper-gateway
+cd rust-proxy
 cargo build --release
-./target/release/highper-gateway --config config.toml
+./target/release/rust-proxy --config config.toml
 
 # 2. Start a backend server (separate terminal)
 python3 -m http.server 9000

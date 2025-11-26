@@ -27,7 +27,7 @@ Implemented transparent WebSocket proxying with ws:// and wss:// support using *
 
 **Files Created/Modified**:
 ```
-highper-gateway/src/websocket/
+rust-proxy/src/websocket/
 ├── mod.rs           # WebSocket config and types
 └── handler.rs       # Upgrade detection and proxying
 
@@ -438,7 +438,7 @@ None - core functionality is solid!
 
 ### Reverse Proxy
 ```
-highper-gateway/src/
+rust-proxy/src/
 ├── lib.rs (modified - added websocket module)
 └── websocket/
     ├── mod.rs (created)

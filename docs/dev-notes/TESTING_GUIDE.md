@@ -4,7 +4,7 @@
 
 ### 1. Verify Compilation
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 ```
 
@@ -25,14 +25,14 @@ ls -la ../certs/key.pem
 
 ### Start the Proxy
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
-./target/release/highper-gateway --config ../config/test-minimal.yaml
+cd /home/infy/reverse_proxy/rust-proxy
+./target/release/rust-proxy --config ../config/test-minimal.yaml
 ```
 
 ### Expected Log Output
 ```
 INFO Initializing runtime with 2 workers
-INFO Starting Highper Gateway server
+INFO Starting Rust Proxy server
 INFO HTTP listening on 0.0.0.0:8080
 INFO TLS initialized successfully
 INFO HTTPS listening on 0.0.0.0:8443
@@ -326,7 +326,7 @@ openssl req -x509 -newkey rsa:4096 -nodes \
 ### Proxy won't stop (Ctrl+C doesn't work)
 ```bash
 # Find process
-ps aux | grep highper-gateway
+ps aux | grep rust-proxy
 # Kill it
 kill -9 <PID>
 ```

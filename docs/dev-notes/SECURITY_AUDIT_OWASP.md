@@ -432,7 +432,7 @@ This document provides a comprehensive security audit of the Rust-based reverse 
 **Unsafe Code Audit**:
 ```bash
 # Search for unsafe blocks
-grep -r "unsafe" highper-gateway/src/ | wc -l
+grep -r "unsafe" rust-proxy/src/ | wc -l
 ```
 - ⚠️ Limited unsafe usage (only in io_uring FFI and kTLS syscalls)
 - ✅ All unsafe blocks properly documented and bounded

@@ -157,7 +157,7 @@ Build a **production-grade reverse proxy and API gateway** in Rust that:
 
 **Performance Targets**:
 
-| Metric | HAProxy 2.8+ | Nginx Plus R30 | highper-gateway Target |
+| Metric | HAProxy 2.8+ | Nginx Plus R30 | rust-proxy Target |
 |--------|--------------|----------------|-------------------|
 | p99 Latency | 1.8ms | 2.3ms | ≤1.8ms ✅ |
 | Throughput | 98k req/s | 95k req/s | ≥98k req/s ✅ |
@@ -270,7 +270,7 @@ api.example.com {
 
 ### vs HAProxy 2.8+
 
-| Category | HAProxy | highper-gateway | Winner |
+| Category | HAProxy | rust-proxy | Winner |
 |----------|---------|------------|--------|
 | **Performance** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ (Target: ⭐⭐⭐⭐⭐) | 🤝 Draw |
 | **Layer 4 TCP** | ✅ Full | 🎯 Week 5-6 | ⏳ Pending |
@@ -283,7 +283,7 @@ api.example.com {
 
 ### vs Nginx Plus R30
 
-| Category | Nginx Plus | highper-gateway | Winner |
+| Category | Nginx Plus | rust-proxy | Winner |
 |----------|------------|------------|--------|
 | **Performance** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ (Target: ⭐⭐⭐⭐⭐) | ✅ Us |
 | **Throughput** | 800k conn/s | Target: 1M+ conn/s | ✅ Us |
@@ -295,7 +295,7 @@ api.example.com {
 
 ### vs Cloudflare Pingora
 
-| Category | Pingora | highper-gateway | Winner |
+| Category | Pingora | rust-proxy | Winner |
 |----------|---------|------------|--------|
 | **Architecture** | Multithreading | Multithreading (tokio) | 🤝 Draw |
 | **Connection Reuse** | 99.92% | Target: 99%+ | 🤝 Draw |
@@ -328,7 +328,7 @@ api.example.com {
 **F5 Big-IP**: $5,000-$50,000+
 **HAProxy Enterprise**: $1,000-$5,000/year
 
-**highper-gateway**: Open source, free
+**rust-proxy**: Open source, free
 
 **Estimated Savings**: $10,000-$100,000/year for typical deployment
 

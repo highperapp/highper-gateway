@@ -26,7 +26,7 @@ After implementing per-thread caching for the buffer pool, benchmark results sho
 
 ### The Problem
 
-Looking at the benchmark code in `highper-gateway/benches/optimization_bench.rs`:
+Looking at the benchmark code in `rust-proxy/benches/optimization_bench.rs`:
 
 ```rust
 b.iter(|| {
@@ -283,6 +283,6 @@ The buffer pool per-thread caching implementation is **correct and valuable**, b
 **Status**: ✅ Implementation correct, ⚠️ Original benchmark flawed, 🔄 Correct benchmark running
 
 **Files**:
-- Implementation: `highper-gateway/src/runtime/buffer_pool.rs`
-- Flawed benchmark: `highper-gateway/benches/optimization_bench.rs` (lines 34-66)
-- Corrected benchmark: `highper-gateway/benches/buffer_pool_steady_state.rs` (new)
+- Implementation: `rust-proxy/src/runtime/buffer_pool.rs`
+- Flawed benchmark: `rust-proxy/benches/optimization_bench.rs` (lines 34-66)
+- Corrected benchmark: `rust-proxy/benches/buffer_pool_steady_state.rs` (new)

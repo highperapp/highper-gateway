@@ -53,7 +53,7 @@ Successfully completed **two major phases** of the Rust reverse proxy enhancemen
 
 ### 1. TCP Socket Optimizations ✅
 
-**File:** `highper-gateway/src/utils/socket.rs` (351 lines)
+**File:** `rust-proxy/src/utils/socket.rs` (351 lines)
 
 **Features Implemented:**
 - ✅ SO_REUSEADDR - Immediate port reuse
@@ -90,7 +90,7 @@ fs.file-max = 2097152                  # 2M file descriptors
 
 ### 3. System Monitoring ✅
 
-**File:** `highper-gateway/src/observability/system.rs` (380 lines)
+**File:** `rust-proxy/src/observability/system.rs` (380 lines)
 
 **Features:**
 - ✅ File descriptor usage tracking
@@ -109,7 +109,7 @@ fs.file-max = 2097152                  # 2M file descriptors
 
 ### 4. Connection Pool Optimization ✅
 
-**File:** `highper-gateway/src/proxy/client.rs`
+**File:** `rust-proxy/src/proxy/client.rs`
 
 **Improvements:**
 - Pool size: 50 → 100 connections per host (2x)
@@ -126,7 +126,7 @@ fs.file-max = 2097152                  # 2M file descriptors
 ### 5. File Descriptor Limits ✅
 
 **Files:**
-- `scripts/highper-gateway.service` (systemd service)
+- `scripts/rust-proxy.service` (systemd service)
 - `/etc/security/limits.conf` configuration
 
 **Settings:**
@@ -143,8 +143,8 @@ LimitNOFILE=65535  # Service limit
 ### 6. jemalloc Allocator ✅
 
 **Files Modified:**
-- `highper-gateway/Cargo.toml` - Added tikv-jemallocator
-- `highper-gateway/src/main.rs` - Global allocator setup
+- `rust-proxy/Cargo.toml` - Added tikv-jemallocator
+- `rust-proxy/src/main.rs` - Global allocator setup
 
 **Benefits:**
 - 10-20% lower memory fragmentation
@@ -155,7 +155,7 @@ LimitNOFILE=65535  # Service limit
 
 **Scripts Created:**
 1. **`scripts/kernel-tuning.sh`** - Apply all kernel parameters
-2. **`scripts/highper-gateway.service`** - Systemd service with security hardening
+2. **`scripts/rust-proxy.service`** - Systemd service with security hardening
 3. **`scripts/deploy.sh`** - One-command full deployment
 
 **Features:**
@@ -217,7 +217,7 @@ quiche = "0.24"  # HTTP/3 + QUIC + TLS integrated
 
 ### 3. HTTP/3 Implementation ✅
 
-**File:** `highper-gateway/src/http/http3_quiche.rs` (600+ lines)
+**File:** `rust-proxy/src/http/http3_quiche.rs` (600+ lines)
 
 **Features Implemented:**
 - ✅ QUIC connection handling
@@ -246,7 +246,7 @@ config.set_max_idle_timeout(30_000); // 30s
 
 ### 4. Module Integration ✅
 
-**Updated:** `highper-gateway/src/http/mod.rs`
+**Updated:** `rust-proxy/src/http/mod.rs`
 
 ```rust
 pub mod http3;         // Quinn (deprecated)
@@ -258,7 +258,7 @@ pub use http3_quiche::Http3Server;
 
 ### 5. Alt-Svc Support ✅
 
-**Already Complete:** `highper-gateway/src/http/alt_svc.rs`
+**Already Complete:** `rust-proxy/src/http/alt_svc.rs`
 
 Advertises HTTP/3 availability to clients:
 ```
@@ -296,7 +296,7 @@ brew install cmake go perl
 1. **Build verification**
    ```bash
    cargo build --release
-   ./target/release/highper-gateway --version
+   ./target/release/rust-proxy --version
    ```
 
 2. **HTTP/3 functionality testing**
@@ -317,28 +317,28 @@ brew install cmake go perl
 ### New Files Created (10)
 
 **Phase 1 - Production Hardening:**
-1. `highper-gateway/src/utils/socket.rs` - Socket optimizations
-2. `highper-gateway/src/observability/system.rs` - System monitoring
+1. `rust-proxy/src/utils/socket.rs` - Socket optimizations
+2. `rust-proxy/src/observability/system.rs` - System monitoring
 3. `scripts/kernel-tuning.sh` - Kernel parameters
-4. `scripts/highper-gateway.service` - Systemd service
+4. `scripts/rust-proxy.service` - Systemd service
 5. `scripts/deploy.sh` - Deployment automation
 6. `docs/PRODUCTION_OPTIMIZATIONS.md` - Optimization guide
 7. `PHASE1_PRODUCTION_HARDENING_COMPLETE.md` - Phase 1 report
 
 **Phase 2 - HTTP/3 Migration:**
-8. `highper-gateway/src/http/http3_quiche.rs` - Quiche HTTP/3 server
+8. `rust-proxy/src/http/http3_quiche.rs` - Quiche HTTP/3 server
 9. `docs/HTTP3_QUICHE_MIGRATION.md` - Migration guide
 10. `PHASE2_HTTP3_QUICHE_PROGRESS.md` - Phase 2 report
 
 ### Files Modified (8)
 
-1. `highper-gateway/Cargo.toml` - Dependencies (socket2, libc, jemalloc, quiche)
-2. `highper-gateway/src/main.rs` - jemalloc allocator
-3. `highper-gateway/src/utils/mod.rs` - Socket module export
-4. `highper-gateway/src/observability/mod.rs` - System module export
-5. `highper-gateway/src/proxy/server.rs` - Optimized sockets
-6. `highper-gateway/src/proxy/client.rs` - Connection pool
-7. `highper-gateway/src/http/mod.rs` - HTTP/3 module exports
+1. `rust-proxy/Cargo.toml` - Dependencies (socket2, libc, jemalloc, quiche)
+2. `rust-proxy/src/main.rs` - jemalloc allocator
+3. `rust-proxy/src/utils/mod.rs` - Socket module export
+4. `rust-proxy/src/observability/mod.rs` - System module export
+5. `rust-proxy/src/proxy/server.rs` - Optimized sockets
+6. `rust-proxy/src/proxy/client.rs` - Connection pool
+7. `rust-proxy/src/http/mod.rs` - HTTP/3 module exports
 
 ---
 
@@ -400,7 +400,7 @@ cmake --version  # Should be 3.x
 ### 2. Build Project
 
 ```bash
-cd highper-gateway
+cd rust-proxy
 cargo build --release
 
 # Should complete without errors
@@ -424,22 +424,22 @@ sysctl net.ipv4.tcp_tw_reuse     # Should be 1
 sudo ../scripts/deploy.sh
 
 # Or manual
-sudo cp ../scripts/highper-gateway.service /etc/systemd/system/
+sudo cp ../scripts/rust-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now highper-gateway
+sudo systemctl enable --now rust-proxy
 ```
 
 ### 5. Monitor
 
 ```bash
 # Service status
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # Real-time connections
 watch -n1 'ss -s'
 
 # Logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # Metrics
 curl http://localhost:9090/metrics
@@ -615,7 +615,7 @@ curl http://localhost:9090/metrics
 
 ```bash
 # Quick status
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # Connection stats
 ss -s
@@ -624,7 +624,7 @@ ss -s
 ss -ant | grep -E 'TIME-WAIT|CLOSE-WAIT' | wc -l
 
 # FD usage
-ls /proc/$(pgrep highper-gateway)/fd | wc -l
+ls /proc/$(pgrep rust-proxy)/fd | wc -l
 
 # Metrics
 curl http://localhost:9090/metrics | grep system

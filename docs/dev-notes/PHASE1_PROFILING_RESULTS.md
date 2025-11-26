@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Successfully completed Phase 1 baseline profiling and bottleneck identification. The highper-gateway demonstrates **excellent performance** at baseline loads (10-20K req/s) with sub-millisecond p50 latency. Primary bottleneck identified is **client-side ephemeral port exhaustion** rather than proxy limitations.
+Successfully completed Phase 1 baseline profiling and bottleneck identification. The rust-proxy demonstrates **excellent performance** at baseline loads (10-20K req/s) with sub-millisecond p50 latency. Primary bottleneck identified is **client-side ephemeral port exhaustion** rather than proxy limitations.
 
 **Key Achievement:**
 - ✅ Sustained 20K req/s with 100% success rate and p99 < 120ms
@@ -22,7 +22,7 @@ Successfully completed Phase 1 baseline profiling and bottleneck identification.
 ### Components
 ```
 ┌─────────────┐      ┌──────────────┐      ┌──────────────┐
-│   vegeta    │ ───▶ │  highper-gateway  │ ───▶ │ Rust Backend │
+│   vegeta    │ ───▶ │  rust-proxy  │ ───▶ │ Rust Backend │
 │ (load gen)  │      │  Port 8080   │      │  Port 8081   │
 └─────────────┘      └──────────────┘      └──────────────┘
                             │
@@ -549,4 +549,4 @@ observability:
 *Generated: 2025-11-18*
 *Test Duration: ~2 hours*
 *Total Requests Tested: 3,249,369*
-*Proxy Version: highper-gateway v1.0 (release build)*
+*Proxy Version: rust-proxy v1.0 (release build)*

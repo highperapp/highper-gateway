@@ -10,23 +10,23 @@
 
 ### Build
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 ```
 
 ### Run
 ```bash
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 ### Verify
 ```bash
 # Check version
-./target/release/highper-gateway --version
+./target/release/rust-proxy --version
 
 # Check listening ports
-ss -tlnp | grep highper-gateway
+ss -tlnp | grep rust-proxy
 ```
 
 ---
@@ -144,12 +144,12 @@ curl -i \
 ### Start Proxy
 ```bash
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 ### Expected Log
 ```
-INFO Starting Highper Gateway server
+INFO Starting Rust Proxy server
 INFO HTTP listening on 0.0.0.0:8080
 INFO HTTPS listening on 0.0.0.0:8443
 INFO TLS passthrough listening on 0.0.0.0:9443
@@ -227,7 +227,7 @@ Port 8080             Port 8443             Port 9443
 
 ## 🔧 Build Information
 
-**Binary:** `../target/release/highper-gateway`
+**Binary:** `../target/release/rust-proxy`
 **Size:** 6.0 MB (optimized)
 **Compilation:** ✅ Zero errors
 **Build Time:** ~1 minute

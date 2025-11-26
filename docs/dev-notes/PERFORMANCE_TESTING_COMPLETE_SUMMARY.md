@@ -242,8 +242,8 @@ routes:
 ## Files Created
 
 ### Configurations
-- `highper-gateway/config-profiling.yaml` - Phase 1 config (4 workers) ✅
-- `highper-gateway/config-tier3.yaml` - Phase 2 config (8 workers) ❌
+- `rust-proxy/config-profiling.yaml` - Phase 1 config (4 workers) ✅
+- `rust-proxy/config-tier3.yaml` - Phase 2 config (8 workers) ❌
 
 ### Test Results
 - `/tmp/vegeta-10k-results.bin` - 10K baseline

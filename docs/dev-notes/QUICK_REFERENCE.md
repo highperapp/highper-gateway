@@ -9,22 +9,22 @@
 
 ### Build & Run
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 
 # Build release
 cargo build --release
 
 # Run
-./target/release/highper-gateway --config config/config.yaml
+./target/release/rust-proxy --config config/config.yaml
 
 # Check version
-./target/release/highper-gateway --version
+./target/release/rust-proxy --version
 ```
 
 ### Verify Installation
 ```bash
 # Binary exists
-ls -lh ../target/release/highper-gateway
+ls -lh ../target/release/rust-proxy
 
 # Tests pass
 cargo test --lib
@@ -115,10 +115,10 @@ cargo test --lib loadbalancer       # Load balancer tests
 ### Run
 ```bash
 # Start proxy
-./target/release/highper-gateway --config config/config.yaml
+./target/release/rust-proxy --config config/config.yaml
 
 # With debug logs
-RUST_LOG=debug ./target/release/highper-gateway --config config/config.yaml
+RUST_LOG=debug ./target/release/rust-proxy --config config/config.yaml
 
 # Check health
 curl http://localhost:9090/health
@@ -134,8 +134,8 @@ cargo tree -p quiche                # Should show v0.24.6
 cargo tree -p quinn                 # Should error (removed)
 
 # Check binary
-file ../target/release/highper-gateway   # Should be ELF 64-bit
-../target/release/highper-gateway --version # Should show 0.1.0
+file ../target/release/rust-proxy   # Should be ELF 64-bit
+../target/release/rust-proxy --version # Should show 0.1.0
 ```
 
 ---
@@ -247,7 +247,7 @@ routes:
 ## 📞 Support
 
 **Documentation:** `/home/infy/reverse_proxy/*.md`
-**Code:** `/home/infy/reverse_proxy/highper-gateway/src/`
+**Code:** `/home/infy/reverse_proxy/rust-proxy/src/`
 **Build Logs:** `/tmp/build*.log`
 
 **External:**

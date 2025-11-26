@@ -197,7 +197,7 @@ The proxy has evolved from a development prototype into an **enterprise-grade, p
 
 #### 1. TCP Socket Optimizations ✅
 
-**File:** `highper-gateway/src/utils/socket.rs` (351 lines)
+**File:** `rust-proxy/src/utils/socket.rs` (351 lines)
 
 **Features Implemented:**
 ```rust
@@ -216,7 +216,7 @@ The proxy has evolved from a development prototype into an **enterprise-grade, p
 - Concurrent connections: 1,000 → 60,000 (60x)
 - Connection latency: -1 RTT (10-100ms saved)
 
-**Location:** `highper-gateway/src/utils/socket.rs:1-351`
+**Location:** `rust-proxy/src/utils/socket.rs:1-351`
 
 #### 2. Kernel Tuning ✅
 
@@ -256,7 +256,7 @@ sudo ./scripts/kernel-tuning.sh
 
 #### 3. System Resource Monitoring ✅
 
-**File:** `highper-gateway/src/observability/system.rs` (380 lines)
+**File:** `rust-proxy/src/observability/system.rs` (380 lines)
 
 **Features:**
 ```rust
@@ -284,11 +284,11 @@ sudo ./scripts/kernel-tuning.sh
 - `system_sockets_close_wait` - CLOSE_WAIT count
 - `system_memory_rss_bytes` - Memory usage
 
-**Location:** `highper-gateway/src/observability/system.rs:1-380`
+**Location:** `rust-proxy/src/observability/system.rs:1-380`
 
 #### 4. Connection Pool Optimization ✅
 
-**File:** `highper-gateway/src/proxy/client.rs`
+**File:** `rust-proxy/src/proxy/client.rs`
 
 **Improvements:**
 ```rust
@@ -319,7 +319,7 @@ HyperClient::builder(TokioExecutor::new())
 #### 5. File Descriptor Limits ✅
 
 **Files:**
-- `scripts/highper-gateway.service` - Systemd service
+- `scripts/rust-proxy.service` - Systemd service
 - `/etc/security/limits.conf` - System limits
 
 **Configuration:**
@@ -343,8 +343,8 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 #### 6. jemalloc Memory Allocator ✅
 
 **Files Modified:**
-- `highper-gateway/Cargo.toml`
-- `highper-gateway/src/main.rs`
+- `rust-proxy/Cargo.toml`
+- `rust-proxy/src/main.rs`
 
 **Implementation:**
 ```rust
@@ -369,7 +369,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
    - Persist to `/etc/sysctl.conf`
    - Update user limits
 
-2. **`scripts/highper-gateway.service`**
+2. **`scripts/rust-proxy.service`**
    - Production systemd configuration
    - Security hardening
    - Resource limits
@@ -390,9 +390,9 @@ sudo ./scripts/deploy.sh
 
 # Or manual
 sudo ./scripts/kernel-tuning.sh
-sudo cp scripts/highper-gateway.service /etc/systemd/system/
+sudo cp scripts/rust-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now highper-gateway
+sudo systemctl enable --now rust-proxy
 ```
 
 #### 8. Comprehensive Documentation ✅
@@ -451,7 +451,7 @@ quiche = "0.24"  # All-in-one: HTTP/3 + QUIC + TLS
 
 #### 3. HTTP/3 Server Implementation ✅
 
-**File:** `highper-gateway/src/http/http3_quiche.rs` (600+ lines)
+**File:** `rust-proxy/src/http/http3_quiche.rs` (600+ lines)
 
 **Features Implemented:**
 
@@ -485,11 +485,11 @@ config.set_max_idle_timeout(30_000); // 30s
 - ✅ Production-optimized configuration
 - ✅ Graceful connection cleanup
 
-**Location:** `highper-gateway/src/http/http3_quiche.rs:1-600+`
+**Location:** `rust-proxy/src/http/http3_quiche.rs:1-600+`
 
 #### 4. Module Integration ✅
 
-**Updated:** `highper-gateway/src/http/mod.rs`
+**Updated:** `rust-proxy/src/http/mod.rs`
 
 ```rust
 pub mod http3;         // Quinn (deprecated)
@@ -508,7 +508,7 @@ pub use http3_quiche::Http3Server;
 
 #### 5. Alt-Svc Support ✅
 
-**Already Complete:** `highper-gateway/src/http/alt_svc.rs`
+**Already Complete:** `rust-proxy/src/http/alt_svc.rs`
 
 Advertises HTTP/3 availability to clients:
 ```http
@@ -561,11 +561,11 @@ cargo build --release
 ### New Files Created (10)
 
 **Phase 1 - Production Hardening:**
-1. `highper-gateway/src/utils/socket.rs` (351 lines)
+1. `rust-proxy/src/utils/socket.rs` (351 lines)
    - TCP socket optimizations
    - SO_REUSEADDR, SO_REUSEPORT, SO_LINGER, TCP_FASTOPEN
 
-2. `highper-gateway/src/observability/system.rs` (380 lines)
+2. `rust-proxy/src/observability/system.rs` (380 lines)
    - File descriptor monitoring
    - TCP socket state tracking
    - Memory usage monitoring
@@ -576,7 +576,7 @@ cargo build --release
    - Automatic backup and persistence
    - Verification checks
 
-4. `scripts/highper-gateway.service`
+4. `scripts/rust-proxy.service`
    - Production systemd service
    - Security hardening
    - Resource limits configuration
@@ -596,7 +596,7 @@ cargo build --release
    - Success criteria
 
 **Phase 2 - HTTP/3 Migration:**
-8. `highper-gateway/src/http/http3_quiche.rs` (600+ lines)
+8. `rust-proxy/src/http/http3_quiche.rs` (600+ lines)
    - Complete HTTP/3 server
    - QUIC connection handling
    - Production-optimized config
@@ -613,31 +613,31 @@ cargo build --release
 
 ### Files Modified (8)
 
-1. `highper-gateway/Cargo.toml`
+1. `rust-proxy/Cargo.toml`
    - Added: socket2, libc, tikv-jemallocator
    - Added: quiche 0.24
    - Removed: h3, h3-quinn, quinn
 
-2. `highper-gateway/src/main.rs`
+2. `rust-proxy/src/main.rs`
    - jemalloc global allocator
 
-3. `highper-gateway/src/utils/mod.rs`
+3. `rust-proxy/src/utils/mod.rs`
    - Socket module export
 
-4. `highper-gateway/src/observability/mod.rs`
+4. `rust-proxy/src/observability/mod.rs`
    - System module export
 
-5. `highper-gateway/src/proxy/server.rs`
+5. `rust-proxy/src/proxy/server.rs`
    - Optimized socket integration
 
-6. `highper-gateway/src/proxy/client.rs`
+6. `rust-proxy/src/proxy/client.rs`
    - Enhanced connection pool (100 connections, 90s timeout)
 
-7. `highper-gateway/src/http/mod.rs`
+7. `rust-proxy/src/http/mod.rs`
    - HTTP/3 module exports
    - Quiche as default
 
-8. `highper-gateway/src/lib.rs`
+8. `rust-proxy/src/lib.rs`
    - Module re-exports
 
 ---
@@ -840,7 +840,7 @@ sudo dnf install -y \
 ### Build Instructions
 
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 
 # Clean build (first time)
 cargo clean
@@ -849,7 +849,7 @@ cargo build --release
 # Build time: 5-10 minutes (includes BoringSSL compilation)
 
 # Verify
-./target/release/highper-gateway --version
+./target/release/rust-proxy --version
 ```
 
 ### Deployment Methods
@@ -877,42 +877,42 @@ sudo /home/infy/reverse_proxy/scripts/deploy.sh
 sudo /home/infy/reverse_proxy/scripts/kernel-tuning.sh
 
 # 2. Build release
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 
 # 3. Install binary
-sudo cp target/release/highper-gateway /usr/local/bin/
-sudo chmod +x /usr/local/bin/highper-gateway
+sudo cp target/release/rust-proxy /usr/local/bin/
+sudo chmod +x /usr/local/bin/rust-proxy
 
 # 4. Create user
-sudo useradd -r -s /bin/false highper-gateway
+sudo useradd -r -s /bin/false rust-proxy
 
 # 5. Create directories
-sudo mkdir -p /etc/highper-gateway /var/lib/highper-gateway /var/log/highper-gateway
-sudo chown highper-gateway:highper-gateway /var/lib/highper-gateway /var/log/highper-gateway
+sudo mkdir -p /etc/rust-proxy /var/lib/rust-proxy /var/log/rust-proxy
+sudo chown rust-proxy:rust-proxy /var/lib/rust-proxy /var/log/rust-proxy
 
 # 6. Copy configuration
-sudo cp config/config.yaml /etc/highper-gateway/
+sudo cp config/config.yaml /etc/rust-proxy/
 
 # 7. Install systemd service
-sudo cp /home/infy/reverse_proxy/scripts/highper-gateway.service /etc/systemd/system/
+sudo cp /home/infy/reverse_proxy/scripts/rust-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # 8. Start service
-sudo systemctl enable --now highper-gateway
+sudo systemctl enable --now rust-proxy
 
 # 9. Check status
-sudo systemctl status highper-gateway
+sudo systemctl status rust-proxy
 ```
 
 ### Verification
 
 ```bash
 # 1. Service status
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # 2. Check logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # 3. Test endpoints
 curl http://localhost:80/
@@ -942,7 +942,7 @@ ulimit -n  # Should be 65535
 
 ```bash
 # Service status (FD usage, memory, CPU)
-systemctl status highper-gateway
+systemctl status rust-proxy
 
 # Connection statistics
 watch -n1 'ss -s'
@@ -954,13 +954,13 @@ ss -ant | grep -E 'ESTAB|TIME-WAIT|CLOSE-WAIT' | wc -l
 ss -ant | grep TIME-WAIT | wc -l
 
 # File descriptor usage
-watch -n1 'ls /proc/$(pgrep highper-gateway)/fd | wc -l'
+watch -n1 'ls /proc/$(pgrep rust-proxy)/fd | wc -l'
 
 # Memory usage
-ps aux | grep highper-gateway
+ps aux | grep rust-proxy
 
 # CPU usage
-top -p $(pgrep highper-gateway)
+top -p $(pgrep rust-proxy)
 ```
 
 ### Prometheus Metrics
@@ -1011,22 +1011,22 @@ Set alerts for:
 
 ```bash
 # Graceful reload (config changes)
-sudo systemctl reload highper-gateway
+sudo systemctl reload rust-proxy
 
 # Restart with zero downtime (SO_REUSEADDR enabled)
-sudo systemctl restart highper-gateway
+sudo systemctl restart rust-proxy
 
 # Stop service
-sudo systemctl stop highper-gateway
+sudo systemctl stop rust-proxy
 
 # View recent errors
-journalctl -u highper-gateway -p err -n 100
+journalctl -u rust-proxy -p err -n 100
 
 # Follow logs with filtering
-journalctl -u highper-gateway -f | grep ERROR
+journalctl -u rust-proxy -f | grep ERROR
 
 # Check disk usage (logs, certs)
-du -sh /var/lib/highper-gateway /var/log/highper-gateway
+du -sh /var/lib/rust-proxy /var/log/rust-proxy
 ```
 
 ---
@@ -1068,24 +1068,24 @@ sysctl net.ipv4.tcp_tw_reuse     # Should be 1
 **Diagnosis:**
 ```bash
 # Check current FD usage
-ls /proc/$(pgrep highper-gateway)/fd | wc -l
+ls /proc/$(pgrep rust-proxy)/fd | wc -l
 
 # Check limits
 ulimit -n
-systemctl show highper-gateway | grep LimitNOFILE
+systemctl show rust-proxy | grep LimitNOFILE
 ```
 
 **Solution:**
 ```bash
 # Edit service file
-sudo vim /etc/systemd/system/highper-gateway.service
+sudo vim /etc/systemd/system/rust-proxy.service
 
 # Ensure:
 # LimitNOFILE=65535
 
 # Reload
 sudo systemctl daemon-reload
-sudo systemctl restart highper-gateway
+sudo systemctl restart rust-proxy
 ```
 
 ### Issue: HTTP/3 build fails
@@ -1115,7 +1115,7 @@ cargo build --release
 **Diagnosis:**
 ```bash
 # Check memory
-ps aux | grep highper-gateway
+ps aux | grep rust-proxy
 
 # Check jemalloc stats
 curl http://localhost:9090/metrics | grep jemalloc
@@ -1145,7 +1145,7 @@ curl http://localhost:9090/metrics | grep upstream_health
 curl http://backend:8080/health
 
 # Check logs
-journalctl -u highper-gateway | grep health
+journalctl -u rust-proxy | grep health
 ```
 
 **Solution:**
@@ -1280,7 +1280,7 @@ health_check:
 ### Configuration Reference
 
 - **`config/config.yaml`** - Example configuration
-- **`scripts/highper-gateway.service`** - Systemd service template
+- **`scripts/rust-proxy.service`** - Systemd service template
 - **`scripts/kernel-tuning.sh`** - Kernel parameter reference
 
 ---
@@ -1519,26 +1519,26 @@ Expected results:
 
 ```bash
 # Real-time logs
-journalctl -u highper-gateway -f
+journalctl -u rust-proxy -f
 
 # Errors only
-journalctl -u highper-gateway -p err
+journalctl -u rust-proxy -p err
 
 # Last 100 lines
-journalctl -u highper-gateway -n 100
+journalctl -u rust-proxy -n 100
 ```
 
 ### Emergency Procedures
 
 ```bash
 # Graceful reload
-sudo systemctl reload highper-gateway
+sudo systemctl reload rust-proxy
 
 # Restart (zero downtime)
-sudo systemctl restart highper-gateway
+sudo systemctl restart rust-proxy
 
 # Emergency stop
-sudo systemctl stop highper-gateway
+sudo systemctl stop rust-proxy
 ```
 
 ---

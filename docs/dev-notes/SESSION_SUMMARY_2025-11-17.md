@@ -27,7 +27,7 @@
 
 **Files Created:**
 - `DEPENDENCY_SECURITY_AUDIT.md` - Comprehensive security report
-- `highper-gateway/deny.toml` - Security audit configuration
+- `rust-proxy/deny.toml` - Security audit configuration
 - `WEEK4_DAY19_SUMMARY.md` - Day 19 detailed report
 - `WEEK4_DAY20_SESSION_SUMMARY.md` - Day 20 detailed report
 
@@ -199,19 +199,19 @@ Port 8081    ←→   Port 8080    ←→   k6/vegeta
 5. `WEEK4_DAY20_SESSION_SUMMARY.md` - Day 20 accomplishments
 6. `COMPREHENSIVE_EVALUATION_PROGRESS.md` - Updated progress
 7. `SESSION_SUMMARY_2025-11-17.md` - This file
-8. `highper-gateway/deny.toml` - cargo-deny configuration
+8. `rust-proxy/deny.toml` - cargo-deny configuration
 
 ### Test Infrastructure (3 files)
 9. `load-tests/simple-backend-rust/Cargo.toml` - Backend manifest
 10. `load-tests/simple-backend-rust/src/main.rs` - Backend server (118 lines)
-11. `highper-gateway/config-profiling.yaml` - Minimal proxy config
+11. `rust-proxy/config-profiling.yaml` - Minimal proxy config
 
 ### Modified Source (52 files)
-12. `highper-gateway/Cargo.toml` - Redis & sqlx upgrades
-13. `highper-gateway/src/cache/backends.rs` - Type annotations
-14. `highper-gateway/src/observability/system.rs` - Feature flag fixes
-15. `highper-gateway/src/middleware/body_access.rs` - Feature flag fixes
-16. `highper-gateway/src/discovery/mod.rs` - Feature name fixes
+12. `rust-proxy/Cargo.toml` - Redis & sqlx upgrades
+13. `rust-proxy/src/cache/backends.rs` - Type annotations
+14. `rust-proxy/src/observability/system.rs` - Feature flag fixes
+15. `rust-proxy/src/middleware/body_access.rs` - Feature flag fixes
+16. `rust-proxy/src/discovery/mod.rs` - Feature name fixes
 17. 48 files auto-fixed via `cargo fix`
 
 ---

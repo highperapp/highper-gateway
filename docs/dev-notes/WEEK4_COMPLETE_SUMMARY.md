@@ -272,7 +272,7 @@ apiVersion: 1
 providers:
   - name: 'Request Metrics'
     orgId: 1
-    folder: 'Highper Gateway'
+    folder: 'Rust Proxy'
     type: file
     disableDeletion: false
     options:

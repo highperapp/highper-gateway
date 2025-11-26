@@ -1,4 +1,4 @@
-# Highper Gateway TODO Checklist
+# Rust Proxy TODO Checklist
 
 **Current Score:** 70% (Rank #7 of 8)
 **Target Score:** 85%+ in 6 months, 95%+ in 12 months

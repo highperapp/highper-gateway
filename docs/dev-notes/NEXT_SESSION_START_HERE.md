@@ -18,7 +18,7 @@
 ### 2. Test Infrastructure - READY
 - ✅ Rust backend server compiled (`/home/infy/reverse_proxy/load-tests/simple-backend-rust/target/release/simple-backend`)
 - ✅ Backend running on port 8081 (PID: check with `ps aux | grep simple-backend`)
-- ✅ Proxy binary ready (`/home/infy/reverse_proxy/target/release/highper-gateway`)
+- ✅ Proxy binary ready (`/home/infy/reverse_proxy/target/release/rust-proxy`)
 - ⏳ Proxy config needs update
 
 ### 3. Load Testing Tools - INSTALLED
@@ -37,7 +37,7 @@ The config schema has evolved. Create minimal working config:
 cd /home/infy/reverse_proxy
 
 # Create working config based on current schema
-cat > highper-gateway/config-minimal.yaml << 'EOF'
+cat > rust-proxy/config-minimal.yaml << 'EOF'
 server:
   bind: ["127.0.0.1:8080"]
 
@@ -57,10 +57,10 @@ logging:
 EOF
 
 # Validate config
-./target/release/highper-gateway validate -c highper-gateway/config-minimal.yaml
+./target/release/rust-proxy validate -c rust-proxy/config-minimal.yaml
 
 # If validation passes, start proxy
-./target/release/highper-gateway start -c highper-gateway/config-minimal.yaml -l warn &
+./target/release/rust-proxy start -c rust-proxy/config-minimal.yaml -l warn &
 PROXY_PID=$!
 
 # Test end-to-end
@@ -73,9 +73,9 @@ curl http://127.0.0.1:8080/  # Should return "OK" from backend
 ### Option 2: Use Existing Working Config (Faster)
 ```bash
 # Find and use an existing test config
-find highper-gateway/tests -name "*.yaml" | head -1 | xargs cat
+find rust-proxy/tests -name "*.yaml" | head -1 | xargs cat
 
-# Or create based on test configs in highper-gateway/tests/
+# Or create based on test configs in rust-proxy/tests/
 ```
 
 ### Option 3: Direct Backend Testing (Skip Proxy)
@@ -108,7 +108,7 @@ echo "GET http://127.0.0.1:8080/" | vegeta attack -rate=10000 -duration=30s | \
 k6 run --vus 100 --duration 30s k6-load-test.js
 
 # Monitor during test
-watch -n1 'ps aux | grep highper-gateway | grep -v grep'
+watch -n1 'ps aux | grep rust-proxy | grep -v grep'
 ```
 
 ### 2. Collect Metrics (30 min)
@@ -193,8 +193,8 @@ Port 8081    ←→   Port 8080    ←→    k6/vegeta
 - `PERFORMANCE_SCALABILITY_PLAN.md` - 38-53 hour roadmap
 - `SESSION_SUMMARY_2025-11-17.md` - Today's progress
 - `load-tests/simple-backend-rust/` - Rust backend server
-- `highper-gateway/config-profiling.yaml` - Config (needs update)
-- `highper-gateway/deny.toml` - Security configuration
+- `rust-proxy/config-profiling.yaml` - Config (needs update)
+- `rust-proxy/deny.toml` - Security configuration
 
 ### Achievements Today (5+ hours)
 1. ✅ Security hardening complete
@@ -224,10 +224,10 @@ cd /home/infy/reverse_proxy/load-tests/simple-backend-rust
 ### If Config Validation Fails
 ```bash
 # Check what fields are required
-./target/release/highper-gateway validate -c <config> 2>&1 | grep "missing field"
+./target/release/rust-proxy validate -c <config> 2>&1 | grep "missing field"
 
 # Look at working examples
-find highper-gateway/tests -name "*.yaml" -exec echo "=== {} ===" \; -exec head -50 {} \;
+find rust-proxy/tests -name "*.yaml" -exec echo "=== {} ===" \; -exec head -50 {} \;
 ```
 
 ### If Load Test Fails
@@ -272,14 +272,14 @@ ss -tlnp | grep -E "8080|8081"
 cd /home/infy/reverse_proxy/load-tests/simple-backend-rust && ./target/release/simple-backend &
 
 # Proxy (after config fixed)
-cd /home/infy/reverse_proxy && ./target/release/highper-gateway start -c highper-gateway/config-minimal.yaml &
+cd /home/infy/reverse_proxy && ./target/release/rust-proxy start -c rust-proxy/config-minimal.yaml &
 ```
 
 ### Stop Services
 ```bash
 # Stop all
 pkill simple-backend
-pkill highper-gateway
+pkill rust-proxy
 
 # Or specific PIDs
 kill <PID>
@@ -288,7 +288,7 @@ kill <PID>
 ### Monitor
 ```bash
 # Watch resource usage
-watch -n1 'ps aux | grep -E "simple-backend|highper-gateway" | grep -v grep'
+watch -n1 'ps aux | grep -E "simple-backend|rust-proxy" | grep -v grep'
 
 # Backend stats (every 10s in logs)
 # Proxy metrics

@@ -80,7 +80,7 @@ tls:
 **Testing:**
 ```bash
 # Start proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 
 # Test SNI routing
 openssl s_client -connect localhost:9443 -servername backend.example.com
@@ -184,7 +184,7 @@ See `WEBSOCKET_COMPLETION_PLAN.md` for detailed steps.
 ## 📁 **Project Structure**
 
 ```
-highper-gateway/
+rust-proxy/
 ├── src/
 │   ├── config/
 │   │   └── schema.rs          ✅ Added websocket, grpc configs
@@ -210,7 +210,7 @@ highper-gateway/
 │   └── test-minimal.yaml         ✅ Testing config
 ├── target/
 │   └── release/
-│       └── highper-gateway            ✅ Binary (6.3 MB)
+│       └── rust-proxy            ✅ Binary (6.3 MB)
 ├── INTEGRATION_STATUS.md         ✅ Detailed status
 ├── QUICK_START_INTEGRATION.md    ✅ Quick start guide
 ├── TESTING_GUIDE.md              ✅ Test procedures
@@ -223,20 +223,20 @@ highper-gateway/
 
 ### **1. Build**
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 ```
 
 ### **2. Run**
 ```bash
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway --config config/test-minimal.yaml
+./target/release/rust-proxy --config config/test-minimal.yaml
 ```
 
 ### **3. Expected Output**
 ```
 INFO Initializing runtime with 2 workers
-INFO Starting Highper Gateway server
+INFO Starting Rust Proxy server
 INFO HTTP listening on 0.0.0.0:8080
 INFO TLS initialized successfully
 INFO HTTPS listening on 0.0.0.0:8443
@@ -249,7 +249,7 @@ INFO Registered upstream: test_backend
 ### **4. Test Ports**
 ```bash
 # Check all ports are bound
-ss -tlnp | grep highper-gateway
+ss -tlnp | grep rust-proxy
 
 # Expected:
 # :8080  - HTTP

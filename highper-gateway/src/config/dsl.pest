@@ -202,7 +202,7 @@ timeout_directive = {
     "timeout" ~ duration ~ newline
 }
 
-// Headers: header_up Host {upstream_hostport} | header_down Server "rust-proxy"
+// Headers: header_up Host {upstream_hostport} | header_down Server "highper-gateway"
 headers_directive = {
     ("header_up" | "header_down") ~ header_name ~ header_value ~ newline
 }

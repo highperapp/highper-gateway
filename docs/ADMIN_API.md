@@ -1,6 +1,6 @@
 # Admin API Documentation
 
-The Highper Gateway Admin API provides REST endpoints for runtime management, monitoring, and configuration of the reverse proxy.
+The Rust Proxy Admin API provides REST endpoints for runtime management, monitoring, and configuration of the reverse proxy.
 
 ## Table of Contents
 
@@ -565,5 +565,5 @@ The following endpoints are planned for future releases:
 ## Support
 
 For issues or questions about the Admin API:
-- GitHub Issues: https://github.com/anthropics/highper-gateway/issues
-- Documentation: https://docs.highper-gateway.dev
+- GitHub Issues: https://github.com/anthropics/rust-proxy/issues
+- Documentation: https://docs.rust-proxy.dev

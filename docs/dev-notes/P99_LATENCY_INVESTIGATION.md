@@ -216,7 +216,7 @@ server {
 #### Test with Different Configurations
 ```bash
 # More workers for higher concurrency
-TOKIO_WORKER_THREADS=16 ./highper-gateway start -c config.toml
+TOKIO_WORKER_THREADS=16 ./rust-proxy start -c config.toml
 
 # Benchmark each configuration
 for threads in 8 12 16 24; do

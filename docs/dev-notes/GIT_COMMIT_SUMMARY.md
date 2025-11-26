@@ -69,52 +69,52 @@ feat: Complete integration of TLS Passthrough, gRPC, and WebSocket proxy feature
 ### **New Source Code (25 new modules)**
 
 #### **gRPC Support (4 files)**
-- `highper-gateway/src/grpc/detector.rs` - gRPC request detection
-- `highper-gateway/src/grpc/handler.rs` - gRPC handler utilities
-- `highper-gateway/src/grpc/health.rs` - gRPC health check protocol
-- `highper-gateway/src/grpc/mod.rs` - gRPC module and configuration
+- `rust-proxy/src/grpc/detector.rs` - gRPC request detection
+- `rust-proxy/src/grpc/handler.rs` - gRPC handler utilities
+- `rust-proxy/src/grpc/health.rs` - gRPC health check protocol
+- `rust-proxy/src/grpc/mod.rs` - gRPC module and configuration
 
 #### **WebSocket Support (2 files)**
-- `highper-gateway/src/websocket/handler.rs` - WebSocket upgrade handling
-- `highper-gateway/src/websocket/mod.rs` - WebSocket module and configuration
+- `rust-proxy/src/websocket/handler.rs` - WebSocket upgrade handling
+- `rust-proxy/src/websocket/mod.rs` - WebSocket module and configuration
 
 #### **TLS Passthrough (1 file)**
-- `highper-gateway/src/tls/passthrough.rs` - SNI-based TLS passthrough
+- `rust-proxy/src/tls/passthrough.rs` - SNI-based TLS passthrough
 
 #### **API Gateway (11 files)**
-- `highper-gateway/src/gateway/auth/api_key.rs` - API key authentication
-- `highper-gateway/src/gateway/auth/jwt.rs` - JWT authentication
-- `highper-gateway/src/gateway/auth/mod.rs` - Auth module
-- `highper-gateway/src/gateway/cache/distributed.rs` - Redis caching
-- `highper-gateway/src/gateway/cache/mod.rs` - Cache module
-- `highper-gateway/src/gateway/ratelimit/distributed.rs` - Redis rate limiting
-- `highper-gateway/src/gateway/ratelimit/mod.rs` - Rate limit module
-- `highper-gateway/src/gateway/ratelimit/sliding_window.rs` - Sliding window algorithm
-- `highper-gateway/src/gateway/ratelimit/token_bucket.rs` - Token bucket algorithm
-- `highper-gateway/src/gateway/mod.rs` - Gateway module
-- `highper-gateway/src/middleware/logging.rs` - Structured logging middleware
+- `rust-proxy/src/gateway/auth/api_key.rs` - API key authentication
+- `rust-proxy/src/gateway/auth/jwt.rs` - JWT authentication
+- `rust-proxy/src/gateway/auth/mod.rs` - Auth module
+- `rust-proxy/src/gateway/cache/distributed.rs` - Redis caching
+- `rust-proxy/src/gateway/cache/mod.rs` - Cache module
+- `rust-proxy/src/gateway/ratelimit/distributed.rs` - Redis rate limiting
+- `rust-proxy/src/gateway/ratelimit/mod.rs` - Rate limit module
+- `rust-proxy/src/gateway/ratelimit/sliding_window.rs` - Sliding window algorithm
+- `rust-proxy/src/gateway/ratelimit/token_bucket.rs` - Token bucket algorithm
+- `rust-proxy/src/gateway/mod.rs` - Gateway module
+- `rust-proxy/src/middleware/logging.rs` - Structured logging middleware
 
 #### **Admin API (4 files - disabled)**
-- `highper-gateway/src/admin/api.rs` - Admin API server
-- `highper-gateway/src/admin/mod.rs` - Admin module
-- `highper-gateway/src/admin/routes.rs` - Admin routes
-- `highper-gateway/src/admin/stats.rs` - Statistics collection
+- `rust-proxy/src/admin/api.rs` - Admin API server
+- `rust-proxy/src/admin/mod.rs` - Admin module
+- `rust-proxy/src/admin/routes.rs` - Admin routes
+- `rust-proxy/src/admin/stats.rs` - Statistics collection
 
 #### **Integration Tests (1 file)**
-- `highper-gateway/tests/integration_tests.rs` - Comprehensive integration tests
+- `rust-proxy/tests/integration_tests.rs` - Comprehensive integration tests
 
 ### **Modified Files (8)**
 1. `Cargo.lock` - Updated dependencies
 2. `Cargo.toml` - Workspace configuration
 3. `README.md` - Updated project documentation
-4. `highper-gateway/src/config/schema.rs` - Added websocket/grpc config
-5. `highper-gateway/src/config/validator.rs` - Added config tests
-6. `highper-gateway/src/lib.rs` - Disabled admin module
-7. `highper-gateway/src/proxy/handler.rs` - Integrated WebSocket/gRPC
-8. `highper-gateway/src/proxy/server.rs` - Added TLS passthrough server
+4. `rust-proxy/src/config/schema.rs` - Added websocket/grpc config
+5. `rust-proxy/src/config/validator.rs` - Added config tests
+6. `rust-proxy/src/lib.rs` - Disabled admin module
+7. `rust-proxy/src/proxy/handler.rs` - Integrated WebSocket/gRPC
+8. `rust-proxy/src/proxy/server.rs` - Added TLS passthrough server
 
 ### **Renamed/Moved Files (62)**
-All source files moved from `src/` to `highper-gateway/src/` for workspace structure
+All source files moved from `src/` to `rust-proxy/src/` for workspace structure
 
 ---
 
@@ -309,8 +309,8 @@ nothing to commit, working tree clean
 $ cargo build --release
 Finished `release` profile [optimized] target(s)
 
-$ ./target/release/highper-gateway --version
-highper-gateway 0.1.0
+$ ./target/release/rust-proxy --version
+rust-proxy 0.1.0
 ```
 
 ### **Tests Verified**

@@ -40,12 +40,12 @@ upstreams:
 1. **`start`** - Start the proxy server
    - Hot reload support (--hot-reload)
    - Daemon mode flag (--daemon, not yet implemented)
-   - Example: `highper-gateway start -c config.yaml`
+   - Example: `rust-proxy start -c config.yaml`
 
 2. **`validate`** - Validate configuration without starting
    - Verbose mode shows config summary
    - Clear error messages with context
-   - Example: `highper-gateway validate -c config.yaml --verbose`
+   - Example: `rust-proxy validate -c config.yaml --verbose`
    ```
    🔍 Validating configuration: config.yaml
 
@@ -60,14 +60,14 @@ upstreams:
 
    ✅ Configuration is valid!
 
-   💡 Tip: Use 'highper-gateway test' to verify upstream connectivity
+   💡 Tip: Use 'rust-proxy test' to verify upstream connectivity
    ```
 
 3. **`test`** - Test upstream connectivity
    - Tests all upstreams or specific one (--upstream)
    - Configurable timeout (--timeout)
    - Shows pass/fail status for each backend
-   - Example: `highper-gateway test -c config.yaml --upstream api-backend`
+   - Example: `rust-proxy test -c config.yaml --upstream api-backend`
    ```
    🔌 Testing upstream connectivity...
 
@@ -83,7 +83,7 @@ upstreams:
 4. **`health`** - Check running server health
    - Queries Admin API health endpoint
    - JSON or text output (--format)
-   - Example: `highper-gateway health --admin-url http://localhost:9090`
+   - Example: `rust-proxy health --admin-url http://localhost:9090`
    ```
    ✅ Server is healthy
 
@@ -95,7 +95,7 @@ upstreams:
 5. **`reload`** - Reload configuration (Unix only)
    - Sends SIGHUP signal to running process
    - Reads PID from file (--pid-file)
-   - Example: `highper-gateway reload --pid-file /var/run/highper-gateway.pid`
+   - Example: `rust-proxy reload --pid-file /var/run/rust-proxy.pid`
    ```
    🔄 Reloading configuration...
    ✅ Reload signal sent to process 12345
@@ -106,9 +106,9 @@ upstreams:
 6. **`version`** - Display version information
    - Basic or verbose mode (--verbose)
    - Shows build info, features, capabilities
-   - Example: `highper-gateway version --verbose`
+   - Example: `rust-proxy version --verbose`
    ```
-   Highper Gateway v0.1.0
+   Rust Proxy v0.1.0
 
    Build Information:
      Compiler: rustc 1.90.0
@@ -208,9 +208,9 @@ upstreams:
    - Custom middleware via plugins
 
 4. **Additional CLI Features**
-   - `highper-gateway status` - Show detailed server status
-   - `highper-gateway config` - Interactive config generator
-   - `highper-gateway bench` - Built-in benchmarking tool
+   - `rust-proxy status` - Show detailed server status
+   - `rust-proxy config` - Interactive config generator
+   - `rust-proxy bench` - Built-in benchmarking tool
 
 ### Recommendation: **WAF Basic Implementation**
 
@@ -225,7 +225,7 @@ upstreams:
 ## 📋 Changes Summary
 
 ### Files Created (3):
-1. `/home/infy/reverse_proxy/highper-gateway/build.rs` - Build-time metadata
+1. `/home/infy/reverse_proxy/rust-proxy/build.rs` - Build-time metadata
 2. `/home/infy/reverse_proxy/STAGE3_MAGLEV_COMPLETE.md` - Maglev documentation
 3. `/home/infy/reverse_proxy/STAGE3_PROGRESS.md` - This file
 

@@ -565,15 +565,15 @@ Client --[HTTPS]--> Proxy --[HTTPS]--> Backend
 # Start 3 proxy instances
 docker run -d --name proxy1 -p 8080:8080 -p 9090:9090 \
   -v ./config.yaml:/etc/proxy/config.yaml \
-  highper-gateway:latest
+  rust-proxy:latest
 
 docker run -d --name proxy2 -p 8081:8080 -p 9091:9090 \
   -v ./config.yaml:/etc/proxy/config.yaml \
-  highper-gateway:latest
+  rust-proxy:latest
 
 docker run -d --name proxy3 -p 8082:8080 -p 9092:9090 \
   -v ./config.yaml:/etc/proxy/config.yaml \
-  highper-gateway:latest
+  rust-proxy:latest
 ```
 
 ### 2. Start Admin API

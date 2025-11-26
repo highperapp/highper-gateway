@@ -15,7 +15,7 @@
 ### 1. Build the Project
 
 ```bash
-cd /home/infy/reverse_proxy/highper-gateway
+cd /home/infy/reverse_proxy/rust-proxy
 cargo build --release
 ```
 
@@ -30,7 +30,7 @@ Finished `release` profile [optimized] target(s)
 
 **Start the proxy:**
 ```bash
-./target/release/highper-gateway --config ../config/integrated-example.yaml
+./target/release/rust-proxy --config ../config/integrated-example.yaml
 ```
 
 **In another terminal, test SNI routing:**

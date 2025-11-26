@@ -338,10 +338,10 @@ pub fn normalize_path(path: &str) -> String {
 2. ✅ **Configuration Hot Reload** (SIGHUP signal)
    ```bash
    # Send SIGHUP to reload config without restart
-   kill -HUP $(cat /var/run/highper-gateway.pid)
+   kill -HUP $(cat /var/run/rust-proxy.pid)
 
    # Or use dedicated reload command
-   highper-gateway reload
+   rust-proxy reload
    ```
 
 3. ✅ **Certificate Hot Reload** (File watcher)
@@ -358,10 +358,10 @@ pub fn normalize_path(path: &str) -> String {
 - ⚠️ **Missing CLI Tool** for one-off tasks:
   ```bash
   # Should have (future work):
-  highper-gateway-cli validate-config config.yaml
-  highper-gateway-cli test-upstream http://backend:8080
-  highper-gateway-cli export-metrics --format json
-  highper-gateway-cli migrate-config v1.yaml v2.yaml
+  rust-proxy-cli validate-config config.yaml
+  rust-proxy-cli test-upstream http://backend:8080
+  rust-proxy-cli export-metrics --format json
+  rust-proxy-cli migrate-config v1.yaml v2.yaml
   ```
 
 **Recommendation**: Add dedicated CLI tool in next release for 100% compliance
@@ -411,7 +411,7 @@ cargo test --lib --no-fail-fast
 ### Integration Tests (10 files)
 
 ```bash
-ls highper-gateway/tests/
+ls rust-proxy/tests/
 integration_admin_api.rs          # Admin API full flow
 integration_api_gateway.rs        # API Gateway routing
 integration_cache.rs              # Cache middleware
@@ -437,7 +437,7 @@ integration_websocket.rs          # WebSocket proxying
 ### Benchmarks (5 files)
 
 ```bash
-ls highper-gateway/benches/
+ls rust-proxy/benches/
 tcp_bench.rs                 # TCP proxy throughput
 compression_bench.rs         # Compression algorithms
 optimization_bench.rs        # SIMD, buffer pool, io_uring
@@ -681,12 +681,12 @@ example.com
 reverse_proxy localhost:8080
 ```
 
-### Highper Gateway Configuration Status
+### Rust Proxy Configuration Status
 
 **Current Configuration** (YAML):
 
 ```yaml
-# config.yaml - Highper Gateway
+# config.yaml - Rust Proxy
 server:
   bind: ["0.0.0.0:443"]
   protocols: ["http1", "http2"]
@@ -709,13 +709,13 @@ upstreams:
       - url: "http://localhost:8080"
 ```
 
-**Lines of Config**: Highper Gateway: 18 lines vs Caddy: 3 lines
+**Lines of Config**: Rust Proxy: 18 lines vs Caddy: 3 lines
 
 ---
 
-### Feature Parity Analysis: Caddy vs Highper Gateway
+### Feature Parity Analysis: Caddy vs Rust Proxy
 
-| Feature | Caddy | Highper Gateway | Gap |
+| Feature | Caddy | Rust Proxy | Gap |
 |---------|-------|------------|-----|
 | **Auto HTTPS** | ✅ Automatic | ✅ Automatic | ✅ **Equal** |
 | **ACME Integration** | ✅ Built-in | ✅ Built-in | ✅ **Equal** |
@@ -735,7 +735,7 @@ upstreams:
 Create simplified configuration format:
 
 ```nginx
-# Caddyfile-inspired DSL for Highper Gateway
+# Caddyfile-inspired DSL for Rust Proxy
 
 example.com {
     reverse_proxy localhost:8080
@@ -779,7 +779,7 @@ static.example.com {
 - Complete DSL grammar for all features
 - Add DSL validation
 - Add DSL documentation
-- Add migration tool: Caddyfile → Highper Gateway DSL
+- Add migration tool: Caddyfile → Rust Proxy DSL
 
 **Effort**: 20-30 hours
 
@@ -875,14 +875,14 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 | **Validation** | 9/10 | ✅ Excellent | Comprehensive validation |
 | **Documentation** | 7/10 | ✅ Good | Needs more examples |
 | **DSL Support** | 5/10 | ⚠️ Partial | Parser exists, needs completion |
-| **Migration Tools** | 6/10 | ⚠️ Fair | nginx → highper-gateway exists, needs caddy |
+| **Migration Tools** | 6/10 | ⚠️ Fair | nginx → rust-proxy exists, needs caddy |
 | **Overall** | **7.1/10** | ✅ **Good** | **Approaching Caddy simplicity** |
 
 **Target**: 9/10 (competitive with Caddy)
 
 **Path to 9/10**:
 1. Complete DSL implementation (simple 3-line reverse proxy)
-2. Add Caddyfile → Highper Gateway migration tool
+2. Add Caddyfile → Rust Proxy migration tool
 3. Enable all security features by default
 4. Add interactive configuration wizard
 5. Improve documentation with more examples
@@ -897,7 +897,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
 #### 1. **nginx** (Market Leader - 34% market share)
 
-| Feature | nginx | nginx Plus | Highper Gateway | Gap Analysis |
+| Feature | nginx | nginx Plus | Rust Proxy | Gap Analysis |
 |---------|-------|------------|------------|--------------|
 | **Performance** | Excellent | Excellent | ✅ **Excellent** | Equal (io_uring, SIMD) |
 | **Memory Safety** | C (unsafe) | C (unsafe) | ✅ **Rust** | ✅ **Better** (no memory bugs) |
@@ -923,7 +923,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
 #### 2. **HAProxy** (Enterprise Load Balancer - 15% market share)
 
-| Feature | HAProxy | Highper Gateway | Gap Analysis |
+| Feature | HAProxy | Rust Proxy | Gap Analysis |
 |---------|---------|------------|--------------|
 | **Layer 4 LB** | ✅ Excellent | ✅ Good | ⚠️ HAProxy better (TCP focus) |
 | **Layer 7 LB** | ✅ Excellent | ✅ Excellent | Equal |
@@ -945,7 +945,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
 #### 3. **Caddy** (Developer-Friendly - 2% market share)
 
-| Feature | Caddy | Highper Gateway | Gap Analysis |
+| Feature | Caddy | Rust Proxy | Gap Analysis |
 |---------|-------|------------|--------------|
 | **Zero Config** | ✅ Yes | ❌ No | ❌ **Critical gap** |
 | **Auto HTTPS** | ✅ Yes | ✅ Yes | Equal |
@@ -965,7 +965,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
 #### 4. **KrakenD** (API Gateway - Niche)
 
-| Feature | KrakenD | Highper Gateway | Gap Analysis |
+| Feature | KrakenD | Rust Proxy | Gap Analysis |
 |---------|---------|------------|--------------|
 | **API Gateway** | ✅ Primary | ✅ Full | Equal |
 | **GraphQL** | ✅ Yes | ✅ Yes | Equal |
@@ -985,7 +985,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
 #### 5. **Pingora** (Cloudflare - New Entrant)
 
-| Feature | Pingora | Highper Gateway | Gap Analysis |
+| Feature | Pingora | Rust Proxy | Gap Analysis |
 |---------|---------|------------|--------------|
 | **Language** | ✅ Rust | ✅ Rust | Equal |
 | **Performance** | Excellent | ✅ Excellent | Equal |
@@ -1009,7 +1009,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
               ▲
               │
     Pingora   │  nginx Plus
-    Highper Gateway│  HAProxy
+    Rust Proxy│  HAProxy
               │
     nginx OSS │
               │
@@ -1018,7 +1018,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
               └────────────► Ease of Use
 ```
 
-**Highper Gateway Position**: High performance, moderate ease of use (improving towards Caddy)
+**Rust Proxy Position**: High performance, moderate ease of use (improving towards Caddy)
 
 ---
 
@@ -1183,8 +1183,8 @@ v2.0 (Months 10-12):
 - [ ] Add DSL documentation
 
 **Days 14-15: Migration Tools**
-- [ ] Create Caddyfile → Highper Gateway converter
-- [ ] Add HAProxy config → Highper Gateway converter
+- [ ] Create Caddyfile → Rust Proxy converter
+- [ ] Add HAProxy config → Rust Proxy converter
 - [ ] Test migration tools with real configs
 - [ ] Document migration process
 - [ ] Create migration guide

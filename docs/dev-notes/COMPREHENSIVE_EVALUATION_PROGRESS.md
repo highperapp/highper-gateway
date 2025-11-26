@@ -65,7 +65,7 @@ From the 30-day critical action plan in `COMPREHENSIVE_EVALUATION_2025.md`, we h
 10. Error handling
 
 **Deliverables:**
-- `highper-gateway/tests/e2e_comprehensive.rs` (590 lines)
+- `rust-proxy/tests/e2e_comprehensive.rs` (590 lines)
 
 **Note:** Tests require manual proxy startup (programmatic control planned for future)
 
@@ -211,8 +211,8 @@ From the 30-day critical action plan in `COMPREHENSIVE_EVALUATION_2025.md`, we h
 **Priority:** DEFERRED
 
 **Planned Work:**
-- [ ] Create Caddyfile → Highper Gateway converter
-- [ ] Add HAProxy config → Highper Gateway converter
+- [ ] Create Caddyfile → Rust Proxy converter
+- [ ] Add HAProxy config → Rust Proxy converter
 - [ ] Test migration tools with real configs
 - [ ] Document migration process
 
@@ -266,7 +266,7 @@ From the 30-day critical action plan in `COMPREHENSIVE_EVALUATION_2025.md`, we h
 **Deliverables:**
 - `WEEK4_HARDENING_PROGRESS.md`
 - `WEEK4_DAY19_SUMMARY.md`
-- `highper-gateway/deny.toml` - cargo-deny configuration
+- `rust-proxy/deny.toml` - cargo-deny configuration
 
 #### Day 19 Remaining ⏳
 

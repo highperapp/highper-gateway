@@ -30,8 +30,8 @@
    ```
 
 **Files Modified:**
-- `highper-gateway/Cargo.toml` - Updated redis version
-- `highper-gateway/src/cache/backends.rs` - Added type annotations (lines 238, 242, 277)
+- `rust-proxy/Cargo.toml` - Updated redis version
+- `rust-proxy/src/cache/backends.rs` - Added type annotations (lines 238, 242, 277)
 
 **Verification:**
 ```bash
@@ -68,7 +68,7 @@ cargo build --lib 2>&1 | grep "future"
 cargo fix --lib --allow-dirty --allow-staged
 
 # Binary auto-fix
-cargo fix --bin highper-gateway --allow-dirty --allow-staged
+cargo fix --bin rust-proxy --allow-dirty --allow-staged
 ```
 
 **Files Modified (Auto-fixed):** 48 files
@@ -209,7 +209,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 **Command:**
 ```bash
 cargo install flamegraph
-cargo flamegraph --bin highper-gateway
+cargo flamegraph --bin rust-proxy
 ```
 
 ---
@@ -266,8 +266,8 @@ cargo flamegraph --bin highper-gateway
 - `WEEK4_DAY19_SUMMARY.md` - This file
 
 ### Modified Source Files
-- `highper-gateway/Cargo.toml` - Redis version bump
-- `highper-gateway/src/cache/backends.rs` - Type annotations
+- `rust-proxy/Cargo.toml` - Redis version bump
+- `rust-proxy/src/cache/backends.rs` - Type annotations
 - 48 auto-fixed files (see details above)
 
 ---

@@ -90,7 +90,7 @@ return backends[backend_id]
 ### File Structure
 
 ```
-highper-gateway/src/proxy/
+rust-proxy/src/proxy/
 ├── load_balancer.rs              (MODIFY - add Maglev variant)
 ├── maglev.rs                     (NEW - 400 lines)
 └── maglev_table.rs               (NEW - 200 lines)
@@ -385,7 +385,7 @@ mod tests {
 ### Integration with Load Balancer
 
 ```rust
-// File: highper-gateway/src/proxy/load_balancer.rs
+// File: rust-proxy/src/proxy/load_balancer.rs
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

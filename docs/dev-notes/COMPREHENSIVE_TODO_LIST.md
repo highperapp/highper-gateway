@@ -657,7 +657,7 @@ wrk -t 8 -c 1000 -d 60s --latency http://localhost:8080/
 **Setup:**
 ```yaml
 # Test same workload across:
-# 1. highper-gateway (our implementation)
+# 1. rust-proxy (our implementation)
 # 2. HAProxy 2.8+
 # 3. Nginx Plus R30 (or Nginx 1.25+)
 # 4. Direct connection (baseline)
@@ -677,7 +677,7 @@ wrk -t 8 -c 1000 -d 60s --latency http://localhost:8080/
 | Direct | 0.5ms | 1.2ms | 100k/s | - | - |
 | HAProxy | 0.7ms | 1.8ms | 98k/s | 15% | 450MB |
 | Nginx Plus | 0.9ms | 2.3ms | 95k/s | 18% | 520MB |
-| **highper-gateway** | **<0.7ms** | **<1.8ms** | **>98k/s** | **<15%** | **<450MB** |
+| **rust-proxy** | **<0.7ms** | **<1.8ms** | **>98k/s** | **<15%** | **<450MB** |
 
 **Success Criteria:**
 - ✅ p99 latency ≤ HAProxy
@@ -739,7 +739,7 @@ wrk -t 8 -c 1000 -d 60s --latency http://localhost:8080/
 cargo build --release --features io-uring
 
 # 2. Run with production config
-./target/release/highper-gateway --config tcp-benchmark.yaml
+./target/release/rust-proxy --config tcp-benchmark.yaml
 
 # 3. MySQL benchmark
 sysbench oltp_read_write --mysql-host=localhost run
@@ -1143,7 +1143,7 @@ api.example.com {
 #### Comparative Benchmarks:
 **Target: Match or exceed these metrics:**
 
-| Metric | HAProxy 2.8+ | Nginx Plus R30 | highper-gateway Target |
+| Metric | HAProxy 2.8+ | Nginx Plus R30 | rust-proxy Target |
 |--------|--------------|----------------|-------------------|
 | p99 Latency | 1.8ms | 2.3ms | **≤1.8ms** |
 | Throughput | 98k req/s | 95k req/s | **≥98k req/s** |
@@ -1637,9 +1637,9 @@ fn bench_tcp_proxy_throughput(b: &mut Bencher) {
 
 ---
 
-## 📘 APPENDIX B: HAProxy vs Nginx Plus vs highper-gateway Feature Matrix
+## 📘 APPENDIX B: HAProxy vs Nginx Plus vs rust-proxy Feature Matrix
 
-| Feature | HAProxy 2.8+ | Nginx Plus R30 | highper-gateway Status |
+| Feature | HAProxy 2.8+ | Nginx Plus R30 | rust-proxy Status |
 |---------|--------------|----------------|-------------------|
 | **Layer 4 TCP LB** | ✅ Full | ✅ Full | 🔴 TODO (Week 5-6) |
 | **Layer 7 HTTP LB** | ✅ Full | ✅ Full | ✅ Complete |

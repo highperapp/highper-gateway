@@ -289,7 +289,7 @@ impl AsyncWrite for HybridTcpStream {
    cat /proc/sys/fs/io-uring/io_uring_disabled  # Should be 0
 
    # Monitor io_uring operations
-   perf trace -e io_uring_* ./target/release/highper-gateway
+   perf trace -e io_uring_* ./target/release/rust-proxy
    ```
 
 4. **Load testing**
@@ -378,7 +378,7 @@ impl AsyncWrite for HybridTcpStream {
 
 ```
 ┌─────────────────────────────────────────┐
-│          Application (Highper Gateway)        │
+│          Application (Rust Proxy)        │
 ├─────────────────────────────────────────┤
 │  Tokio Runtime (Task Scheduling)        │
 ├─────────────────────────────────────────┤

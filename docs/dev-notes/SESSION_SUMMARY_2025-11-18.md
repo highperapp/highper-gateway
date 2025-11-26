@@ -18,7 +18,7 @@
 - ✅ Installed vegeta v12.11.1 load testing tool
 
 **Configuration Files:**
-- `highper-gateway/config-profiling.yaml` - Minimal working config
+- `rust-proxy/config-profiling.yaml` - Minimal working config
 - Backend: `/home/infy/reverse_proxy/load-tests/simple-backend-rust/`
 
 ---
@@ -452,7 +452,7 @@ CPU Efficiency:   Up to 564 req/s per 1% CPU
    - Next steps and recommendations
 
 ### Modified
-1. **`highper-gateway/config-profiling.yaml`**
+1. **`rust-proxy/config-profiling.yaml`**
    - Fixed schema (upstreams + routes with match rules)
    - Validated and working configuration
 
@@ -490,14 +490,14 @@ CPU Efficiency:   Up to 564 req/s per 1% CPU
 
 ```bash
 # Check services still running
-ps aux | grep -E "highper-gateway|simple-backend"
+ps aux | grep -E "rust-proxy|simple-backend"
 
 # If not running, restart:
 cd /home/infy/reverse_proxy/load-tests/simple-backend-rust
 ./target/release/simple-backend &
 
 cd /home/infy/reverse_proxy
-./target/release/highper-gateway start -c highper-gateway/config-profiling.yaml &
+./target/release/rust-proxy start -c rust-proxy/config-profiling.yaml &
 
 # Verify connectivity
 curl http://127.0.0.1:8080/
@@ -550,7 +550,7 @@ curl http://127.0.0.1:9090/metrics | grep http_requests_total
 - Admin API: http://127.0.0.1:8888/
 
 **Key Files:**
-- Config: `/home/infy/reverse_proxy/highper-gateway/config-profiling.yaml`
+- Config: `/home/infy/reverse_proxy/rust-proxy/config-profiling.yaml`
 - Backend: `/home/infy/reverse_proxy/load-tests/simple-backend-rust/`
 - Results: `/home/infy/reverse_proxy/PHASE1_PROFILING_RESULTS.md`
 - vegeta: `~/bin/vegeta`

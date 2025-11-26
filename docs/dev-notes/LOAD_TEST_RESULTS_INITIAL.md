@@ -281,7 +281,7 @@ Based on public benchmarks and our initial results:
 | **Caddy** | 30-50k req/s | 10-20ms | 20-40ms | ⚠️ Below throughput, better latency |
 | **HAProxy** | 60-100k req/s | 8-15ms | 15-30ms | ⚠️ Below throughput, similar latency |
 | **Envoy** | 40-70k req/s | 10-25ms | 25-50ms | ⚠️ Below throughput, better latency |
-| **Highper Gateway** | **10k req/s*** | **8.6ms** | **89ms** | - |
+| **Rust Proxy** | **10k req/s*** | **8.6ms** | **89ms** | - |
 
 ***Note:** Only tested up to 10k req/s so far. Need to test higher rates.
 

@@ -57,7 +57,7 @@ quiche = "0.24"  # All-in-one: HTTP/3 + QUIC + TLS
 
 ### 3. HTTP/3 Server Implementation ✅
 
-**File Created:** `highper-gateway/src/http/http3_quiche.rs` (600+ lines)
+**File Created:** `rust-proxy/src/http/http3_quiche.rs` (600+ lines)
 
 **Features Implemented:**
 
@@ -93,7 +93,7 @@ config.set_max_idle_timeout(30_000); // 30s
 
 ### 4. Module Integration ✅
 
-**Updated:** `highper-gateway/src/http/mod.rs`
+**Updated:** `rust-proxy/src/http/mod.rs`
 
 ```rust
 pub mod http3;         // Quinn implementation (deprecated)
@@ -111,7 +111,7 @@ pub use http3_quiche::Http3Server;
 
 ### 5. Alt-Svc Support ✅
 
-**Already Implemented:** `highper-gateway/src/http/alt_svc.rs`
+**Already Implemented:** `rust-proxy/src/http/alt_svc.rs`
 
 The Alt-Svc header module was already complete and supports:
 - ✅ HTTP/3 advertisement (`h3=":443"; ma=2592000`)
@@ -123,7 +123,7 @@ The Alt-Svc header module was already complete and supports:
 **Usage:**
 ```rust
 // Add Alt-Svc header to advertise HTTP/3
-use highper_gateway::http::alt_svc::add_alt_svc_header;
+use rust_proxy::http::alt_svc::add_alt_svc_header;
 
 add_alt_svc_header(&mut response, 443); // Advertise HTTP/3 on port 443
 ```
@@ -252,7 +252,7 @@ tokio (async runtime)
    - Configuration examples
    - Tuning parameters
 
-2. **`highper-gateway/src/http/http3_quiche.rs`** (600+ lines)
+2. **`rust-proxy/src/http/http3_quiche.rs`** (600+ lines)
    - Complete HTTP/3 server
    - QUIC connection handling
    - Production-optimized configuration
@@ -260,11 +260,11 @@ tokio (async runtime)
 
 ### Modified Files (2)
 
-1. **`highper-gateway/Cargo.toml`**
+1. **`rust-proxy/Cargo.toml`**
    - Removed: `h3`, `h3-quinn`, `quinn`
    - Added: `quiche = "0.24"`
 
-2. **`highper-gateway/src/http/mod.rs`**
+2. **`rust-proxy/src/http/mod.rs`**
    - Added `http3_quiche` module
    - Re-exported as default
    - Deprecated quinn implementation
@@ -388,7 +388,7 @@ wrk --latency --http3 https://localhost:443/
 #### Start HTTP/3 Server
 
 ```rust
-use highper_gateway::http::Http3Server;
+use rust_proxy::http::Http3Server;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -406,7 +406,7 @@ tokio::spawn(async move {
 #### Advertise HTTP/3 via Alt-Svc
 
 ```rust
-use highper_gateway::http::alt_svc::add_alt_svc_header;
+use rust_proxy::http::alt_svc::add_alt_svc_header;
 
 // In HTTP/2 response handler
 add_alt_svc_header(&mut response, 443);
@@ -479,7 +479,7 @@ add_alt_svc_header(&mut response, 443);
 
 3. **Verify build success**
    ```bash
-   ./target/release/highper-gateway --version
+   ./target/release/rust-proxy --version
    ```
 
 ### Short Term (1-2 hours)

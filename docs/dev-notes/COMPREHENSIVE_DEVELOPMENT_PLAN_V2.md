@@ -797,7 +797,7 @@ struct AcceptEncodingExt(String);
 
 **New Directory Structure**:
 ```
-highper-gateway/src/middleware/compression/
+rust-proxy/src/middleware/compression/
 ├── mod.rs                  - Public API, re-exports
 ├── compressor.rs           - Compressor trait & types
 ├── registry.rs             - Global registry
@@ -830,7 +830,7 @@ highper-gateway/src/middleware/compression/
 //! # Example
 //!
 //! ```rust
-//! use highper_gateway::middleware::compression::*;
+//! use rust_proxy::middleware::compression::*;
 //!
 //! // Use default configuration
 //! let middleware = CompressionMiddleware::with_defaults();
@@ -852,7 +852,7 @@ highper-gateway/src/middleware/compression/
 //! # Adding Custom Compressors
 //!
 //! ```rust
-//! use highper_gateway::middleware::compression::*;
+//! use rust_proxy::middleware::compression::*;
 //!
 //! struct CustomCompressor;
 //!

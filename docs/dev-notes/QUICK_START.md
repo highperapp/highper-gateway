@@ -73,7 +73,7 @@
 cargo build --release --features plugin-full,io-uring
 
 # Run server
-./target/release/highper-gateway --config config/example.yaml
+./target/release/rust-proxy --config config/example.yaml
 
 # Run tests
 cargo test --all-features
@@ -130,7 +130,7 @@ wrk -t 8 -c 100 -d 30s --latency http://localhost:8080/
 ## 🔧 Project Structure
 
 ```
-highper-gateway/
+rust-proxy/
 ├── src/
 │   ├── admin/          # Admin API
 │   ├── config/         # Configuration loading
@@ -247,7 +247,7 @@ cargo build --features io-uring 2>&1 | grep error
 cargo test --all-features
 
 # Check what's working
-./target/release/highper-gateway --config config/example.yaml
+./target/release/rust-proxy --config config/example.yaml
 
 # Test Admin API
 curl http://localhost:9090/api/health

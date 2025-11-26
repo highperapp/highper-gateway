@@ -1,7 +1,7 @@
 # Feature Comparison: Reverse Proxy & API Gateway Solutions
 
 **Date:** October 30, 2025
-**Comparison:** Highper Gateway vs Caddy vs Nginx vs Envoy vs HAProxy vs Pingora
+**Comparison:** Rust Proxy vs Caddy vs Nginx vs Envoy vs HAProxy vs Pingora
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Proxy | Language | Type | Best For | Open Source |
 |-------|----------|------|----------|-------------|
-| **Highper Gateway** | Rust | Reverse Proxy + API Gateway | Modern microservices, high performance | ✅ Yes |
+| **Rust Proxy** | Rust | Reverse Proxy + API Gateway | Modern microservices, high performance | ✅ Yes |
 | **Caddy** | Go | Web Server + Reverse Proxy | Ease of use, automatic HTTPS | ✅ Yes |
 | **Nginx** | C | Web Server + Reverse Proxy | High performance, battle-tested | ✅ Yes (OSS) / Commercial (Plus) |
 | **Envoy** | C++ | Service Mesh Proxy | Microservices, observability | ✅ Yes (CNCF) |
@@ -22,7 +22,7 @@
 
 ### **Core Reverse Proxy Features**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **HTTP/1.1** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 | **HTTP/2** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
@@ -34,7 +34,7 @@
 | **mTLS** | ⚠️ Planned | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 
 **Score:**
-- Highper Gateway: 7/8 (88%)
+- Rust Proxy: 7/8 (88%)
 - Caddy: 8/8 (100%)
 - Nginx: 7.5/8 (94%)
 - Envoy: 8/8 (100%)
@@ -45,7 +45,7 @@
 
 ### **TLS & Certificate Management**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Let's Encrypt ACME** | ✅ Built-in | ✅ Automatic | ⚠️ External (certbot) | ⚠️ External | ⚠️ External | ⚠️ External |
 | **Auto Certificate Renewal** | ✅ Yes | ✅ Automatic | ❌ No | ❌ No | ❌ No | ⚠️ Via code |
@@ -57,7 +57,7 @@
 **Winner:** 🏆 **Caddy** (best automatic certificate management)
 
 **Score:**
-- Highper Gateway: 4/6 (67%)
+- Rust Proxy: 4/6 (67%)
 - Caddy: 6/6 (100%)
 - Nginx: 4/6 (67%)
 - Envoy: 4/6 (67%)
@@ -68,7 +68,7 @@
 
 ### **Load Balancing**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Round Robin** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Least Connections** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
@@ -82,7 +82,7 @@
 **Winner:** 🏆 **HAProxy** (most advanced LB features)
 
 **Score:**
-- Highper Gateway: 6/8 (75%)
+- Rust Proxy: 6/8 (75%)
 - Caddy: 6.5/8 (81%)
 - Nginx: 5.5/8 (OSS) / 7/8 (Plus) (69%/88%)
 - Envoy: 7/8 (88%)
@@ -93,7 +93,7 @@
 
 ### **Health Checks & Resilience**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Active Health Checks** | ✅ HTTP | ✅ HTTP | ✅ Plus only | ✅ HTTP/TCP/gRPC | ✅ Advanced | ✅ Yes |
 | **Passive Health Checks** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
@@ -106,7 +106,7 @@
 **Winner:** 🏆 **Envoy** (most sophisticated resilience patterns)
 
 **Score:**
-- Highper Gateway: 7/7 (100%)
+- Rust Proxy: 7/7 (100%)
 - Caddy: 5.5/7 (79%)
 - Nginx OSS: 3/7 (43%) / Plus: 5/7 (71%)
 - Envoy: 7/7 (100%)
@@ -117,7 +117,7 @@
 
 ### **API Gateway Features**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **JWT Authentication** | ✅ Built-in | ⚠️ Plugin | ✅ Plus only | ✅ Yes | ❌ No | ⚠️ Via code |
 | **API Key Auth** | ✅ Built-in | ⚠️ Plugin | ✅ Plus only | ✅ Yes | ❌ No | ⚠️ Via code |
@@ -132,7 +132,7 @@
 **Winner:** 🏆 **Envoy** (most complete API gateway features)
 
 **Score:**
-- Highper Gateway: 6.5/9 (72%)
+- Rust Proxy: 6.5/9 (72%)
 - Caddy: 5.5/9 (61%)
 - Nginx OSS: 4/9 (44%) / Plus: 8/9 (89%)
 - Envoy: 9/9 (100%)
@@ -143,7 +143,7 @@
 
 ### **Observability & Monitoring**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Prometheus Metrics** | ✅ Built-in | ✅ Built-in | ⚠️ Exporter | ✅ Built-in | ⚠️ Exporter | ✅ Yes |
 | **Structured Logging** | ✅ JSON | ✅ JSON | ✅ Yes | ✅ JSON | ✅ Yes | ✅ Yes |
@@ -156,7 +156,7 @@
 **Winner:** 🏆 **Envoy** (most comprehensive observability)
 
 **Score:**
-- Highper Gateway: 5/7 (71%)
+- Rust Proxy: 5/7 (71%)
 - Caddy: 5.5/7 (79%)
 - Nginx OSS: 4/7 (57%) / Plus: 6/7 (86%)
 - Envoy: 7/7 (100%)
@@ -167,7 +167,7 @@
 
 ### **Configuration & Management**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Config Format** | YAML | Caddyfile/JSON | Nginx conf | YAML/JSON | HAProxy conf | Code-based |
 | **Hot Reload** | ⚠️ Planned | ✅ Automatic | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
@@ -180,7 +180,7 @@
 **Winner:** 🏆 **Caddy** (easiest to configure)
 
 **Score:**
-- Highper Gateway: 2.5/6 (42%)
+- Rust Proxy: 2.5/6 (42%)
 - Caddy: 5/6 (83%)
 - Nginx OSS: 3/6 (50%) / Plus: 5/6 (83%)
 - Envoy: 5/6 (83%)
@@ -191,7 +191,7 @@
 
 ### **Performance & Scalability**
 
-| Metric | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Metric | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |--------|------------|-------|-------|-------|---------|---------|
 | **Language** | Rust | Go | C | C++ | C | Rust |
 | **Memory Safety** | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No | ✅ Yes |
@@ -208,7 +208,7 @@
 1. 🥇 Pingora (Rust, proven at Cloudflare scale)
 2. 🥈 HAProxy (legendary performance)
 3. 🥉 Nginx (battle-tested at scale)
-4. Highper Gateway (excellent, memory-safe)
+4. Rust Proxy (excellent, memory-safe)
 5. Envoy (good, feature-rich overhead)
 6. Caddy (good, ease-of-use focus)
 
@@ -216,7 +216,7 @@
 
 ### **Ecosystem & Community**
 
-| Aspect | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Aspect | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |--------|------------|-------|-------|-------|---------|---------|
 | **Maturity** | New (v0.1) | Mature (v2+) | Very Mature | Mature | Very Mature | New (2024) |
 | **Community Size** | Small | Large | Huge | Large | Large | Growing |
@@ -233,7 +233,7 @@
 
 ### **Security Features**
 
-| Feature | Highper Gateway | Caddy | Nginx | Envoy | HAProxy | Pingora |
+| Feature | Rust Proxy | Caddy | Nginx | Envoy | HAProxy | Pingora |
 |---------|------------|-------|-------|-------|---------|---------|
 | **Memory Safety** | ✅ Rust | ✅ Go | ❌ C | ❌ C++ | ❌ C | ✅ Rust |
 | **DDoS Protection** | ⚠️ Basic | ⚠️ Basic | ✅ Advanced | ⚠️ Basic | ✅ Advanced | ✅ Advanced |
@@ -244,7 +244,7 @@
 | **CVE History** | None (new) | Low | Medium | Low | Low | None (new) |
 | **Security Audits** | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ⚠️ Cloudflare |
 
-**Winner:** 🏆 **Highper Gateway & Pingora** (memory-safe languages)
+**Winner:** 🏆 **Rust Proxy & Pingora** (memory-safe languages)
 
 ---
 
@@ -252,7 +252,7 @@
 
 | Proxy | Core | TLS | LB | Resilience | API GW | Observability | Config | **Total** |
 |-------|------|-----|-----|-----------|--------|---------------|--------|-----------|
-| **Highper Gateway** | 88% | 67% | 75% | 100% | 72% | 71% | 42% | **74%** |
+| **Rust Proxy** | 88% | 67% | 75% | 100% | 72% | 71% | 42% | **74%** |
 | **Caddy** | 100% | 100% | 81% | 79% | 61% | 79% | 83% | **83%** |
 | **Nginx OSS** | 94% | 67% | 69% | 43% | 44% | 57% | 50% | **61%** |
 | **Nginx Plus** | 94% | 67% | 88% | 71% | 89% | 86% | 83% | **83%** |
@@ -264,7 +264,7 @@
 
 ## 📈 Use Case Recommendations
 
-### **Choose Highper Gateway If:**
+### **Choose Rust Proxy If:**
 ✅ You want a modern, memory-safe reverse proxy
 ✅ You need built-in API gateway features (JWT, rate limiting, caching)
 ✅ You want automatic Let's Encrypt integration
@@ -344,7 +344,7 @@
 
 ## 💡 Unique Advantages
 
-### **Highper Gateway**
+### **Rust Proxy**
 - 🎯 **All-in-one solution**: Reverse proxy + API gateway features built-in
 - 🔒 **Memory safety**: Rust prevents common security vulnerabilities
 - ⚡ **Modern async**: Tokio-based for excellent performance
@@ -387,7 +387,7 @@
 
 | Proxy | Req/sec (1 core) | Latency p50 | Latency p99 | Memory/conn |
 |-------|------------------|-------------|-------------|-------------|
-| **Highper Gateway** | ~80K | 0.3ms | 0.8ms | ~4KB |
+| **Rust Proxy** | ~80K | 0.3ms | 0.8ms | ~4KB |
 | **Caddy** | ~50K | 0.5ms | 2ms | ~8KB |
 | **Nginx** | ~100K | 0.2ms | 0.5ms | ~2KB |
 | **Envoy** | ~70K | 0.4ms | 1ms | ~6KB |
@@ -406,12 +406,12 @@
 3. 🥉 Pingora (95%)
 4. Envoy (90%)
 5. Caddy (88%)
-6. Highper Gateway (85%)
+6. Rust Proxy (85%)
 
 ### **As an API Gateway**
 1. 🥇 Envoy (100%)
 2. 🥈 Nginx Plus (90%)
-3. 🥉 Highper Gateway (72%)
+3. 🥉 Rust Proxy (72%)
 4. Pingora (70%)
 5. Caddy (61%)
 6. HAProxy (35%)
@@ -422,12 +422,12 @@
 3. 🥉 Envoy (88%)
 4. Pingora (85%)
 5. Caddy (80%)
-6. Highper Gateway (75%)
+6. Rust Proxy (75%)
 
 ### **For Microservices**
 1. 🥇 Envoy (100%)
 2. 🥈 Pingora (90%)
-3. 🥉 Highper Gateway (85%)
+3. 🥉 Rust Proxy (85%)
 4. Nginx Plus (80%)
 5. Caddy (75%)
 6. HAProxy (60%)
@@ -436,7 +436,7 @@
 
 ## 🔮 Future Roadmap Comparison
 
-### **Highper Gateway**
+### **Rust Proxy**
 - ⏳ HTTP/3 support
 - ⏳ mTLS
 - ⏳ Admin API completion
@@ -456,7 +456,7 @@
 
 ## 📝 Conclusion
 
-**Highper Gateway is competitive** and offers unique value in the reverse proxy landscape:
+**Rust Proxy is competitive** and offers unique value in the reverse proxy landscape:
 
 **Strengths:**
 - ✅ Modern, memory-safe architecture
@@ -473,7 +473,7 @@
 - ⚠️ Production battle-testing
 
 **Market Position:**
-Highper Gateway sits between **Caddy** (ease of use) and **Envoy** (advanced features), with **Pingora**-like memory safety. It's an excellent choice for teams that want modern features, built-in API gateway capabilities, and Rust's safety guarantees.
+Rust Proxy sits between **Caddy** (ease of use) and **Envoy** (advanced features), with **Pingora**-like memory safety. It's an excellent choice for teams that want modern features, built-in API gateway capabilities, and Rust's safety guarantees.
 
 ---
 
