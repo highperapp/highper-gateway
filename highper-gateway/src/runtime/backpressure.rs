@@ -125,7 +125,7 @@ impl BackpressureManager {
                 current, max
             );
             self.connections_rejected_capacity.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", 1, "reason" => "max_capacity");
+            metrics::counter!("connections_rejected_total", "reason" => "max_capacity");
             return false;
         }
 
@@ -137,7 +137,7 @@ impl BackpressureManager {
                 self.memory_limit_mb
             );
             self.connections_rejected_memory.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", 1, "reason" => "memory_pressure");
+            metrics::counter!("connections_rejected_total", "reason" => "memory_pressure");
             return false;
         }
 
@@ -145,7 +145,7 @@ impl BackpressureManager {
         if self.adaptive && self.is_cpu_saturated() {
             debug!("Rejecting connection: CPU saturation (>{}%)", self.cpu_threshold);
             self.connections_rejected_cpu.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", 1, "reason" => "cpu_saturation");
+            metrics::counter!("connections_rejected_total", "reason" => "cpu_saturation");
             return false;
         }
 
@@ -158,7 +158,7 @@ impl BackpressureManager {
         let new = prev + 1;
 
         debug!("Connection accepted ({}/{})", new, self.max_connections.load(Ordering::Relaxed));
-        metrics::gauge!("active_connections", new as f64);
+        metrics::gauge!("active_connections").set(new as f64);
 
         // Warn if approaching capacity
         let max = self.max_connections.load(Ordering::Relaxed);
@@ -183,7 +183,7 @@ impl BackpressureManager {
         let new = prev.saturating_sub(1);
 
         debug!("Connection closed ({}/{})", new, self.max_connections.load(Ordering::Relaxed));
-        metrics::gauge!("active_connections", new as f64);
+        metrics::gauge!("active_connections").set(new as f64);
     }
 
     /// Get current number of active connections
