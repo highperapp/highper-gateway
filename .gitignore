@@ -28,3 +28,7 @@ load-tests/results/*.bin
 
 # Ignore Documentation and dev notes
 docs/
+# Load test environment (NEVER commit!)
+.env
+results/
+*.log
