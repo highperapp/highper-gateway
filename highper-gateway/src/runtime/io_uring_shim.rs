@@ -51,9 +51,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tracing::{debug, warn};
+use tracing::{debug, warn, error};
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::NonNull;
+
+/// Macro for safely locking a mutex with poisoning recovery
+///
+/// If a mutex is poisoned (previous panic while holding lock), this recovers
+/// the inner data rather than panicking, allowing the system to continue.
+macro_rules! safe_lock {
+    ($mutex:expr) => {
+        $mutex.lock().unwrap_or_else(|poisoned| {
+            error!("Mutex poisoned in io_uring, recovering");
+            metrics::counter!("io_uring_mutex_poisoned_total");
+            poisoned.into_inner()
+        })
+    };
+}
 
 /// Global io_uring runtime instance
 ///
@@ -168,7 +182,7 @@ impl IoUringRuntime {
 
                 // Process completions
                 let completions: Vec<(OperationId, i32)> = {
-                    let mut ring_guard = ring.lock().unwrap();
+                    let mut ring_guard = safe_lock!(ring);
                     let mut cq = ring_guard.completion();
                     let mut completions = Vec::new();
 
@@ -185,7 +199,7 @@ impl IoUringRuntime {
                 // Notify waiters
                 for (op_id, result) in completions {
                     // Try regular operations first
-                    if let Some(sender) = pending_ops.lock().unwrap().remove(&op_id) {
+                    if let Some(sender) = safe_lock!(pending_ops).remove(&op_id) {
                         let io_result = if result < 0 {
                             Err(io::Error::from_raw_os_error(-result))
                         } else {
@@ -197,7 +211,7 @@ impl IoUringRuntime {
                         }
                     }
                     // Try accept operations
-                    else if let Some(sender) = pending_accepts.lock().unwrap().remove(&op_id) {
+                    else if let Some(sender) = safe_lock!(pending_accepts).remove(&op_id) {
                         let io_result = if result < 0 {
                             Err(io::Error::from_raw_os_error(-result))
                         } else {
@@ -241,7 +255,7 @@ impl IoUringRuntime {
         let mut addrlen: libc::socklen_t = std::mem::size_of::<libc::sockaddr_storage>() as u32;
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build accept operation
             let accept_op = opcode::Accept::new(
@@ -264,7 +278,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_accepts.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_accepts).insert(op_id, tx);
 
         // Wait for completion
         let result_fd = rx
@@ -323,7 +337,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build read operation
             let read_op = opcode::Read::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32)
@@ -342,7 +356,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_ops.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -369,7 +383,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build write operation
             let write_op = opcode::Write::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32)
@@ -388,7 +402,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_ops.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -406,7 +420,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build close operation
             let close_op = opcode::Close::new(types::Fd(fd))
@@ -425,7 +439,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_ops.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -436,8 +450,8 @@ impl IoUringRuntime {
 
     /// Get statistics about io_uring usage
     pub fn stats(&self) -> IoUringStats {
-        let pending_count = self.pending_ops.lock().unwrap().len();
-        let pending_accepts = self.pending_accepts.lock().unwrap().len();
+        let pending_count = self.safe_lock!(pending_ops).len();
+        let pending_accepts = self.safe_lock!(pending_accepts).len();
 
         IoUringStats {
             pending_operations: pending_count,
@@ -468,7 +482,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build read_fixed operation (zero-copy with registered buffers)
             let read_op = opcode::ReadFixed::new(
@@ -492,7 +506,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_ops.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -521,7 +535,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.ring.lock().unwrap();
+            let mut ring_guard = self.safe_lock!(ring);
 
             // Build write_fixed operation (zero-copy with registered buffers)
             let write_op = opcode::WriteFixed::new(
@@ -545,7 +559,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.pending_ops.lock().unwrap().insert(op_id, tx);
+        self.safe_lock!(pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
