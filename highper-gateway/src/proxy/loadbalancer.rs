@@ -335,7 +335,7 @@ impl LoadBalancer {
                 // Fallback to thread-local counter if system time fails
                 // This should never happen in practice unless clock is before 1970
                 tracing::warn!("System time before UNIX_EPOCH, using fallback random seed");
-                metrics::counter!("loadbalancer_time_errors_total", "function" => "random");
+                let _ = metrics::counter!("loadbalancer_time_errors_total", "function" => "random");
                 self.round_robin_counter.fetch_add(1, Ordering::Relaxed)
             });
         let idx = seed % self.servers.len();
@@ -381,7 +381,7 @@ impl LoadBalancer {
             .unwrap_or_else(|_| {
                 // Fallback to round-robin counter if system time fails
                 tracing::warn!("System time before UNIX_EPOCH, using fallback seed for power_of_two");
-                metrics::counter!("loadbalancer_time_errors_total", "function" => "power_of_two");
+                let _ = metrics::counter!("loadbalancer_time_errors_total", "function" => "power_of_two");
                 self.round_robin_counter.fetch_add(1, Ordering::Relaxed)
             });
 
@@ -509,7 +509,7 @@ impl LoadBalancer {
                             "Maglev table has unfilled slots - algorithm may have a bug. \
                             Using first backend (0) as fallback."
                         );
-                        metrics::counter!("loadbalancer_maglev_errors_total");
+                        let _ = metrics::counter!("loadbalancer_maglev_errors_total");
                         had_none = true;
                     }
                     tracing::debug!("Maglev table slot {} was None, using backend 0", idx);

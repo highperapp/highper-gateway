@@ -125,7 +125,7 @@ impl BackpressureManager {
                 current, max
             );
             self.connections_rejected_capacity.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", "reason" => "max_capacity");
+            let _ = metrics::counter!("connections_rejected_total", "reason" => "max_capacity");
             return false;
         }
 
@@ -137,7 +137,7 @@ impl BackpressureManager {
                 self.memory_limit_mb
             );
             self.connections_rejected_memory.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", "reason" => "memory_pressure");
+            let _ = metrics::counter!("connections_rejected_total", "reason" => "memory_pressure");
             return false;
         }
 
@@ -145,7 +145,7 @@ impl BackpressureManager {
         if self.adaptive && self.is_cpu_saturated() {
             debug!("Rejecting connection: CPU saturation (>{}%)", self.cpu_threshold);
             self.connections_rejected_cpu.fetch_add(1, Ordering::Relaxed);
-            metrics::counter!("connections_rejected_total", "reason" => "cpu_saturation");
+            let _ = metrics::counter!("connections_rejected_total", "reason" => "cpu_saturation");
             return false;
         }
 
