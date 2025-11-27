@@ -1,0 +1,32 @@
+# Cloud Load Balancer Example
+# This configuration is designed for deployment on cloud instances
+# Replace backend IPs with your actual server addresses
+
+# Main load balancer listening on all interfaces, port 8080
+# Note: Using a simple domain-style address for proper routing
+api.gateway:8080 {
+    # Backend servers (replace with actual IPs)
+    proxy http://10.0.1.10:8080 http://10.0.1.11:8080 http://10.0.1.12:8080
+
+    # Load balancing algorithm
+    lb round_robin
+
+    # Health check configuration
+    health interval=10s path="/health" timeout=5s
+
+    # Request timeout
+    timeout 30s
+}
+
+# Alternative: Using least_conn for variable workloads
+# Uncomment and modify as needed:
+# api.gateway:8081 {
+#     proxy http://10.0.2.10:8080 http://10.0.2.11:8080
+#     lb least_conn
+#     health interval=5s path="/health" timeout=3s
+# }
+
+# Global configuration
+log info
+admin :9090
+metrics on

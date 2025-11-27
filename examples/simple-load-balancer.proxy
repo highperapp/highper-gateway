@@ -1,0 +1,12 @@
+# Simple Load Balancer Example
+# This configuration demonstrates basic load balancing with health checks
+
+# Listen on localhost:8080 and distribute to 3 backends
+localhost:8080 {
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
+    lb round_robin
+    health interval=10s path="/health" timeout=5s
+}
+
+# Global settings
+log info

@@ -43,7 +43,7 @@ provision_proxy() {
     log_info "Creating proxy server..."
 
     local response
-    response=$(curl -s -X POST "${VULTR_API_URL}/bare-metals" \
+    response=$(curl -s -X POST "${VULTR_API_URL}/instances" \
         -H "Authorization: Bearer ${VULTR_API_KEY}" \
         -H "Content-Type: application/json" \
         -d "{
@@ -56,11 +56,11 @@ provision_proxy() {
         }")
 
     local proxy_id
-    proxy_id=$(echo "$response" | jq -r '.bare_metal.id // empty')
+    proxy_id=$(echo "$response" | jq -r '.instance.id // empty')
 
     if [ -z "$proxy_id" ]; then
         log_error "Failed to create proxy server"
-        log_debug "Response: $response"
+        log_error "API Response: $response"
         return 1
     fi
 
@@ -80,7 +80,7 @@ provision_backends() {
         log_info "Creating backend server ${i}/${count}..."
 
         local response
-        response=$(curl -s -X POST "${VULTR_API_URL}/bare-metals" \
+        response=$(curl -s -X POST "${VULTR_API_URL}/instances" \
             -H "Authorization: Bearer ${VULTR_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -93,11 +93,11 @@ provision_backends() {
             }")
 
         local backend_id
-        backend_id=$(echo "$response" | jq -r '.bare_metal.id // empty')
+        backend_id=$(echo "$response" | jq -r '.instance.id // empty')
 
         if [ -z "$backend_id" ]; then
             log_error "Failed to create backend server ${i}"
-            log_debug "Response: $response"
+            log_error "API Response: $response"
             return 1
         fi
 
@@ -120,7 +120,7 @@ provision_generators() {
         log_info "Creating generator server ${i}/${count}..."
 
         local response
-        response=$(curl -s -X POST "${VULTR_API_URL}/bare-metals" \
+        response=$(curl -s -X POST "${VULTR_API_URL}/instances" \
             -H "Authorization: Bearer ${VULTR_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -133,11 +133,11 @@ provision_generators() {
             }")
 
         local generator_id
-        generator_id=$(echo "$response" | jq -r '.bare_metal.id // empty')
+        generator_id=$(echo "$response" | jq -r '.instance.id // empty')
 
         if [ -z "$generator_id" ]; then
             log_error "Failed to create generator server ${i}"
-            log_debug "Response: $response"
+            log_error "API Response: $response"
             return 1
         fi
 
