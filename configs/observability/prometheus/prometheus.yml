@@ -1,0 +1,92 @@
+# Prometheus Configuration for Highper Gateway Load Testing
+# Scrapes: Gateway + Backends + Load Generators + System Metrics
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'highper-loadtest'
+    environment: 'vultr'
+
+# Alerting configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Highper Gateway metrics (main proxy)
+  - job_name: 'highper-gateway'
+    static_configs:
+      - targets:
+          - 'PROXY_IP:9090'  # Will be replaced by deployment script
+        labels:
+          instance: 'gateway-proxy'
+          tier: 'proxy'
+    scrape_interval: 5s
+    scrape_timeout: 4s
+    metrics_path: '/metrics'
+
+  # Rust Backend Servers (fast-backend with Prometheus metrics)
+  - job_name: 'rust-backends'
+    static_configs:
+      - targets:
+          - 'BACKEND_1:9100'  # Will be replaced by deployment script
+          - 'BACKEND_2:9100'
+          - 'BACKEND_3:9100'
+        labels:
+          tier: 'backend'
+    scrape_interval: 10s
+    scrape_timeout: 8s
+    metrics_path: '/metrics'
+
+  # Proxy Server System Metrics (Node Exporter)
+  - job_name: 'proxy-system'
+    static_configs:
+      - targets:
+          - 'node-exporter:9100'
+        labels:
+          instance: 'gateway-proxy'
+          tier: 'proxy'
+    scrape_interval: 10s
+
+  # Container Metrics (cAdvisor)
+  - job_name: 'containers'
+    static_configs:
+      - targets:
+          - 'cadvisor:8080'
+    scrape_interval: 15s
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets:
+          - 'localhost:9090'
+        labels:
+          instance: 'prometheus-server'
+
+  # Load Generators (if they expose metrics)
+  - job_name: 'load-generators'
+    static_configs:
+      - targets:
+          - 'GENERATOR_1:9102'  # Will be replaced if generators expose metrics
+          - 'GENERATOR_2:9102'
+          - 'GENERATOR_3:9102'
+        labels:
+          tier: 'generator'
+    scrape_interval: 10s
+    scrape_timeout: 8s
+
+# Remote write configuration (optional - for long-term storage)
+# remote_write:
+#   - url: "https://prometheus-remote-write-endpoint/api/v1/write"
+#     queue_config:
+#       max_samples_per_send: 10000
+#       max_shards: 30
