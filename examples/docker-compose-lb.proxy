@@ -1,0 +1,22 @@
+# Docker Compose Load Balancer Configuration
+# For use with docker-compose.loadtest.yml
+
+# Main load balancer configuration
+gateway:8080 {
+    # Backend containers (docker-compose service names)
+    proxy http://backend1:8080 http://backend2:8080 http://backend3:8080
+
+    # Load balancing algorithm
+    lb round_robin
+
+    # Health checks
+    health interval=10s path="/health" timeout=5s
+
+    # Request timeout
+    timeout 30s
+}
+
+# Global settings
+log info
+admin :9090
+metrics on

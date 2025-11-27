@@ -36,3 +36,4 @@ docs/dev-notes/
 .env
 results/
 *.log
+.env.infrastructure
