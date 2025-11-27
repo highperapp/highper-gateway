@@ -65,41 +65,76 @@ wait_for_all_ssh() {
     log_success "All servers are SSH-ready!"
 }
 
-# Deploy backend servers (simple HTTP server for testing)
+# Deploy Rust fast-backend servers with Prometheus metrics
 deploy_backends() {
-    log_info "Deploying backend servers..."
+    log_info "Deploying Rust fast-backend servers..."
+
+    # Check if fast-backend binary exists locally
+    local backend_binary="${PROJECT_ROOT}/target/release/fast-backend"
+    if [ ! -f "$backend_binary" ]; then
+        log_error "Fast-backend binary not found at: ${backend_binary}"
+        log_info "Please build it first: cd ${PROJECT_ROOT} && cargo build --release"
+        return 1
+    fi
 
     for i in "${!BACKEND_IPS[@]}"; do
         local ip="${BACKEND_IPS[$i]}"
         local backend_num=$((i + 1))
+        local port=8080
 
-        log_info "Deploying backend ${backend_num} (${ip})..."
+        log_info "Deploying fast-backend ${backend_num} (${ip}:${port})..."
 
-        ssh_exec "$ip" "apt-get update && apt-get install -y nginx" "root"
+        # Copy fast-backend binary to server
+        log_info "Copying fast-backend binary to ${ip}..."
+        ssh_copy "$backend_binary" "$ip" "/usr/local/bin/fast-backend" "root"
+        ssh_exec "$ip" "chmod +x /usr/local/bin/fast-backend" "root"
 
-        # Create simple test page
-        ssh_exec "$ip" "cat > /var/www/html/index.html <<'EOF'
-<!DOCTYPE html>
-<html>
-<head><title>Backend ${backend_num}</title></head>
-<body>
-<h1>Backend Server ${backend_num}</h1>
-<p>IP: ${ip}</p>
-<p>Timestamp: \$(date)</p>
-</body>
-</html>
-EOF" "root"
+        # Create systemd service for fast-backend
+        ssh_exec "$ip" "cat > /etc/systemd/system/fast-backend.service <<'EOFSERVICE'
+[Unit]
+Description=Fast Rust Backend Server
+After=network.target
 
-        # Create health check endpoint
-        ssh_exec "$ip" "cat > /var/www/html/health <<'EOF'
-OK
-EOF" "root"
+[Service]
+Type=simple
+User=root
+Environment=\"PORT=${port}\"
+ExecStart=/usr/local/bin/fast-backend
+Restart=always
+RestartSec=3
+LimitNOFILE=1000000
 
-        # Start nginx
-        ssh_exec "$ip" "systemctl start nginx && systemctl enable nginx" "root"
+[Install]
+WantedBy=multi-user.target
+EOFSERVICE" "root"
 
-        log_success "Backend ${backend_num} deployed"
+        # Start fast-backend service
+        log_info "Starting fast-backend service on ${ip}..."
+        ssh_exec "$ip" "systemctl daemon-reload" "root"
+        ssh_exec "$ip" "systemctl start fast-backend" "root"
+        ssh_exec "$ip" "systemctl enable fast-backend" "root"
+
+        # Wait for service to be ready
+        sleep 2
+
+        # Verify backend is running
+        if ssh_exec "$ip" "systemctl is-active fast-backend" "root" | grep -q "active"; then
+            log_success "Backend ${backend_num} deployed and running"
+
+            # Test health endpoint
+            if ssh_exec "$ip" "curl -sf http://localhost:${port}/health" "root" >/dev/null 2>&1; then
+                log_success "  Health check: OK"
+            else
+                log_warn "  Health check failed (may need more time to start)"
+            fi
+        else
+            log_error "Backend ${backend_num} failed to start"
+            ssh_exec "$ip" "journalctl -u fast-backend -n 20" "root"
+            return 1
+        fi
     done
+
+    log_success "All ${#BACKEND_IPS[@]} Rust backends deployed successfully"
 }
 
 # Deploy Highper Gateway
