@@ -1,0 +1,39 @@
+# Scenario 03: Layer 7 HTTPS/TLS Termination
+# TLS termination at gateway with HTTP backend communication
+# Target: 500K+ RPS with TLS overhead, P99 < 15ms
+
+https://loadtest.local {
+    # TLS configuration
+    tls cert=/etc/highper/certs/loadtest.crt key=/etc/highper/certs/loadtest.key
+    tls_protocols TLSv1.2 TLSv1.3
+    tls_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
+
+    # Backend servers (HTTP)
+    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
+
+    # Layer 7 load balancing
+    lb least_conn
+    health interval=10s path="/health" timeout=5s
+
+    # HTTP/2 support
+    http2 enabled
+
+    # Connection settings
+    keepalive 120s
+    max_conns 2000000
+
+    # Compression
+    compress gzip br level=6
+
+    # Rate limiting
+    rate_limit 550000 burst=75000
+
+    # Connection pooling to backends
+    pool min_idle=200 max_idle=15000 max_open=800000
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=16384 pool_size=16777216
+backpressure enabled max_conns=2000000 memory_limit=40960mb

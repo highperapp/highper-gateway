@@ -1,0 +1,67 @@
+# Scenario 11: CDN Edge Proxy with Caching
+# Edge caching with cache invalidation and purge API
+# Target: 800K+ RPS with 80%+ cache hit ratio
+
+https://cdn.loadtest.local {
+    # TLS configuration
+    tls cert=/etc/highper/certs/cdn.crt key=/etc/highper/certs/cdn.key
+    tls_protocols TLSv1.2 TLSv1.3
+
+    # HTTP/2 and HTTP/3 for CDN
+    http2 enabled
+    http3 enabled port=443
+
+    # Backend origin servers
+    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
+
+    # Load balancing to origins
+    lb least_conn
+    health interval=30s path="/health" timeout=10s
+
+    # Cache configuration
+    cache enabled
+    cache_size 32gb
+    cache_max_age 3600s
+    cache_methods GET HEAD
+    cache_status_codes 200 206 301 302 404
+
+    # Cache key customization
+    cache_key $scheme$host$request_uri$is_args$args
+
+    # Cache bypass
+    cache_bypass $arg_nocache $cookie_nocache $http_pragma $http_authorization
+
+    # Cache control headers
+    cache_valid 200 206 1h
+    cache_valid 301 302 10m
+    cache_valid 404 1m
+    cache_use_stale error timeout updating http_500 http_502 http_503
+
+    # Compression (before caching)
+    compress gzip br level=6
+    compress_types text/html text/css application/javascript application/json image/svg+xml
+
+    # Connection settings
+    max_conns 2000000
+    keepalive 90s
+
+    # Rate limiting
+    rate_limit 850000 burst=120000
+
+    # Connection pooling to origins
+    pool min_idle=200 max_idle=10000 max_open=500000
+
+    # Headers
+    header_add X-Cache-Status $upstream_cache_status
+    header_add X-CDN-Edge "Highper"
+    header_add Cache-Control "public, max-age=3600"
+
+    # Vary header for cache
+    header_vary Accept-Encoding
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=32768 pool_size=16777216
+backpressure enabled max_conns=2000000 memory_limit=40960mb

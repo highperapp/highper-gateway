@@ -1,0 +1,45 @@
+# Scenario 06: WebSocket Load Balancer
+# WebSocket protocol with sticky sessions and long-lived connections
+# Target: 2M+ concurrent WebSocket connections, 100K+ msg/sec
+
+https://ws.loadtest.local {
+    # TLS configuration
+    tls cert=/etc/highper/certs/ws.crt key=/etc/highper/certs/ws.key
+    tls_protocols TLSv1.2 TLSv1.3
+
+    # WebSocket configuration
+    websocket enabled
+
+    # Backend WebSocket servers
+    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
+
+    # Sticky sessions for WebSocket (connection affinity)
+    lb ip_hash
+    health interval=15s path="/health" timeout=5s
+
+    # WebSocket-specific timeouts (long-lived connections)
+    idle_timeout 3600s
+    websocket_timeout 7200s
+    keepalive 300s
+    max_conns 3000000
+
+    # WebSocket message limits
+    websocket_max_message_size 65536
+    websocket_buffer_size 8192
+
+    # Compression for WebSocket
+    websocket_compression enabled
+
+    # Connection pooling (for HTTP upgrade)
+    pool min_idle=100 max_idle=5000 max_open=1000000
+
+    # Headers for WebSocket
+    header_add X-Forwarded-Proto "https"
+    header_passthrough Sec-WebSocket-Protocol Sec-WebSocket-Extensions
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=8192 pool_size=16777216
+backpressure enabled max_conns=3000000 memory_limit=49152mb

@@ -1,0 +1,47 @@
+# Scenario 07: gRPC Gateway
+# HTTP/2-based gRPC load balancing with streaming support
+# Target: 300K+ RPC/sec with bidirectional streaming
+
+https://grpc.loadtest.local {
+    # TLS configuration (gRPC requires HTTP/2)
+    tls cert=/etc/highper/certs/grpc.crt key=/etc/highper/certs/grpc.key
+    tls_protocols TLSv1.2 TLSv1.3
+
+    # HTTP/2 required for gRPC
+    http2 enabled
+    http2_max_concurrent_streams 10000
+    http2_initial_window_size 1048576
+
+    # Backend gRPC servers
+    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
+
+    # gRPC-aware load balancing
+    lb least_conn
+    health interval=10s path="/grpc.health.v1.Health/Check" timeout=5s grpc
+
+    # gRPC-specific settings
+    grpc enabled
+    grpc_timeout 60s
+    grpc_max_message_size 4194304
+
+    # Connection settings for long-lived streams
+    keepalive 300s
+    idle_timeout 600s
+    max_conns 1000000
+
+    # Headers for gRPC
+    header_add grpc-accept-encoding "gzip"
+    header_passthrough grpc-timeout grpc-encoding
+
+    # Connection pooling (HTTP/2 multiplexing)
+    pool min_idle=50 max_idle=2000 max_open=100000 http2_multiplexing
+
+    # Rate limiting
+    rate_limit 350000 burst=50000
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=4096 pool_size=8388608
+backpressure enabled max_conns=1000000 memory_limit=24576mb

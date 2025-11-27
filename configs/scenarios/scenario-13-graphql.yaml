@@ -1,0 +1,73 @@
+# Scenario 13: GraphQL Gateway
+# GraphQL query routing with batching and caching
+# Target: 200K+ queries/sec with query complexity analysis
+
+https://graphql.loadtest.local {
+    # TLS configuration
+    tls cert=/etc/highper/certs/graphql.crt key=/etc/highper/certs/graphql.key
+    tls_protocols TLSv1.2 TLSv1.3
+
+    # HTTP/2 for GraphQL
+    http2 enabled
+
+    # Backend GraphQL servers
+    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
+
+    # Load balancing
+    lb round_robin
+    health interval=10s path="/graphql?query={__typename}" timeout=5s
+
+    # GraphQL-specific configuration
+    graphql enabled
+    graphql_endpoint /graphql
+    graphql_max_depth 10
+    graphql_max_complexity 1000
+    graphql_batch_enabled true
+    graphql_batch_max_size 10
+
+    # Query caching (for identical queries)
+    cache enabled
+    cache_size 8gb
+    cache_max_age 300s
+    cache_key $request_body_sha256
+
+    # Persisted queries
+    persisted_queries enabled
+    persisted_queries_path /etc/highper/persisted-queries
+
+    # Rate limiting (per user/API key)
+    rate_limit 250000 burst=35000 per_header=X-API-Key
+
+    # Timeouts (GraphQL can be complex)
+    request_timeout 60s
+    connect_timeout 5s
+    keepalive 120s
+
+    # Connection settings
+    max_conns 1000000
+
+    # Connection pooling
+    pool min_idle=300 max_idle=15000 max_open=400000
+
+    # CORS
+    cors origins=* methods=POST methods_credentials=true
+
+    # Headers
+    header_add X-GraphQL-Version "1.0"
+    header_passthrough X-Apollo-Tracing
+
+    # Compression
+    compress gzip level=6
+
+    # Request body size (GraphQL queries can be large)
+    max_body_size 1mb
+
+    # Logging (capture GraphQL operations)
+    access_log enabled format=json fields=graphql_operation,graphql_complexity
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=8192 pool_size=8388608
+backpressure enabled max_conns=1000000 memory_limit=24576mb
