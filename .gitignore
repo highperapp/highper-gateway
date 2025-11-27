@@ -26,8 +26,12 @@ config-local.toml
 # Test results
 load-tests/results/*.bin
 
-# Ignore Documentation and dev notes
-docs/
+# Ignore dev notes (keep essential load testing docs)
+docs/dev-notes/
+
+# Allow essential load testing documentation
+!docs/SYSTEM_OPTIMIZATIONS.md
+!docs/RESOURCE_SIZING_GUIDE.md
 # Load test environment (NEVER commit!)
 .env
 results/
