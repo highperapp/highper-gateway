@@ -263,15 +263,22 @@ deploy_generators() {
 
         log_info "Setting up generator ${gen_num} (${ip})..."
 
-        # Install wrk2 and hey
+        # Install dependencies
         ssh_exec "$ip" "apt-get update && apt-get install -y build-essential git libssl-dev golang-go" "root"
 
-        # Install wrk2
+        # Install vegeta (primary load testing tool)
+        log_info "Installing vegeta on generator ${gen_num}..."
+        ssh_exec "$ip" "go install github.com/tsenart/vegeta@latest" "root"
+        ssh_exec "$ip" "cp /root/go/bin/vegeta /usr/local/bin/" "root"
+
+        # Install wrk2 (fallback load testing tool)
+        log_info "Installing wrk2 on generator ${gen_num}..."
         ssh_exec "$ip" "cd /opt && git clone https://github.com/giltene/wrk2.git || true" "root"
         ssh_exec "$ip" "cd /opt/wrk2 && make clean && make" "root"
         ssh_exec "$ip" "cp /opt/wrk2/wrk /usr/local/bin/wrk2" "root"
 
-        # Install hey
+        # Install hey (alternative tool)
+        log_info "Installing hey on generator ${gen_num}..."
         ssh_exec "$ip" "go install github.com/rakyll/hey@latest" "root"
         ssh_exec "$ip" "cp /root/go/bin/hey /usr/local/bin/" "root"
 
