@@ -433,6 +433,9 @@ fn parse_health_directive(pair: pest::iterators::Pair<Rule>) -> Result<HealthChe
 }
 
 fn parse_tls_directive(pair: pest::iterators::Pair<Rule>) -> Result<TlsConfig> {
+    let mut cert_file = None;
+    let mut key_file = None;
+
     for inner in pair.into_inner() {
         match inner.as_str() {
             "internal" => return Ok(TlsConfig::Internal),
@@ -442,16 +445,22 @@ fn parse_tls_directive(pair: pest::iterators::Pair<Rule>) -> Result<TlsConfig> {
                 });
             }
             _ => {
-                // Try to parse as cert/key files
-                let parts: Vec<&str> = inner.as_str().split_whitespace().collect();
-                if parts.len() == 2 {
-                    return Ok(TlsConfig::Manual {
-                        cert_file: parts[0].trim_matches('"').to_string(),
-                        key_file: parts[1].trim_matches('"').to_string(),
-                    });
+                // Grammar produces two quoted_string tokens for cert and key
+                if cert_file.is_none() {
+                    cert_file = Some(inner.as_str().trim_matches('"').to_string());
+                } else if key_file.is_none() {
+                    key_file = Some(inner.as_str().trim_matches('"').to_string());
                 }
             }
         }
+    }
+
+    // If we got both cert and key files, return Manual config
+    if let (Some(cert), Some(key)) = (cert_file, key_file) {
+        return Ok(TlsConfig::Manual {
+            cert_file: cert,
+            key_file: key,
+        });
     }
 
     // Default: Auto TLS without email

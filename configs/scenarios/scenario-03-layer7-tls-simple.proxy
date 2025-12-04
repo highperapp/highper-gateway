@@ -4,7 +4,7 @@
 
 https://localhost:8443 {
     # TLS configuration (basic - for advanced config use YAML)
-    tls cert=/etc/highper/certs/loadtest.crt key=/etc/highper/certs/loadtest.key
+    tls "/etc/highper/certs/loadtest.crt" "/etc/highper/certs/loadtest.key"
     # Backend servers (HTTP)
     proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
     # Layer 7 load balancing

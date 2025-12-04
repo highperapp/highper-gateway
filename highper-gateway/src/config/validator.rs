@@ -6,13 +6,19 @@ use anyhow::{bail, Result};
 /// Validate configuration
 pub fn validate_config(config: &Config) -> Result<()> {
     // Validate server configuration
-    if config.server.bind.is_empty() {
-        bail!("Server must have at least one bind address");
+    if config.server.bind.is_empty() && config.server.tls_bind.is_empty() {
+        bail!("Server must have at least one bind address (HTTP or HTTPS)");
     }
 
     for bind in &config.server.bind {
         if bind.parse::<std::net::SocketAddr>().is_err() {
             bail!("Invalid bind address: {}", bind);
+        }
+    }
+
+    for bind in &config.server.tls_bind {
+        if bind.parse::<std::net::SocketAddr>().is_err() {
+            bail!("Invalid TLS bind address: {}", bind);
         }
     }
 

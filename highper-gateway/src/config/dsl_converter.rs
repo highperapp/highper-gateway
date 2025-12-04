@@ -24,8 +24,8 @@ pub fn convert_dsl_to_config(dsl_config: dsl_ast::Config) -> Result<crate::confi
     let config = load_config(temp_file.to_str().unwrap())
         .context("Failed to load generated YAML config")?;
 
-    // Clean up temp file
-    let _ = std::fs::remove_file(&temp_file);
+    // Don't delete temp file - keep it for hot reload monitoring
+    // let _ = std::fs::remove_file(&temp_file);
 
     Ok(config)
 }
@@ -205,13 +205,20 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
 
     // Generate server section
     yaml.push_str("server:\n");
+    // Always output bind field (required by schema)
     yaml.push_str("  bind:\n");
     for bind in &http_binds {
         yaml.push_str(&format!("    - \"{}\"\n", bind));
     }
-    yaml.push_str("  tls_bind:\n");
-    for bind in &https_binds {
-        yaml.push_str(&format!("    - \"{}\"\n", bind));
+    // If no HTTP binds, output empty array
+    if http_binds.is_empty() {
+        yaml.push_str("    []\n");
+    }
+    if !https_binds.is_empty() {
+        yaml.push_str("  tls_bind:\n");
+        for bind in &https_binds {
+            yaml.push_str(&format!("    - \"{}\"\n", bind));
+        }
     }
 
     // Log level from global config
