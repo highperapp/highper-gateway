@@ -27,6 +27,8 @@ global_directive = {
     log_directive
   | admin_directive
   | metrics_directive
+  | buffer_pool_directive
+  | backpressure_directive
 }
 
 log_directive = { "log" ~ log_level ~ newline }
@@ -35,7 +37,14 @@ log_level = { "debug" | "info" | "warn" | "error" }
 admin_directive = { "admin" ~ admin_address ~ newline }
 admin_address = @{ (domain ~ port?) | (":" ~ port) }
 
-metrics_directive = { "metrics" ~ ("on" | "off")? ~ newline }
+metrics_directive = { "metrics" ~ metrics_option* ~ newline }
+
+metrics_option = {
+    "prometheus"
+  | "port=" ~ number
+  | "on"
+  | "off"
+}
 
 // Site definition
 site = {
@@ -67,7 +76,7 @@ simple_proxy = { "proxy" ~ backend+ }
 // Block with multiple directives
 site_block = {
     "{" ~ newline* ~
-    (route | directive)* ~
+    (newline* ~ (route | directive))* ~ newline* ~
     "}" ~ newline*
 }
 
@@ -78,7 +87,7 @@ route = {
 
 route_block = {
     "{" ~ newline* ~
-    directive* ~
+    (newline* ~ directive)* ~ newline* ~
     "}" ~ newline*
 }
 
@@ -97,6 +106,12 @@ directive = {
   | rate_limit_directive
   | timeout_directive
   | headers_directive
+  | keepalive_directive
+  | max_conns_directive
+  | connect_timeout_directive
+  | idle_timeout_directive
+  | buffer_pool_directive
+  | backpressure_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -139,6 +154,9 @@ pool_directive = {
 pool_option = {
     "max=" ~ number
   | "min=" ~ number
+  | "min_idle=" ~ number
+  | "max_idle=" ~ number
+  | "max_open=" ~ number
   | "lifetime=" ~ duration
   | "idle=" ~ duration
 }
@@ -192,9 +210,9 @@ compress_directive = {
 
 compression_algo = { "gzip" | "br" | "deflate" | "zstd" }
 
-// Rate limiting: rate_limit 100 per 1s
+// Rate limiting: rate_limit 100 per 1s | rate_limit 100 burst=50
 rate_limit_directive = {
-    "rate_limit" ~ number ~ ("per" ~ duration)? ~ newline
+    "rate_limit" ~ number ~ ("burst=" ~ number)? ~ ("per" ~ duration)? ~ newline
 }
 
 // Timeout: timeout 30s
@@ -226,3 +244,47 @@ quoted_string = @{
 tls_passthrough_directive = {
     "tls-passthrough" ~ domain ~ "->" ~ backend ~ newline
 }
+
+// Keepalive: keepalive 90s
+keepalive_directive = {
+    "keepalive" ~ duration ~ newline
+}
+
+// Max connections: max_conns 3000000
+max_conns_directive = {
+    "max_conns" ~ number ~ newline
+}
+
+// Connect timeout: connect_timeout 5s
+connect_timeout_directive = {
+    "connect_timeout" ~ duration ~ newline
+}
+
+// Idle timeout: idle_timeout 300s
+idle_timeout_directive = {
+    "idle_timeout" ~ duration ~ newline
+}
+
+// Buffer pool: buffer_pool enabled size=16384 pool_size=16777216
+buffer_pool_directive = {
+    "buffer_pool" ~ buffer_pool_option+ ~ newline
+}
+
+buffer_pool_option = {
+    "enabled"
+  | "size=" ~ number
+  | "pool_size=" ~ number
+}
+
+// Backpressure: backpressure enabled max_conns=3000000 memory_limit=49152mb
+backpressure_directive = {
+    "backpressure" ~ backpressure_option+ ~ newline
+}
+
+backpressure_option = {
+    "enabled"
+  | "max_conns=" ~ number
+  | "memory_limit=" ~ memory_size
+}
+
+memory_size = @{ number ~ ("kb" | "mb" | "gb" | "tb") }

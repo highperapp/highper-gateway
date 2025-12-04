@@ -6,19 +6,16 @@ https://global.loadtest.local {
     # TLS configuration
     tls cert=/etc/highper/certs/global.crt key=/etc/highper/certs/global.key
     tls_protocols TLSv1.2 TLSv1.3
-
     # HTTP/2 and HTTP/3 for global reach
     http2 enabled
     http3 enabled port=443
-
     # GeoIP-based routing
     geo_routing enabled
     geo_database /etc/highper/GeoLite2-City.mmdb
-
     # Backend pools by region
     # North America
     geo_backend region=NA {
-        proxy BACKEND_1:8080
+        proxy 127.0.0.1:8081
         lb least_conn
         health interval=10s path="/health" timeout=5s
         weight 1.0
@@ -26,7 +23,7 @@ https://global.loadtest.local {
 
     # Europe
     geo_backend region=EU {
-        proxy BACKEND_2:8080
+        proxy 127.0.0.1:8082
         lb least_conn
         health interval=10s path="/health" timeout=5s
         weight 1.0
@@ -34,7 +31,7 @@ https://global.loadtest.local {
 
     # Asia Pacific
     geo_backend region=APAC {
-        proxy BACKEND_3:8080
+        proxy 127.0.0.1:8083
         lb least_conn
         health interval=10s path="/health" timeout=5s
         weight 1.0

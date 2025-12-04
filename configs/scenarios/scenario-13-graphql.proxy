@@ -6,13 +6,10 @@ https://graphql.loadtest.local {
     # TLS configuration
     tls cert=/etc/highper/certs/graphql.crt key=/etc/highper/certs/graphql.key
     tls_protocols TLSv1.2 TLSv1.3
-
     # HTTP/2 for GraphQL
     http2 enabled
-
     # Backend GraphQL servers
-    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
-
+    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
     # Load balancing
     lb round_robin
     health interval=10s path="/graphql?query={__typename}" timeout=5s

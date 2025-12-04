@@ -59,9 +59,17 @@ fn parse_global_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair
                 }
             }
             Rule::metrics_directive => {
-                // Check if "off" is specified
-                let text = inner.as_str();
-                global.metrics_enabled = !text.contains("off");
+                parse_metrics_directive(global, inner)?;
+            }
+            Rule::buffer_pool_directive => {
+                if let Some(Directive::BufferPool(config)) = parse_directive(inner)? {
+                    global.buffer_pool = Some(config);
+                }
+            }
+            Rule::backpressure_directive => {
+                if let Some(Directive::Backpressure(config)) = parse_directive(inner)? {
+                    global.backpressure = Some(config);
+                }
             }
             _ => {}
         }
@@ -77,6 +85,24 @@ fn parse_log_level(s: &str) -> Result<LogLevel> {
         "error" => Ok(LogLevel::Error),
         _ => Err(anyhow!("Invalid log level: {}", s)),
     }
+}
+
+fn parse_metrics_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair<Rule>) -> Result<()> {
+    for inner in pair.into_inner() {
+        if let Rule::metrics_option = inner.as_rule() {
+            let text = inner.as_str();
+            if text == "off" {
+                global.metrics_enabled = false;
+            } else if text == "on" {
+                global.metrics_enabled = true;
+            } else if text == "prometheus" {
+                global.metrics_prometheus = true;
+            } else if let Some(port_str) = text.strip_prefix("port=") {
+                global.metrics_port = Some(port_str.parse()?);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn parse_site(pair: pest::iterators::Pair<Rule>) -> Result<Site> {
@@ -308,6 +334,24 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::tls_passthrough_directive => {
                 Ok(Some(parse_tls_passthrough_directive(inner)?))
             }
+            Rule::keepalive_directive => {
+                Ok(Some(parse_keepalive_directive(inner)?))
+            }
+            Rule::max_conns_directive => {
+                Ok(Some(parse_max_conns_directive(inner)?))
+            }
+            Rule::connect_timeout_directive => {
+                Ok(Some(parse_connect_timeout_directive(inner)?))
+            }
+            Rule::idle_timeout_directive => {
+                Ok(Some(parse_idle_timeout_directive(inner)?))
+            }
+            Rule::buffer_pool_directive => {
+                Ok(Some(parse_buffer_pool_directive(inner)?))
+            }
+            Rule::backpressure_directive => {
+                Ok(Some(parse_backpressure_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -461,13 +505,18 @@ fn parse_compress_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directi
 
 fn parse_rate_limit_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
     let mut rate = None;
+    let mut burst = None;
     let mut per = None;
+    let mut seen_rate = false;
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::number => {
-                if rate.is_none() {
+                if !seen_rate {
                     rate = Some(inner.as_str().parse()?);
+                    seen_rate = true;
+                } else {
+                    burst = Some(inner.as_str().parse()?);
                 }
             }
             Rule::duration => {
@@ -479,6 +528,7 @@ fn parse_rate_limit_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direc
 
     Ok(Directive::RateLimit {
         rate: rate.ok_or_else(|| anyhow!("Rate limit missing rate"))?,
+        burst,
         per,
     })
 }
@@ -543,6 +593,106 @@ fn parse_tls_passthrough_directive(pair: pest::iterators::Pair<Rule>) -> Result<
         server_name: server_name.ok_or_else(|| anyhow!("TLS passthrough missing server name"))?,
         backend: backend.ok_or_else(|| anyhow!("TLS passthrough missing backend"))?,
     })
+}
+
+fn parse_keepalive_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::Keepalive(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("Keepalive directive missing duration"))
+}
+
+fn parse_max_conns_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::number = inner.as_rule() {
+            return Ok(Directive::MaxConnections(inner.as_str().parse()?));
+        }
+    }
+    Err(anyhow!("max_conns directive missing number"))
+}
+
+fn parse_connect_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::ConnectTimeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("connect_timeout directive missing duration"))
+}
+
+fn parse_idle_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::IdleTimeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("idle_timeout directive missing duration"))
+}
+
+fn parse_buffer_pool_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = BufferPoolConfig {
+        enabled: false,
+        size: None,
+        pool_size: None,
+    };
+
+    for inner in pair.into_inner() {
+        if let Rule::buffer_pool_option = inner.as_rule() {
+            let text = inner.as_str();
+            if text == "enabled" {
+                config.enabled = true;
+            } else if let Some(size_str) = text.strip_prefix("size=") {
+                config.size = Some(size_str.parse()?);
+            } else if let Some(pool_size_str) = text.strip_prefix("pool_size=") {
+                config.pool_size = Some(pool_size_str.parse()?);
+            }
+        }
+    }
+
+    Ok(Directive::BufferPool(config))
+}
+
+fn parse_backpressure_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = BackpressureConfig {
+        enabled: false,
+        max_connections: None,
+        memory_limit: None,
+    };
+
+    for inner in pair.into_inner() {
+        if let Rule::backpressure_option = inner.as_rule() {
+            let text = inner.as_str();
+            if text == "enabled" {
+                config.enabled = true;
+            } else if let Some(max_str) = text.strip_prefix("max_conns=") {
+                config.max_connections = Some(max_str.parse()?);
+            } else if let Some(mem_str) = text.strip_prefix("memory_limit=") {
+                config.memory_limit = Some(parse_memory_size(mem_str)?);
+            }
+        }
+    }
+
+    Ok(Directive::Backpressure(config))
+}
+
+fn parse_memory_size(s: &str) -> Result<usize> {
+    let s = s.trim();
+    let (num_str, unit) = if s.ends_with("kb") {
+        (&s[..s.len()-2], 1024)
+    } else if s.ends_with("mb") {
+        (&s[..s.len()-2], 1024 * 1024)
+    } else if s.ends_with("gb") {
+        (&s[..s.len()-2], 1024 * 1024 * 1024)
+    } else if s.ends_with("tb") {
+        (&s[..s.len()-2], 1024 * 1024 * 1024 * 1024)
+    } else {
+        (s, 1)
+    };
+
+    let num: usize = num_str.parse()?;
+    Ok(num * unit)
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

@@ -1,0 +1,20 @@
+# Scenario 01: Layer 4-style Load Balancer (HTTP-based)
+# Fast load balancing with minimal processing
+# Target: 600K+ RPS with minimal latency overhead
+# Note: Using HTTP protocol since backends are HTTP servers
+
+localhost:8080 {
+    # Backend servers
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
+    # Layer 4-style load balancing
+    lb round_robin
+    # Health checks
+    health interval=10s timeout=5s path="/"
+    # Connection limits
+    max_conns 3000000
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=16384 pool_size=16777216

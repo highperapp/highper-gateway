@@ -6,42 +6,34 @@ https://web.loadtest.local {
     # TLS configuration
     tls cert=/etc/highper/certs/web.crt key=/etc/highper/certs/web.key
     tls_protocols TLSv1.2 TLSv1.3
-
     # HTTP/2 for better performance
     http2 enabled
-
     # Static file serving (direct from gateway)
     root /var/www/html
     static enabled
     static_cache enabled size=16gb max_age=86400s
     static_gzip enabled
     static_brotli enabled
-
     # Index files
     index index.php index.html index.htm
-
     # Backend PHP-FPM servers via FastCGI
     location ~ \.php$ {
-        fastcgi BACKEND_1:9000 BACKEND_2:9000 BACKEND_3:9000
+        fastcgi 127.0.0.1:8081:9000 127.0.0.1:8082:9000 127.0.0.1:8083:9000
         fastcgi_index index.php
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name
         fastcgi_param QUERY_STRING $query_string
         fastcgi_param REQUEST_METHOD $request_method
-
         # PHP-FPM load balancing
         lb round_robin
         health interval=15s timeout=5s fastcgi
-
         # PHP-FPM timeouts
         fastcgi_connect_timeout 5s
         fastcgi_send_timeout 60s
         fastcgi_read_timeout 60s
-
         # FastCGI buffering
         fastcgi_buffering enabled
         fastcgi_buffer_size 16k
         fastcgi_buffers 16 16k
-
         # Connection pooling to PHP-FPM
         pool min_idle=200 max_idle=10000 max_open=300000
     }

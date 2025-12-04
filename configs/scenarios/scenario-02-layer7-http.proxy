@@ -3,23 +3,18 @@
 # Target: 600K+ RPS with P99 < 10ms
 
 localhost:8080 {
-    # Backend servers (will be populated by deploy script)
-    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
-
+    # Backend servers (localhost for testing, replace with actual IPs for production)
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
     # Layer 7 load balancing with health checks
     lb round_robin
     health interval=10s path="/health" timeout=5s
-
     # HTTP optimizations
     keepalive 90s
     max_conns 3000000
-
     # Compression
     compress gzip br
-
     # Rate limiting
     rate_limit 700000 burst=100000
-
     # Connection pooling
     pool min_idle=100 max_idle=10000 max_open=1000000
 }

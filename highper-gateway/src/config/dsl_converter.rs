@@ -90,7 +90,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     } else {
                         vec![]
                     },
-                    paths: vec!["/".to_string()],
+                    paths: vec!["/*".to_string()], // Use wildcard to match all paths
                     upstream: upstream_name.clone(),
                     timeout: None,
                     rate_limit: None,
@@ -151,11 +151,48 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     routes.push(route);
                 }
             }
-            SiteAddress::Tcp { port, .. } => {
-                // TCP sites are handled separately (not yet fully supported)
+            SiteAddress::Tcp { port, protocol } => {
+                // TCP proxy: treat as HTTP for now (works for HTTP backends)
+                // Future: add dedicated TCP proxy configuration section
                 let bind_addr = format!("0.0.0.0:{}", port);
                 if !http_binds.contains(&bind_addr) {
                     http_binds.push(bind_addr);
+                }
+
+                // Create upstream and route for TCP proxy
+                let mut upstream = UpstreamYaml {
+                    name: upstream_name.clone(),
+                    servers: Vec::new(),
+                    algorithm: "round_robin".to_string(),
+                    health_check: None,
+                };
+
+                let mut route = RouteYaml {
+                    name: format!("route_{}", idx),
+                    hosts: vec![], // TCP doesn't use host matching
+                    paths: vec!["/*".to_string()],
+                    upstream: upstream_name.clone(),
+                    timeout: None,
+                    rate_limit: None,
+                };
+
+                // Process TCP site directives
+                for directive in &site.directives {
+                    process_directive(
+                        directive,
+                        &mut upstream,
+                        &mut route,
+                        &mut tls_certificates,
+                        &mut global_rate_limit,
+                        &mut acme_email,
+                        "", // No domain for TCP
+                    );
+                }
+
+                // Add upstream and route if backends were specified
+                if !upstream.servers.is_empty() {
+                    upstreams.push(upstream);
+                    routes.push(route);
                 }
             }
         }
@@ -350,7 +387,7 @@ fn process_directive(
             }
         }
 
-        Directive::RateLimit { rate, per } => {
+        Directive::RateLimit { rate, burst, per } => {
             let window_secs = per.map(|d| d.as_secs()).unwrap_or(60);
             let rl = RateLimitYaml {
                 rate: *rate as u32,
@@ -395,6 +432,36 @@ fn process_directive(
 
         Directive::TlsPassthrough { .. } => {
             // TLS passthrough needs special handling
+        }
+
+        Directive::Keepalive(_duration) => {
+            // TODO: Add keepalive to server-level or upstream config
+            // Requires YAML schema changes for per-upstream keepalive
+        }
+
+        Directive::MaxConnections(_max) => {
+            // TODO: Add to server performance config
+            // Requires passing global config through
+        }
+
+        Directive::ConnectTimeout(_duration) => {
+            // TODO: Add to upstream timeout config
+            // May need to extend UpstreamYaml struct
+        }
+
+        Directive::IdleTimeout(_duration) => {
+            // TODO: Add to connection pool config
+            // May need to extend pool configuration
+        }
+
+        Directive::BufferPool(_config) => {
+            // TODO: Add to server performance config
+            // Requires global config section in YAML generation
+        }
+
+        Directive::Backpressure(_config) => {
+            // TODO: Add to server performance config
+            // Requires global config section in YAML generation
         }
     }
 }

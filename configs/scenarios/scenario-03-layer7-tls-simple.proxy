@@ -1,0 +1,25 @@
+# Scenario 03: Layer 7 HTTPS/TLS Termination (Simplified)
+# TLS termination at gateway with HTTP backend communication
+# Note: Uses basic TLS config (advanced options not yet in DSL)
+
+https://localhost:8443 {
+    # TLS configuration (basic - for advanced config use YAML)
+    tls cert=/etc/highper/certs/loadtest.crt key=/etc/highper/certs/loadtest.key
+    # Backend servers (HTTP)
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
+    # Layer 7 load balancing
+    lb least_conn
+    health interval=10s path="/health" timeout=5s
+    # Connection settings
+    keepalive 120s
+    max_conns 2000000
+    # Compression
+    compress gzip br
+    # Rate limiting
+    rate_limit 550000 burst=75000
+}
+
+# Global settings
+log info
+metrics prometheus port=9090
+buffer_pool enabled size=16384 pool_size=16777216

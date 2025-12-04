@@ -8,50 +8,38 @@ https://hybrid.loadtest.local {
     tls cert=/etc/highper/certs/hybrid.crt key=/etc/highper/certs/hybrid.key
     tls_protocols TLSv1.2 TLSv1.3
     alpn http/1.1 h2 h3
-
     # Protocol support
     http2 enabled
     http3 enabled port=443
     websocket enabled
     grpc enabled
-
     # Backend servers (protocol-aware)
-    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
-
+    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
     # Load balancing
     lb round_robin
     health interval=10s path="/health" timeout=5s
-
     # HTTP/2 settings
     http2_max_concurrent_streams 5000
     http2_initial_window_size 1048576
-
     # HTTP/3 settings
     http3_max_streams 500
     quic_max_idle_timeout 30s
-
     # WebSocket settings
     websocket_timeout 3600s
     websocket_max_message_size 65536
-
     # gRPC settings
     grpc_timeout 60s
     grpc_max_message_size 4194304
-
     # Connection settings
     max_conns 2000000
     keepalive 120s
     idle_timeout 300s
-
     # Compression (protocol-aware)
     compress gzip br qpack level=6
-
     # Rate limiting (aggregate across protocols)
     rate_limit 550000 burst=75000
-
     # Connection pooling
     pool min_idle=500 max_idle=20000 max_open=800000
-
     # Headers
     header_add X-Protocol-Support "HTTP/1.1, HTTP/2, HTTP/3, WebSocket, gRPC"
 }

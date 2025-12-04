@@ -26,6 +26,10 @@ pub struct GlobalConfig {
     pub log_level: Option<LogLevel>,
     pub admin_address: Option<String>,
     pub metrics_enabled: bool,
+    pub metrics_prometheus: bool,
+    pub metrics_port: Option<u16>,
+    pub buffer_pool: Option<BufferPoolConfig>,
+    pub backpressure: Option<BackpressureConfig>,
 }
 
 impl Default for GlobalConfig {
@@ -34,6 +38,10 @@ impl Default for GlobalConfig {
             log_level: Some(LogLevel::Info),
             admin_address: None,
             metrics_enabled: true,
+            metrics_prometheus: true,
+            metrics_port: Some(9090),
+            buffer_pool: None,
+            backpressure: None,
         }
     }
 }
@@ -158,6 +166,7 @@ pub enum Directive {
     /// Rate limiting
     RateLimit {
         rate: u64,
+        burst: Option<u64>,
         per: Option<Duration>,
     },
 
@@ -176,6 +185,24 @@ pub enum Directive {
         server_name: String,
         backend: Backend,
     },
+
+    /// HTTP keepalive duration
+    Keepalive(Duration),
+
+    /// Maximum concurrent connections
+    MaxConnections(u64),
+
+    /// Connection timeout
+    ConnectTimeout(Duration),
+
+    /// Idle connection timeout
+    IdleTimeout(Duration),
+
+    /// Buffer pool configuration
+    BufferPool(BufferPoolConfig),
+
+    /// Backpressure configuration
+    Backpressure(BackpressureConfig),
 }
 
 /// Backend server
@@ -243,6 +270,7 @@ impl std::fmt::Display for LoadBalancingAlgorithm {
 pub struct PoolConfig {
     pub max_size: Option<usize>,
     pub min_idle: Option<usize>,
+    pub max_idle: Option<usize>,
     pub max_lifetime: Option<Duration>,
     pub idle_timeout: Option<Duration>,
 }
@@ -252,6 +280,7 @@ impl Default for PoolConfig {
         Self {
             max_size: Some(100),
             min_idle: Some(10),
+            max_idle: Some(100),
             max_lifetime: Some(Duration::from_secs(3600)), // 1 hour
             idle_timeout: Some(Duration::from_secs(300)),  // 5 minutes
         }
@@ -340,6 +369,42 @@ pub enum HeaderDirection {
     Up,
     /// Response headers (to client)
     Down,
+}
+
+/// Buffer pool configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferPoolConfig {
+    pub enabled: bool,
+    pub size: Option<usize>,
+    pub pool_size: Option<usize>,
+}
+
+impl Default for BufferPoolConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            size: Some(16384),
+            pool_size: Some(16777216),
+        }
+    }
+}
+
+/// Backpressure configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackpressureConfig {
+    pub enabled: bool,
+    pub max_connections: Option<u64>,
+    pub memory_limit: Option<usize>, // in bytes
+}
+
+impl Default for BackpressureConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_connections: Some(3000000),
+            memory_limit: Some(49152 * 1024 * 1024), // 49152 MB
+        }
+    }
 }
 
 #[cfg(test)]

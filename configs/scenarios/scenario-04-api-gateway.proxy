@@ -6,35 +6,26 @@ https://api.loadtest.local {
     # TLS configuration
     tls cert=/etc/highper/certs/api.crt key=/etc/highper/certs/api.key
     tls_protocols TLSv1.2 TLSv1.3
-
     # Backend API servers
-    proxy BACKEND_1:8080 BACKEND_2:8080 BACKEND_3:8080
-
+    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
     # Intelligent load balancing
     lb least_conn
     health interval=5s path="/health" timeout=3s
-
     # CORS configuration
     cors origins=* methods=GET,POST,PUT,DELETE headers=*
-
     # Rate limiting per IP
     rate_limit 10000 burst=5000 per_ip
-
     # API-specific settings
     request_timeout 30s
     keepalive 60s
     max_conns 1500000
-
     # Request/Response manipulation
     header_add X-Gateway-Version "Highper/1.0"
     header_remove X-Powered-By
-
     # Compression
     compress gzip level=5
-
     # Connection pooling
     pool min_idle=500 max_idle=20000 max_open=600000
-
     # Circuit breaker
     circuit_breaker threshold=10 timeout=30s window=60s
 }
