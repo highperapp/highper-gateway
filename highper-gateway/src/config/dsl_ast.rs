@@ -151,27 +151,52 @@ pub enum Directive {
     /// TLS configuration
     Tls(TlsConfig),
 
+    /// TLS protocols (versions)
+    TlsProtocols(Vec<TlsVersion>),
+
     /// CORS settings
     Cors(CorsConfig),
 
     /// Enable WebSocket support
     WebSocket,
 
+    /// WebSocket configuration
+    WebSocketConfig(WebSocketConfig),
+
     /// Enable gRPC support
     Grpc,
 
+    /// gRPC configuration
+    GrpcConfig(GrpcConfig),
+
+    /// HTTP/2 configuration
+    Http2Config(Http2Config),
+
+    /// HTTP/3 configuration
+    Http3Config(Http3Config),
+
+    /// QUIC configuration
+    QuicConfig(QuicConfig),
+
     /// Compression settings
     Compress(Vec<CompressionAlgorithm>),
+
+    /// Compression configuration with level
+    CompressConfig(CompressionConfig),
 
     /// Rate limiting
     RateLimit {
         rate: u64,
         burst: Option<u64>,
         per: Option<Duration>,
+        per_ip: bool,
     },
 
     /// Request/response timeout
     Timeout(Duration),
+
+    /// Request timeout
+    RequestTimeout(Duration),
 
     /// Header manipulation
     Header {
@@ -179,6 +204,23 @@ pub enum Directive {
         name: String,
         value: String,
     },
+
+    /// Add header
+    HeaderAdd {
+        name: String,
+        value: String,
+    },
+
+    /// Remove header
+    HeaderRemove {
+        name: String,
+    },
+
+    /// Header passthrough
+    HeaderPassthrough(Vec<String>),
+
+    /// Circuit breaker configuration
+    CircuitBreaker(CircuitBreakerConfig),
 
     /// TLS passthrough
     TlsPassthrough {
@@ -197,6 +239,12 @@ pub enum Directive {
 
     /// Idle connection timeout
     IdleTimeout(Duration),
+
+    /// WebSocket timeout
+    WebSocketTimeout(Duration),
+
+    /// gRPC timeout
+    GrpcTimeout(Duration),
 
     /// Buffer pool configuration
     BufferPool(BufferPoolConfig),
@@ -273,6 +321,7 @@ pub struct PoolConfig {
     pub max_idle: Option<usize>,
     pub max_lifetime: Option<Duration>,
     pub idle_timeout: Option<Duration>,
+    pub http2_multiplexing: bool,
 }
 
 impl Default for PoolConfig {
@@ -283,6 +332,7 @@ impl Default for PoolConfig {
             max_idle: Some(100),
             max_lifetime: Some(Duration::from_secs(3600)), // 1 hour
             idle_timeout: Some(Duration::from_secs(300)),  // 5 minutes
+            http2_multiplexing: false,
         }
     }
 }
@@ -295,6 +345,7 @@ pub struct HealthCheckConfig {
     pub path: Option<String>,
     pub healthy_threshold: Option<u32>,
     pub unhealthy_threshold: Option<u32>,
+    pub grpc: bool,
 }
 
 impl Default for HealthCheckConfig {
@@ -305,6 +356,7 @@ impl Default for HealthCheckConfig {
             path: Some("/health".to_string()),
             healthy_threshold: Some(2),
             unhealthy_threshold: Some(3),
+            grpc: false,
         }
     }
 }
@@ -403,6 +455,148 @@ impl Default for BackpressureConfig {
             enabled: true,
             max_connections: Some(3000000),
             memory_limit: Some(49152 * 1024 * 1024), // 49152 MB
+        }
+    }
+}
+
+/// TLS protocol versions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsVersion {
+    TLSv1_2,
+    TLSv1_3,
+}
+
+impl std::fmt::Display for TlsVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TlsVersion::TLSv1_2 => write!(f, "TLSv1.2"),
+            TlsVersion::TLSv1_3 => write!(f, "TLSv1.3"),
+        }
+    }
+}
+
+/// Circuit breaker configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CircuitBreakerConfig {
+    pub threshold: Option<u32>,
+    pub timeout: Option<Duration>,
+    pub window: Option<Duration>,
+}
+
+impl Default for CircuitBreakerConfig {
+    fn default() -> Self {
+        Self {
+            threshold: Some(10),
+            timeout: Some(Duration::from_secs(30)),
+            window: Some(Duration::from_secs(60)),
+        }
+    }
+}
+
+/// Compression configuration with level
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompressionConfig {
+    pub algorithms: Vec<CompressionAlgorithm>,
+    pub level: Option<u8>,
+}
+
+impl Default for CompressionConfig {
+    fn default() -> Self {
+        Self {
+            algorithms: vec![CompressionAlgorithm::Gzip],
+            level: Some(6),
+        }
+    }
+}
+
+/// WebSocket configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebSocketConfig {
+    pub enabled: bool,
+    pub max_message_size: Option<usize>,
+    pub buffer_size: Option<usize>,
+    pub compression: bool,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_message_size: Some(65536),
+            buffer_size: Some(8192),
+            compression: false,
+        }
+    }
+}
+
+/// gRPC configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrpcConfig {
+    pub enabled: bool,
+    pub timeout: Option<Duration>,
+    pub max_message_size: Option<usize>,
+}
+
+impl Default for GrpcConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout: Some(Duration::from_secs(60)),
+            max_message_size: Some(4 * 1024 * 1024), // 4MB
+        }
+    }
+}
+
+/// HTTP/2 configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Http2Config {
+    pub enabled: bool,
+    pub max_concurrent_streams: Option<u32>,
+    pub initial_window_size: Option<u32>,
+}
+
+impl Default for Http2Config {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_concurrent_streams: Some(128),
+            initial_window_size: Some(65535),
+        }
+    }
+}
+
+/// HTTP/3 configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Http3Config {
+    pub enabled: bool,
+    pub port: Option<u16>,
+    pub max_streams: Option<u32>,
+    pub initial_max_data: Option<u64>,
+}
+
+impl Default for Http3Config {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: Some(443),
+            max_streams: Some(100),
+            initial_max_data: Some(10485760), // 10MB
+        }
+    }
+}
+
+/// QUIC configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuicConfig {
+    pub ack_delay: Option<Duration>,
+    pub max_idle_timeout: Option<Duration>,
+}
+
+impl Default for QuicConfig {
+    fn default() -> Self {
+        Self {
+            ack_delay: Some(Duration::from_millis(25)),
+            max_idle_timeout: Some(Duration::from_secs(30)),
         }
     }
 }

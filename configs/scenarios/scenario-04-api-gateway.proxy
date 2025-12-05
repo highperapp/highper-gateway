@@ -4,7 +4,7 @@
 
 https://api.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/api.crt key=/etc/highper/certs/api.key
+    tls "/etc/highper/certs/api.crt" "/etc/highper/certs/api.key"
     tls_protocols TLSv1.2 TLSv1.3
     # Backend API servers
     proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083

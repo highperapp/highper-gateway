@@ -4,7 +4,7 @@
 
 https://cdn.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/cdn.crt key=/etc/highper/certs/cdn.key
+    tls "/etc/highper/certs/cdn.crt" "/etc/highper/certs/cdn.key"
     tls_protocols TLSv1.2 TLSv1.3
     # HTTP/2 and HTTP/3 for CDN
     http2 enabled

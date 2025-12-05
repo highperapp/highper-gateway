@@ -4,7 +4,7 @@
 
 https://secure-api.loadtest.local {
     # mTLS configuration
-    tls cert=/etc/highper/certs/server.crt key=/etc/highper/certs/server.key
+    tls "/etc/highper/certs/server.crt" "/etc/highper/certs/server.key"
     tls_client_cert required ca=/etc/highper/certs/client-ca.crt
     tls_verify_depth 2
     tls_protocols TLSv1.3

@@ -1,0 +1,6 @@
+# Simple test config
+:8080 tcp {
+    proxy 127.0.0.1:8081
+}
+
+log info

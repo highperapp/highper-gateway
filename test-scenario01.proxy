@@ -1,0 +1,9 @@
+# Test scenario 01
+:8080 tcp {
+    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
+    lb round_robin
+    health interval=10s timeout=5s
+}
+
+log info
+metrics prometheus port=9090

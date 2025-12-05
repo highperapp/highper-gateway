@@ -4,7 +4,7 @@
 
 https://ws.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/ws.crt key=/etc/highper/certs/ws.key
+    tls "/etc/highper/certs/ws.crt" "/etc/highper/certs/ws.key"
     tls_protocols TLSv1.2 TLSv1.3
     # WebSocket configuration
     websocket enabled

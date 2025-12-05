@@ -394,12 +394,15 @@ fn process_directive(
             }
         }
 
-        Directive::RateLimit { rate, burst, per } => {
+        Directive::RateLimit { rate, burst, per, per_ip } => {
             let window_secs = per.map(|d| d.as_secs()).unwrap_or(60);
             let rl = RateLimitYaml {
                 rate: *rate as u32,
                 window_secs,
             };
+
+            // Note: burst and per_ip not yet supported in YAML schema
+            let _ = (burst, per_ip);
 
             // Set on route if we have one, otherwise global
             if route.rate_limit.is_none() {
@@ -469,6 +472,59 @@ fn process_directive(
         Directive::Backpressure(_config) => {
             // TODO: Add to server performance config
             // Requires global config section in YAML generation
+        }
+
+        // New advanced directives - stub implementations for validation
+        Directive::TlsProtocols(_versions) => {
+            // TLS protocol versions - would be applied at server TLS config level
+        }
+
+        Directive::RequestTimeout(_duration) => {
+            // Request timeout - similar to Timeout directive
+        }
+
+        Directive::HeaderAdd { .. } | Directive::HeaderRemove { .. } => {
+            // Header manipulation needs middleware support
+        }
+
+        Directive::HeaderPassthrough(_headers) => {
+            // Header passthrough for WebSocket/gRPC protocols
+        }
+
+        Directive::CircuitBreaker(_config) => {
+            // Circuit breaker pattern - requires middleware implementation
+        }
+
+        Directive::CompressConfig(_config) => {
+            // Compression with level - extends basic compress directive
+        }
+
+        Directive::WebSocketConfig(_config) => {
+            // WebSocket-specific configuration
+        }
+
+        Directive::WebSocketTimeout(_duration) => {
+            // WebSocket connection timeout
+        }
+
+        Directive::GrpcConfig(_config) => {
+            // gRPC-specific configuration
+        }
+
+        Directive::GrpcTimeout(_duration) => {
+            // gRPC request timeout
+        }
+
+        Directive::Http2Config(_config) => {
+            // HTTP/2 protocol configuration
+        }
+
+        Directive::Http3Config(_config) => {
+            // HTTP/3 protocol configuration
+        }
+
+        Directive::QuicConfig(_config) => {
+            // QUIC transport configuration
         }
     }
 }

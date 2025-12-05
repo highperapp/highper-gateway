@@ -5,7 +5,7 @@
 # HTTPS with multi-protocol support
 https://hybrid.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/hybrid.crt key=/etc/highper/certs/hybrid.key
+    tls "/etc/highper/certs/hybrid.crt" "/etc/highper/certs/hybrid.key"
     tls_protocols TLSv1.2 TLSv1.3
     alpn http/1.1 h2 h3
     # Protocol support

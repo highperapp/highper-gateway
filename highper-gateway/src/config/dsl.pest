@@ -99,17 +99,31 @@ directive = {
   | pool_directive
   | health_directive
   | tls_directive
+  | tls_protocols_directive
   | cors_directive
   | websocket_directive
+  | websocket_config_directive
   | grpc_directive
+  | grpc_config_directive
+  | http2_directive
+  | http3_directive
+  | quic_directive
   | compress_directive
+  | compress_config_directive
   | rate_limit_directive
   | timeout_directive
+  | request_timeout_directive
   | headers_directive
+  | header_add_directive
+  | header_remove_directive
+  | header_passthrough_directive
+  | circuit_breaker_directive
   | keepalive_directive
   | max_conns_directive
   | connect_timeout_directive
   | idle_timeout_directive
+  | websocket_timeout_directive
+  | grpc_timeout_directive
   | buffer_pool_directive
   | backpressure_directive
 }
@@ -159,6 +173,7 @@ pool_option = {
   | "max_open=" ~ number
   | "lifetime=" ~ duration
   | "idle=" ~ duration
+  | "http2_multiplexing"
 }
 
 // Health checks: health interval=10s timeout=5s path=/health
@@ -172,6 +187,7 @@ health_option = {
   | "path=" ~ quoted_string
   | "healthy=" ~ number      // healthy threshold
   | "unhealthy=" ~ number    // unhealthy threshold
+  | "grpc"
 }
 
 // TLS: tls | tls internal | tls email@example.com | tls cert.pem key.pem
@@ -179,11 +195,18 @@ tls_directive = {
     "tls" ~ (
         "internal"                             // Self-signed
       | email                                  // Auto ACME
-      | (quoted_string ~ quoted_string)       // Cert + key files
+      | (("cert=" ~ quoted_string | quoted_string) ~ ("key=" ~ quoted_string | quoted_string))       // Cert + key files
     )? ~ newline
 }
 
 email = @{ (ASCII_ALPHANUMERIC | "." | "-" | "_" | "+")+ ~ "@" ~ domain }
+
+// TLS protocols: tls_protocols TLSv1.2 TLSv1.3
+tls_protocols_directive = {
+    "tls_protocols" ~ tls_version+ ~ newline
+}
+
+tls_version = { "TLSv1.2" | "TLSv1.3" }
 
 // CORS: cors | cors origins=https://example.com
 cors_directive = {
@@ -210,9 +233,9 @@ compress_directive = {
 
 compression_algo = { "gzip" | "br" | "deflate" | "zstd" }
 
-// Rate limiting: rate_limit 100 per 1s | rate_limit 100 burst=50
+// Rate limiting: rate_limit 100 per 1s | rate_limit 100 burst=50 per_ip
 rate_limit_directive = {
-    "rate_limit" ~ number ~ ("burst=" ~ number)? ~ ("per" ~ duration)? ~ newline
+    "rate_limit" ~ number ~ ("burst=" ~ number)? ~ ("per" ~ duration)? ~ "per_ip"? ~ newline
 }
 
 // Timeout: timeout 30s
@@ -288,3 +311,144 @@ backpressure_option = {
 }
 
 memory_size = @{ number ~ ("kb" | "mb" | "gb" | "tb") }
+
+// Request timeout: request_timeout 30s
+request_timeout_directive = {
+    "request_timeout" ~ duration ~ newline
+}
+
+// Header add: header_add X-Custom "value"
+header_add_directive = {
+    "header_add" ~ header_name ~ header_value ~ newline
+}
+
+// Header remove: header_remove X-Powered-By
+header_remove_directive = {
+    "header_remove" ~ header_name ~ newline
+}
+
+// Header passthrough: header_passthrough Sec-WebSocket-Protocol Sec-WebSocket-Extensions
+header_passthrough_directive = {
+    "header_passthrough" ~ header_name+ ~ newline
+}
+
+// Circuit breaker: circuit_breaker threshold=10 timeout=30s window=60s
+circuit_breaker_directive = {
+    "circuit_breaker" ~ circuit_breaker_option+ ~ newline
+}
+
+circuit_breaker_option = {
+    "threshold=" ~ number
+  | "timeout=" ~ duration
+  | "window=" ~ duration
+}
+
+// Compress with level: compress gzip level=5
+compress_config_directive = {
+    "compress" ~ compression_algo+ ~ ("level=" ~ number) ~ newline
+}
+
+// WebSocket config directives
+websocket_config_directive = {
+    websocket_enabled_directive
+  | websocket_max_message_size_directive
+  | websocket_buffer_size_directive
+  | websocket_compression_directive
+}
+
+websocket_enabled_directive = {
+    "websocket" ~ "enabled" ~ newline
+}
+
+websocket_max_message_size_directive = {
+    "websocket_max_message_size" ~ number ~ newline
+}
+
+websocket_buffer_size_directive = {
+    "websocket_buffer_size" ~ number ~ newline
+}
+
+websocket_compression_directive = {
+    "websocket_compression" ~ ("enabled" | "disabled") ~ newline
+}
+
+// WebSocket timeout: websocket_timeout 7200s
+websocket_timeout_directive = {
+    "websocket_timeout" ~ duration ~ newline
+}
+
+// gRPC config directives
+grpc_config_directive = {
+    grpc_enabled_directive
+  | grpc_timeout_directive_inline
+  | grpc_max_message_size_directive
+}
+
+grpc_enabled_directive = {
+    "grpc" ~ "enabled" ~ newline
+}
+
+grpc_timeout_directive_inline = {
+    "grpc_timeout" ~ duration ~ newline
+}
+
+grpc_max_message_size_directive = {
+    "grpc_max_message_size" ~ number ~ newline
+}
+
+// gRPC timeout: grpc_timeout 60s
+grpc_timeout_directive = {
+    "grpc_timeout" ~ duration ~ newline
+}
+
+// HTTP/2 directives
+http2_directive = {
+    http2_enabled_directive
+  | http2_max_concurrent_streams_directive
+  | http2_initial_window_size_directive
+}
+
+http2_enabled_directive = {
+    "http2" ~ "enabled" ~ newline
+}
+
+http2_max_concurrent_streams_directive = {
+    "http2_max_concurrent_streams" ~ number ~ newline
+}
+
+http2_initial_window_size_directive = {
+    "http2_initial_window_size" ~ number ~ newline
+}
+
+// HTTP/3 directives
+http3_directive = {
+    http3_enabled_directive
+  | http3_max_streams_directive
+  | http3_initial_max_data_directive
+}
+
+http3_enabled_directive = {
+    "http3" ~ "enabled" ~ ("port=" ~ number)? ~ newline
+}
+
+http3_max_streams_directive = {
+    "http3_max_streams" ~ number ~ newline
+}
+
+http3_initial_max_data_directive = {
+    "http3_initial_max_data" ~ number ~ newline
+}
+
+// QUIC directives
+quic_directive = {
+    quic_ack_delay_directive
+  | quic_max_idle_timeout_directive
+}
+
+quic_ack_delay_directive = {
+    "quic_ack_delay" ~ duration ~ newline
+}
+
+quic_max_idle_timeout_directive = {
+    "quic_max_idle_timeout" ~ duration ~ newline
+}

@@ -1,1 +1,0 @@
-../vultr/test.sh

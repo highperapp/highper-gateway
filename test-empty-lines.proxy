@@ -1,0 +1,14 @@
+# Test config with empty lines in blocks
+
+localhost:8080 {
+    # Backend servers
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082
+
+    # Load balancing
+    lb round_robin
+
+    # Health checks
+    health interval=10s timeout=5s path="/"
+}
+
+log info

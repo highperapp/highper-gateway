@@ -4,7 +4,7 @@
 
 https://graphql.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/graphql.crt key=/etc/highper/certs/graphql.key
+    tls "/etc/highper/certs/graphql.crt" "/etc/highper/certs/graphql.key"
     tls_protocols TLSv1.2 TLSv1.3
     # HTTP/2 for GraphQL
     http2 enabled

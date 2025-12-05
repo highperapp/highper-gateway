@@ -4,7 +4,7 @@
 
 https://microservices.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/microservices.crt key=/etc/highper/certs/microservices.key
+    tls "/etc/highper/certs/microservices.crt" "/etc/highper/certs/microservices.key"
     tls_protocols TLSv1.2 TLSv1.3
     # HTTP/2 for microservices
     http2 enabled

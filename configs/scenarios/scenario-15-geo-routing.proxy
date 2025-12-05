@@ -4,7 +4,7 @@
 
 https://global.loadtest.local {
     # TLS configuration
-    tls cert=/etc/highper/certs/global.crt key=/etc/highper/certs/global.key
+    tls "/etc/highper/certs/global.crt" "/etc/highper/certs/global.key"
     tls_protocols TLSv1.2 TLSv1.3
     # HTTP/2 and HTTP/3 for global reach
     http2 enabled

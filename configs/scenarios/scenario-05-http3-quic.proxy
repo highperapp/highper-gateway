@@ -4,7 +4,7 @@
 
 https://http3.loadtest.local {
     # TLS configuration (required for QUIC)
-    tls cert=/etc/highper/certs/http3.crt key=/etc/highper/certs/http3.key
+    tls "/etc/highper/certs/http3.crt" "/etc/highper/certs/http3.key"
     tls_protocols TLSv1.3
     # HTTP/3 configuration
     http3 enabled port=443

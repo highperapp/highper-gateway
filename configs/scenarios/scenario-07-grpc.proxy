@@ -4,7 +4,7 @@
 
 https://grpc.loadtest.local {
     # TLS configuration (gRPC requires HTTP/2)
-    tls cert=/etc/highper/certs/grpc.crt key=/etc/highper/certs/grpc.key
+    tls "/etc/highper/certs/grpc.crt" "/etc/highper/certs/grpc.key"
     tls_protocols TLSv1.2 TLSv1.3
     # HTTP/2 required for gRPC
     http2 enabled

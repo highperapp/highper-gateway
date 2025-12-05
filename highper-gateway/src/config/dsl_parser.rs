@@ -310,17 +310,38 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::tls_directive => {
                 Ok(Some(Directive::Tls(parse_tls_directive(inner)?)))
             }
+            Rule::tls_protocols_directive => {
+                Ok(Some(parse_tls_protocols_directive(inner)?))
+            }
             Rule::cors_directive => {
                 Ok(Some(Directive::Cors(parse_cors_directive(inner)?)))
             }
             Rule::websocket_directive => {
                 Ok(Some(Directive::WebSocket))
             }
+            Rule::websocket_config_directive => {
+                Ok(Some(parse_websocket_config_directive(inner)?))
+            }
             Rule::grpc_directive => {
                 Ok(Some(Directive::Grpc))
             }
+            Rule::grpc_config_directive => {
+                Ok(Some(parse_grpc_config_directive(inner)?))
+            }
+            Rule::http2_directive => {
+                Ok(Some(parse_http2_directive(inner)?))
+            }
+            Rule::http3_directive => {
+                Ok(Some(parse_http3_directive(inner)?))
+            }
+            Rule::quic_directive => {
+                Ok(Some(parse_quic_directive(inner)?))
+            }
             Rule::compress_directive => {
                 Ok(Some(parse_compress_directive(inner)?))
+            }
+            Rule::compress_config_directive => {
+                Ok(Some(parse_compress_config_directive(inner)?))
             }
             Rule::rate_limit_directive => {
                 Ok(Some(parse_rate_limit_directive(inner)?))
@@ -328,8 +349,23 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::timeout_directive => {
                 Ok(Some(parse_timeout_directive(inner)?))
             }
+            Rule::request_timeout_directive => {
+                Ok(Some(parse_request_timeout_directive(inner)?))
+            }
             Rule::headers_directive => {
                 Ok(Some(parse_headers_directive(inner)?))
+            }
+            Rule::header_add_directive => {
+                Ok(Some(parse_header_add_directive(inner)?))
+            }
+            Rule::header_remove_directive => {
+                Ok(Some(parse_header_remove_directive(inner)?))
+            }
+            Rule::header_passthrough_directive => {
+                Ok(Some(parse_header_passthrough_directive(inner)?))
+            }
+            Rule::circuit_breaker_directive => {
+                Ok(Some(parse_circuit_breaker_directive(inner)?))
             }
             Rule::tls_passthrough_directive => {
                 Ok(Some(parse_tls_passthrough_directive(inner)?))
@@ -345,6 +381,12 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             }
             Rule::idle_timeout_directive => {
                 Ok(Some(parse_idle_timeout_directive(inner)?))
+            }
+            Rule::websocket_timeout_directive => {
+                Ok(Some(parse_websocket_timeout_directive(inner)?))
+            }
+            Rule::grpc_timeout_directive => {
+                Ok(Some(parse_grpc_timeout_directive(inner)?))
             }
             Rule::buffer_pool_directive => {
                 Ok(Some(parse_buffer_pool_directive(inner)?))
@@ -398,10 +440,18 @@ fn parse_pool_directive(pair: pest::iterators::Pair<Rule>) -> Result<PoolConfig>
                 config.max_size = Some(value.parse()?);
             } else if let Some(value) = opt_str.strip_prefix("min=") {
                 config.min_idle = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("min_idle=") {
+                config.min_idle = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("max_idle=") {
+                config.max_idle = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("max_open=") {
+                config.max_size = Some(value.parse()?);
             } else if let Some(value) = opt_str.strip_prefix("lifetime=") {
                 config.max_lifetime = Some(parse_duration(value)?);
             } else if let Some(value) = opt_str.strip_prefix("idle=") {
                 config.idle_timeout = Some(parse_duration(value)?);
+            } else if opt_str == "http2_multiplexing" {
+                config.http2_multiplexing = true;
             }
         }
     }
@@ -425,6 +475,8 @@ fn parse_health_directive(pair: pest::iterators::Pair<Rule>) -> Result<HealthChe
                 config.healthy_threshold = Some(value.parse()?);
             } else if let Some(value) = opt_str.strip_prefix("unhealthy=") {
                 config.unhealthy_threshold = Some(value.parse()?);
+            } else if opt_str == "grpc" {
+                config.grpc = true;
             }
         }
     }
@@ -437,19 +489,26 @@ fn parse_tls_directive(pair: pest::iterators::Pair<Rule>) -> Result<TlsConfig> {
     let mut key_file = None;
 
     for inner in pair.into_inner() {
-        match inner.as_str() {
+        let text = inner.as_str();
+        match text {
             "internal" => return Ok(TlsConfig::Internal),
             s if s.contains('@') => {
                 return Ok(TlsConfig::Auto {
                     email: Some(s.to_string()),
                 });
             }
+            s if s.starts_with("cert=") => {
+                cert_file = Some(s.strip_prefix("cert=").unwrap().trim_matches('"').to_string());
+            }
+            s if s.starts_with("key=") => {
+                key_file = Some(s.strip_prefix("key=").unwrap().trim_matches('"').to_string());
+            }
             _ => {
                 // Grammar produces two quoted_string tokens for cert and key
                 if cert_file.is_none() {
-                    cert_file = Some(inner.as_str().trim_matches('"').to_string());
+                    cert_file = Some(text.trim_matches('"').to_string());
                 } else if key_file.is_none() {
-                    key_file = Some(inner.as_str().trim_matches('"').to_string());
+                    key_file = Some(text.trim_matches('"').to_string());
                 }
             }
         }
@@ -516,7 +575,13 @@ fn parse_rate_limit_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direc
     let mut rate = None;
     let mut burst = None;
     let mut per = None;
+    let mut per_ip = false;
     let mut seen_rate = false;
+
+    let text = pair.as_str();
+    if text.contains("per_ip") {
+        per_ip = true;
+    }
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
@@ -539,6 +604,7 @@ fn parse_rate_limit_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direc
         rate: rate.ok_or_else(|| anyhow!("Rate limit missing rate"))?,
         burst,
         per,
+        per_ip,
     })
 }
 
@@ -735,6 +801,297 @@ fn parse_duration(s: &str) -> Result<Duration> {
     };
 
     Ok(duration)
+}
+
+// New directive parsers
+
+fn parse_tls_protocols_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut versions = Vec::new();
+
+    for inner in pair.into_inner() {
+        if let Rule::tls_version = inner.as_rule() {
+            let version = match inner.as_str() {
+                "TLSv1.2" => TlsVersion::TLSv1_2,
+                "TLSv1.3" => TlsVersion::TLSv1_3,
+                _ => continue,
+            };
+            versions.push(version);
+        }
+    }
+
+    Ok(Directive::TlsProtocols(versions))
+}
+
+fn parse_request_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::RequestTimeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("Request timeout directive missing duration"))
+}
+
+fn parse_header_add_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut name = None;
+    let mut value = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::header_name => {
+                name = Some(inner.as_str().to_string());
+            }
+            Rule::header_value => {
+                value = Some(inner.as_str().trim_matches('"').to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::HeaderAdd {
+        name: name.ok_or_else(|| anyhow!("Header add missing name"))?,
+        value: value.ok_or_else(|| anyhow!("Header add missing value"))?,
+    })
+}
+
+fn parse_header_remove_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::header_name = inner.as_rule() {
+            return Ok(Directive::HeaderRemove {
+                name: inner.as_str().to_string(),
+            });
+        }
+    }
+    Err(anyhow!("Header remove directive missing name"))
+}
+
+fn parse_header_passthrough_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut headers = Vec::new();
+
+    for inner in pair.into_inner() {
+        if let Rule::header_name = inner.as_rule() {
+            headers.push(inner.as_str().to_string());
+        }
+    }
+
+    Ok(Directive::HeaderPassthrough(headers))
+}
+
+fn parse_circuit_breaker_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = CircuitBreakerConfig::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::circuit_breaker_option = inner.as_rule() {
+            let opt_str = inner.as_str();
+            if let Some(value) = opt_str.strip_prefix("threshold=") {
+                config.threshold = Some(value.parse()?);
+            } else if let Some(value) = opt_str.strip_prefix("timeout=") {
+                config.timeout = Some(parse_duration(value)?);
+            } else if let Some(value) = opt_str.strip_prefix("window=") {
+                config.window = Some(parse_duration(value)?);
+            }
+        }
+    }
+
+    Ok(Directive::CircuitBreaker(config))
+}
+
+fn parse_compress_config_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut algorithms = Vec::new();
+    let mut level = None;
+
+    for inner in pair.into_inner() {
+        if let Rule::compression_algo = inner.as_rule() {
+            let algo = match inner.as_str() {
+                "gzip" => CompressionAlgorithm::Gzip,
+                "br" => CompressionAlgorithm::Brotli,
+                "deflate" => CompressionAlgorithm::Deflate,
+                "zstd" => CompressionAlgorithm::Zstd,
+                _ => continue,
+            };
+            algorithms.push(algo);
+        } else if let Rule::number = inner.as_rule() {
+            level = Some(inner.as_str().parse()?);
+        }
+    }
+
+    if algorithms.is_empty() {
+        algorithms.push(CompressionAlgorithm::Gzip);
+    }
+
+    Ok(Directive::CompressConfig(CompressionConfig {
+        algorithms,
+        level,
+    }))
+}
+
+fn parse_websocket_config_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = WebSocketConfig::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::websocket_enabled_directive => {
+                config.enabled = true;
+            }
+            Rule::websocket_max_message_size_directive => {
+                for size_inner in inner.into_inner() {
+                    if let Rule::number = size_inner.as_rule() {
+                        config.max_message_size = Some(size_inner.as_str().parse()?);
+                    }
+                }
+            }
+            Rule::websocket_buffer_size_directive => {
+                for size_inner in inner.into_inner() {
+                    if let Rule::number = size_inner.as_rule() {
+                        config.buffer_size = Some(size_inner.as_str().parse()?);
+                    }
+                }
+            }
+            Rule::websocket_compression_directive => {
+                let text = inner.as_str();
+                config.compression = text.contains("enabled");
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::WebSocketConfig(config))
+}
+
+fn parse_websocket_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::WebSocketTimeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("WebSocket timeout directive missing duration"))
+}
+
+fn parse_grpc_config_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = GrpcConfig::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::grpc_enabled_directive => {
+                config.enabled = true;
+            }
+            Rule::grpc_timeout_directive_inline => {
+                for timeout_inner in inner.into_inner() {
+                    if let Rule::duration = timeout_inner.as_rule() {
+                        config.timeout = Some(parse_duration(timeout_inner.as_str())?);
+                    }
+                }
+            }
+            Rule::grpc_max_message_size_directive => {
+                for size_inner in inner.into_inner() {
+                    if let Rule::number = size_inner.as_rule() {
+                        config.max_message_size = Some(size_inner.as_str().parse()?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::GrpcConfig(config))
+}
+
+fn parse_grpc_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::duration = inner.as_rule() {
+            return Ok(Directive::GrpcTimeout(parse_duration(inner.as_str())?));
+        }
+    }
+    Err(anyhow!("gRPC timeout directive missing duration"))
+}
+
+fn parse_http2_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = Http2Config::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::http2_enabled_directive => {
+                config.enabled = true;
+            }
+            Rule::http2_max_concurrent_streams_directive => {
+                for streams_inner in inner.into_inner() {
+                    if let Rule::number = streams_inner.as_rule() {
+                        config.max_concurrent_streams = Some(streams_inner.as_str().parse()?);
+                    }
+                }
+            }
+            Rule::http2_initial_window_size_directive => {
+                for window_inner in inner.into_inner() {
+                    if let Rule::number = window_inner.as_rule() {
+                        config.initial_window_size = Some(window_inner.as_str().parse()?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::Http2Config(config))
+}
+
+fn parse_http3_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = Http3Config::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::http3_enabled_directive => {
+                config.enabled = true;
+                let text = inner.as_str();
+                if let Some(port_str) = text.strip_prefix("http3 enabled port=") {
+                    if let Ok(port) = port_str.trim().parse::<u16>() {
+                        config.port = Some(port);
+                    }
+                }
+            }
+            Rule::http3_max_streams_directive => {
+                for streams_inner in inner.into_inner() {
+                    if let Rule::number = streams_inner.as_rule() {
+                        config.max_streams = Some(streams_inner.as_str().parse()?);
+                    }
+                }
+            }
+            Rule::http3_initial_max_data_directive => {
+                for data_inner in inner.into_inner() {
+                    if let Rule::number = data_inner.as_rule() {
+                        config.initial_max_data = Some(data_inner.as_str().parse()?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::Http3Config(config))
+}
+
+fn parse_quic_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = QuicConfig::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::quic_ack_delay_directive => {
+                for delay_inner in inner.into_inner() {
+                    if let Rule::duration = delay_inner.as_rule() {
+                        config.ack_delay = Some(parse_duration(delay_inner.as_str())?);
+                    }
+                }
+            }
+            Rule::quic_max_idle_timeout_directive => {
+                for timeout_inner in inner.into_inner() {
+                    if let Rule::duration = timeout_inner.as_rule() {
+                        config.max_idle_timeout = Some(parse_duration(timeout_inner.as_str())?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::QuicConfig(config))
 }
 
 #[cfg(test)]

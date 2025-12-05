@@ -1,0 +1,5 @@
+# Scenario 01: Layer 4 TCP Load Balancer
+:8080 tcp {
+    proxy 127.0.0.1:8081
+}
+log info
