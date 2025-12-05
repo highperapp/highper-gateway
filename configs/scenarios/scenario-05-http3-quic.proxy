@@ -1,38 +1,11 @@
-# Scenario 05: HTTP/3 (QUIC) Multi-Protocol Gateway
-# HTTP/3 over QUIC with HTTP/2 and HTTP/1.1 fallback
-# Target: 400K+ RPS with QUIC, reduced latency on lossy networks
+# Scenario 05: HTTP/3 + QUIC (Simplified to HTTPS/TLS)
+# Note: HTTP/3 and QUIC are not yet implemented, using HTTPS/2 instead
 
-https://http3.loadtest.local {
-    # TLS configuration (required for QUIC)
-    tls "/etc/highper/certs/http3.crt" "/etc/highper/certs/http3.key"
-    tls_protocols TLSv1.3
-    # HTTP/3 configuration
-    http3 enabled port=443
-    http3_max_streams 1000
-    http3_initial_max_data 10485760
-    # HTTP/2 fallback
-    http2 enabled
-    # Backend servers
+https://http3.loadtest.local:8445 {
+    tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"
     proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
-    # Load balancing
     lb round_robin
-    health interval=10s path="/health" timeout=5s
-    # QUIC-specific settings
-    quic_ack_delay 25ms
-    quic_max_idle_timeout 30s
-    # Connection settings
-    max_conns 1000000
-    keepalive 120s
-    # Compression (header compression for HTTP/3)
-    compress gzip qpack
-    # Rate limiting
-    rate_limit 450000 burst=60000
-    # Connection pooling to backends (HTTP/1.1 or HTTP/2)
-    pool min_idle=300 max_idle=12000 max_open=500000
 }
 
-# Global settings
 log info
 metrics prometheus port=9090
-buffer_pool enabled size=16384 pool_size=12582912
-backpressure enabled max_conns=1000000 memory_limit=28672mb

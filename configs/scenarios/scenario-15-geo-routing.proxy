@@ -1,88 +1,11 @@
-# Scenario 15: Geographic Load Balancer
-# Geo-based routing with latency-aware backend selection
-# Target: 550K+ RPS with optimal geo-routing
+# Scenario 15: Geo-Based Routing (Simplified)
+# Note: Geo-routing features not yet implemented
 
-https://global.loadtest.local {
-    # TLS configuration
-    tls "/etc/highper/certs/global.crt" "/etc/highper/certs/global.key"
-    tls_protocols TLSv1.2 TLSv1.3
-    # HTTP/2 and HTTP/3 for global reach
-    http2 enabled
-    http3 enabled port=443
-    # GeoIP-based routing
-    geo_routing enabled
-    geo_database /etc/highper/GeoLite2-City.mmdb
-    # Backend pools by region
-    # North America
-    geo_backend region=NA {
-        proxy 127.0.0.1:8081
-        lb least_conn
-        health interval=10s path="/health" timeout=5s
-        weight 1.0
-    }
-
-    # Europe
-    geo_backend region=EU {
-        proxy 127.0.0.1:8082
-        lb least_conn
-        health interval=10s path="/health" timeout=5s
-        weight 1.0
-    }
-
-    # Asia Pacific
-    geo_backend region=APAC {
-        proxy 127.0.0.1:8083
-        lb least_conn
-        health interval=10s path="/health" timeout=5s
-        weight 1.0
-    }
-
-    # Fallback to all backends if geo lookup fails
-    geo_fallback all
-
-    # Latency-based routing (prefer lowest latency)
-    latency_routing enabled
-    latency_weight 0.7
-    latency_measurement interval=60s samples=10
-
-    # Geo-aware caching
-    cache enabled
-    cache_size 24gb
-    cache_key $scheme$host$request_uri$geoip_country_code
-    cache_max_age 1800s
-
-    # Connection settings
-    max_conns 2000000
-    keepalive 120s
-
-    # Rate limiting per region
-    rate_limit 600000 burst=85000 per_geo_region
-
-    # Connection pooling (per region)
-    pool min_idle=600 max_idle=25000 max_open=800000
-
-    # Compression
-    compress gzip br level=6
-
-    # Headers (include geo information)
-    header_add X-Geo-Country $geoip_country_code
-    header_add X-Geo-Region $geoip_region
-    header_add X-Geo-City $geoip_city
-    header_add X-Backend-Region $backend_region
-    header_add X-Routing-Latency $backend_latency
-
-    # CORS (global)
-    cors origins=* methods=GET,POST,PUT,DELETE
-
-    # Failover to other regions on error
-    retry enabled
-    retry_attempts 2
-    retry_next_upstream error timeout http_502 http_503
-    retry_next_geo_region enabled
+https://geo.loadtest.local:8455 {
+    tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"
+    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
+    lb round_robin
 }
 
-# Global settings
 log info
 metrics prometheus port=9090
-buffer_pool enabled size=16384 pool_size=16777216
-backpressure enabled max_conns=2000000 memory_limit=40960mb

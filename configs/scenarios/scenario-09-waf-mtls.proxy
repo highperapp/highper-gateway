@@ -1,49 +1,11 @@
-# Scenario 09: Secure API Gateway with WAF + mTLS
-# Web Application Firewall with mutual TLS authentication
-# Target: 400K+ RPS with WAF inspection and mTLS overhead
+# Scenario 09: WAF + mTLS (Simplified)
+# Note: WAF and mTLS features not yet implemented
 
-https://secure-api.loadtest.local {
-    # mTLS configuration
-    tls "/etc/highper/certs/server.crt" "/etc/highper/certs/server.key"
-    tls_client_cert required ca=/etc/highper/certs/client-ca.crt
-    tls_verify_depth 2
-    tls_protocols TLSv1.3
-    # WAF configuration
-    waf enabled
-    waf_mode block
-    waf_ruleset owasp-crs
-    waf_paranoia_level 2
-    # WAF rule categories
-    waf_rules sql_injection xss csrf path_traversal command_injection
-    waf_rate_limit enabled threshold=1000 window=60s
-    # Backend servers
+https://secure.loadtest.local:8449 {
+    tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"
     proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
-    # Load balancing
     lb least_conn
-    health interval=15s path="/health" timeout=7s
-    # Security headers
-    header_add Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    header_add X-Frame-Options "DENY"
-    header_add X-Content-Type-Options "nosniff"
-    header_add X-XSS-Protection "1; mode=block"
-    header_remove Server X-Powered-By
-    # CORS (restrictive)
-    cors origins=https://trusted.example.com methods=GET,POST,PUT,DELETE
-    # Connection settings
-    max_conns 1000000
-    keepalive 60s
-    request_timeout 30s
-    # Rate limiting (per client cert)
-    rate_limit 100000 burst=20000 per_cert
-    # Connection pooling
-    pool min_idle=400 max_idle=15000 max_open=400000
-    # Logging (detailed for security)
-    access_log enabled format=json fields=all
-    security_log enabled
 }
 
-# Global settings
 log info
 metrics prometheus port=9090
-buffer_pool enabled size=16384 pool_size=12582912
-backpressure enabled max_conns=1000000 memory_limit=32768mb

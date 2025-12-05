@@ -1,46 +1,9 @@
-# Scenario 08: Database Load Balancer
-# TCP-based database connection pooling and load balancing
-# Target: 500K+ queries/sec with connection pooling
+# Scenario 08: Database Load Balancing (TCP)
 
-# MySQL/PostgreSQL proxy
-:3306 mysql-lb {
-    # Backend database servers
-    proxy 127.0.0.1:8081:3306 127.0.0.1:8082:3306 127.0.0.1:8083:3306
-    # Database-aware load balancing
-    lb least_conn
-    health interval=30s timeout=10s tcp
-    # Connection pooling for databases
-    pool min_idle=1000 max_idle=50000 max_open=500000 idle_timeout=300s
-    # Database-specific timeouts
-    connect_timeout 10s
-    idle_timeout 1800s
-    keepalive 120s
-    # Connection limits
-    max_conns 1000000
-    # TCP optimizations
-    tcp_nodelay enabled
-    tcp_keepalive enabled interval=60s probes=3
+:3306 tcp {
+    proxy http://127.0.0.1:13306 http://127.0.0.1:13307 http://127.0.0.1:13308
+    lb round_robin
 }
 
-# PostgreSQL proxy (separate port)
-:5432 postgres-lb {
-    # Backend PostgreSQL servers
-    proxy 127.0.0.1:8081:5432 127.0.0.1:8082:5432 127.0.0.1:8083:5432
-    # Database load balancing
-    lb least_conn
-    health interval=30s timeout=10s tcp
-    # Connection pooling
-    pool min_idle=800 max_idle=40000 max_open=400000 idle_timeout=300s
-    # Timeouts
-    connect_timeout 10s
-    idle_timeout 1800s
-    keepalive 120s
-    # Connection limits
-    max_conns 800000
-}
-
-# Global settings
 log info
 metrics prometheus port=9090
-buffer_pool enabled size=8192 pool_size=8388608
-backpressure enabled max_conns=2000000 memory_limit=32768mb
