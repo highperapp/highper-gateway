@@ -10,8 +10,12 @@ use super::{Config, ConfigEvent, ConfigWatcher, load_config, validate_config};
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
+
+/// Minimum time between automatic config reloads (debounce period)
+const RELOAD_DEBOUNCE: Duration = Duration::from_secs(1);
 
 /// Configuration reload manager
 pub struct ConfigReloader {
@@ -30,6 +34,9 @@ pub struct ConfigReloader {
     /// Manual reload channel
     reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
     reload_rx: mpsc::UnboundedReceiver<ReloadTrigger>,
+
+    /// Last reload time (for debouncing)
+    last_reload: Option<Instant>,
 }
 
 /// Trigger for manual reload
@@ -78,6 +85,7 @@ impl ConfigReloader {
             event_rx: None,
             reload_tx,
             reload_rx,
+            last_reload: None,
         })
     }
 
@@ -116,8 +124,19 @@ impl ConfigReloader {
                 Some(event) = event_rx.recv() => {
                     match event {
                         ConfigEvent::Modified | ConfigEvent::Created => {
-                            info!("Configuration file changed, reloading...");
-                            self.reload_config().await;
+                            // Debounce: only reload if enough time has passed since last reload
+                            let should_reload = match self.last_reload {
+                                Some(last) => last.elapsed() >= RELOAD_DEBOUNCE,
+                                None => true,
+                            };
+
+                            if should_reload {
+                                info!("Configuration file changed, reloading...");
+                                self.reload_config().await;
+                                self.last_reload = Some(Instant::now());
+                            } else {
+                                debug!("Ignoring config change event (debounce period)");
+                            }
                         }
                         ConfigEvent::Deleted => {
                             warn!("Configuration file deleted - keeping current configuration");
@@ -139,6 +158,7 @@ impl ConfigReloader {
                         }
                     }
                     self.reload_config().await;
+                    self.last_reload = Some(Instant::now());
                 }
 
                 else => {

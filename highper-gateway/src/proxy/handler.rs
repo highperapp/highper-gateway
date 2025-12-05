@@ -196,9 +196,14 @@ impl Handler {
         let method = req.method().clone();
         let uri = req.uri().clone();
         let path = uri.path();
-        let host = req.headers()
-            .get("host")
-            .and_then(|h| h.to_str().ok())
+
+        // Get host from either :authority (HTTP/2) or Host header (HTTP/1.1)
+        // HTTP/2 uses :authority pseudo-header, HTTP/1.1 uses Host header
+        let host = uri.authority()
+            .map(|a| a.as_str())
+            .or_else(|| req.headers()
+                .get("host")
+                .and_then(|h| h.to_str().ok()))
             .unwrap_or("")
             .to_string(); // Convert to owned String to allow moving req later
 
@@ -645,18 +650,37 @@ impl Handler {
 
     /// Find a matching route for the request (legacy config-based)
     fn find_route(&self, method: &Method, host: &str, path: &str) -> Option<&RouteConfig> {
+        // Normalize host by stripping port (e.g., "localhost:8443" -> "localhost")
+        // This allows route patterns to match without requiring port specification
+        let host_without_port = host.split(':').next().unwrap_or(host);
+
+        debug!("Route matching: method={}, host={}, host_without_port={}, path={}",
+               method, host, host_without_port, path);
+        debug!("Available routes: {}", self.config.routes.len());
+
         for route in &self.config.routes {
+            debug!("Checking route: name={}, hosts={:?}, paths={:?}",
+                   route.name, route.match_rules.hosts, route.match_rules.paths);
+
             // Check host match (if specified)
             if !route.match_rules.hosts.is_empty() {
                 let host_matches = route
                     .match_rules
                     .hosts
                     .iter()
-                    .any(|pattern| self.matches_pattern(host, pattern));
+                    .any(|pattern| {
+                        let match_result = self.matches_pattern(host, pattern) ||
+                                         self.matches_pattern(host_without_port, pattern);
+                        debug!("  Host pattern '{}' vs '{}' (without port: '{}'): {}",
+                               pattern, host, host_without_port, match_result);
+                        match_result
+                    });
 
                 if !host_matches {
+                    debug!("  Route {} rejected: host mismatch", route.name);
                     continue;
                 }
+                debug!("  Route {} passed host match", route.name);
             }
 
             // Check path match (if specified)
@@ -665,11 +689,17 @@ impl Handler {
                     .match_rules
                     .paths
                     .iter()
-                    .any(|pattern| self.matches_pattern(path, pattern));
+                    .any(|pattern| {
+                        let match_result = self.matches_pattern(path, pattern);
+                        debug!("  Path pattern '{}' vs '{}': {}", pattern, path, match_result);
+                        match_result
+                    });
 
                 if !path_matches {
+                    debug!("  Route {} rejected: path mismatch", route.name);
                     continue;
                 }
+                debug!("  Route {} passed path match", route.name);
             }
 
             // Check method match (if specified)
