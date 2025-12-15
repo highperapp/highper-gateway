@@ -39,6 +39,7 @@ rustls-pemfile = "2.2"
 tokio-rustls = "0.26"
 webpki-roots = "0.26"
 ocsp-stapler = "0.4"
+ring = "0.17"  # Cryptographic primitives for HMAC tokens
 
 # ACME for automatic certificates
 instant-acme = "0.7"

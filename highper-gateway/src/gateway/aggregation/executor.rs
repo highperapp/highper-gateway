@@ -315,27 +315,387 @@ impl AggregationExecutor {
         result
     }
 
-    /// Extract value using JSONPath (simplified implementation)
+    /// Extract value using JSONPath with full feature support
+    ///
+    /// Supports:
+    /// - Root: `$`
+    /// - Dot notation: `$.data.user.name`
+    /// - Bracket notation: `$['data']['user']['name']`
+    /// - Array indexing: `$.users[0]`, `$.users[1]`
+    /// - Array slicing: `$.users[0:3]`, `$.users[:2]`, `$.users[1:]`
+    /// - Wildcards: `$.users[*].name`, `$.*`
+    /// - Recursive descent: `$..name` (finds all 'name' fields at any depth)
+    /// - Filters: `$.users[?(@.age > 18)]`
     fn extract_json_path(
         value: &Option<serde_json::Value>,
         path: &str,
     ) -> Option<serde_json::Value> {
-        // TODO: Full JSONPath implementation
-        // For now, support simple dot notation: "data.user.name"
         let value = value.as_ref()?;
 
         if path == "$" || path.is_empty() {
             return Some(value.clone());
         }
 
-        let parts: Vec<&str> = path.trim_start_matches("$.").split('.').collect();
-        let mut current = value;
+        // Parse and evaluate JSONPath
+        match Self::evaluate_jsonpath(value, path) {
+            Ok(results) => {
+                if results.is_empty() {
+                    None
+                } else if results.len() == 1 {
+                    Some(results[0].clone())
+                } else {
+                    // Multiple results - return as array
+                    Some(serde_json::Value::Array(results))
+                }
+            }
+            Err(e) => {
+                warn!("JSONPath evaluation failed for '{}': {}", path, e);
+                None
+            }
+        }
+    }
 
-        for part in parts {
-            current = current.get(part)?;
+    /// Evaluate JSONPath expression
+    fn evaluate_jsonpath(
+        value: &serde_json::Value,
+        path: &str,
+    ) -> Result<Vec<serde_json::Value>> {
+        let path = path.trim();
+
+        // Handle root
+        if path == "$" {
+            return Ok(vec![value.clone()]);
         }
 
-        Some(current.clone())
+        // Check for recursive descent first (before stripping prefix)
+        if path.starts_with("$..") {
+            let field = path.trim_start_matches("$..");
+            return Ok(Self::recursive_descent(value, field));
+        }
+
+        // Remove leading $. or $
+        let path = path.strip_prefix("$.").or_else(|| path.strip_prefix("$")).unwrap_or(path);
+
+        // Parse path segments
+        let segments = Self::parse_jsonpath_segments(path)?;
+
+        // Evaluate segments
+        let mut current_values = vec![value.clone()];
+
+        for segment in segments {
+            let mut next_values = Vec::new();
+
+            for val in &current_values {
+                match &segment {
+                    PathSegment::Field(field) => {
+                        if let Some(v) = val.get(field) {
+                            next_values.push(v.clone());
+                        }
+                    }
+                    PathSegment::Index(index) => {
+                        if let Some(arr) = val.as_array() {
+                            let idx = if *index < 0 {
+                                (arr.len() as i64 + index) as usize
+                            } else {
+                                *index as usize
+                            };
+                            if idx < arr.len() {
+                                next_values.push(arr[idx].clone());
+                            }
+                        }
+                    }
+                    PathSegment::Slice(start, end) => {
+                        if let Some(arr) = val.as_array() {
+                            let len = arr.len() as i64;
+                            let start = start.unwrap_or(0).max(0) as usize;
+                            let end = end.unwrap_or(len).min(len) as usize;
+
+                            for item in &arr[start..end] {
+                                next_values.push(item.clone());
+                            }
+                        }
+                    }
+                    PathSegment::Wildcard => {
+                        if let Some(obj) = val.as_object() {
+                            for v in obj.values() {
+                                next_values.push(v.clone());
+                            }
+                        } else if let Some(arr) = val.as_array() {
+                            for item in arr {
+                                next_values.push(item.clone());
+                            }
+                        }
+                    }
+                    PathSegment::Filter(expr) => {
+                        if let Some(arr) = val.as_array() {
+                            for item in arr {
+                                if Self::evaluate_filter(item, expr) {
+                                    next_values.push(item.clone());
+                                }
+                            }
+                        }
+                    }
+                    PathSegment::RecursiveDescent(field) => {
+                        next_values.extend(Self::recursive_descent(val, field));
+                    }
+                }
+            }
+
+            current_values = next_values;
+        }
+
+        Ok(current_values)
+    }
+
+    /// Parse JSONPath segments
+    fn parse_jsonpath_segments(path: &str) -> Result<Vec<PathSegment>> {
+        let mut segments = Vec::new();
+        let mut chars = path.chars().peekable();
+        let mut current_field = String::new();
+
+        while let Some(ch) = chars.next() {
+            match ch {
+                '.' => {
+                    // Check for recursive descent (..)
+                    if chars.peek() == Some(&'.') {
+                        chars.next(); // consume second '.'
+
+                        // Parse field name after ..
+                        let mut field = String::new();
+                        while let Some(&next_ch) = chars.peek() {
+                            if next_ch == '.' || next_ch == '[' {
+                                break;
+                            }
+                            field.push(chars.next().unwrap());
+                        }
+
+                        segments.push(PathSegment::RecursiveDescent(field));
+                    } else {
+                        // Regular field separator
+                        if !current_field.is_empty() {
+                            segments.push(PathSegment::Field(current_field.clone()));
+                            current_field.clear();
+                        }
+                    }
+                }
+                '[' => {
+                    // Save current field if any
+                    if !current_field.is_empty() {
+                        segments.push(PathSegment::Field(current_field.clone()));
+                        current_field.clear();
+                    }
+
+                    // Parse bracket content
+                    let mut bracket_content = String::new();
+                    let mut bracket_depth = 1;
+
+                    while let Some(next_ch) = chars.next() {
+                        if next_ch == '[' {
+                            bracket_depth += 1;
+                            bracket_content.push(next_ch);
+                        } else if next_ch == ']' {
+                            bracket_depth -= 1;
+                            if bracket_depth == 0 {
+                                break;
+                            }
+                            bracket_content.push(next_ch);
+                        } else {
+                            bracket_content.push(next_ch);
+                        }
+                    }
+
+                    segments.push(Self::parse_bracket_content(&bracket_content)?);
+                }
+                _ => {
+                    current_field.push(ch);
+                }
+            }
+        }
+
+        // Add final field if any
+        if !current_field.is_empty() {
+            segments.push(PathSegment::Field(current_field));
+        }
+
+        Ok(segments)
+    }
+
+    /// Parse bracket content: index, slice, wildcard, or filter
+    fn parse_bracket_content(content: &str) -> Result<PathSegment> {
+        let content = content.trim().trim_matches('\'').trim_matches('"');
+
+        // Wildcard
+        if content == "*" {
+            return Ok(PathSegment::Wildcard);
+        }
+
+        // Filter expression
+        if content.starts_with("?(") && content.ends_with(')') {
+            let filter_expr = content[2..content.len()-1].to_string();
+            return Ok(PathSegment::Filter(filter_expr));
+        }
+
+        // Slice notation: start:end
+        if content.contains(':') {
+            let parts: Vec<&str> = content.split(':').collect();
+            let start = if parts[0].is_empty() {
+                None
+            } else {
+                Some(parts[0].parse::<i64>()?)
+            };
+            let end = if parts.len() > 1 && !parts[1].is_empty() {
+                Some(parts[1].parse::<i64>()?)
+            } else {
+                None
+            };
+            return Ok(PathSegment::Slice(start, end));
+        }
+
+        // Index
+        if let Ok(index) = content.parse::<i64>() {
+            return Ok(PathSegment::Index(index));
+        }
+
+        // Field name in bracket notation
+        Ok(PathSegment::Field(content.to_string()))
+    }
+
+    /// Evaluate filter expression
+    fn evaluate_filter(value: &serde_json::Value, expr: &str) -> bool {
+        // Simple filter evaluation
+        // Supports: @.field op value
+        // Examples: @.age > 18, @.name == "John", @.active == true
+
+        let expr = expr.trim().replace("@.", "");
+
+        // Check for >= first (before >)
+        if let Some(pos) = expr.find(">=") {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 2..].trim();
+
+            if let Some(field_value) = value.get(field) {
+                if let (Some(a), Ok(b)) = (field_value.as_f64(), right.parse::<f64>()) {
+                    return a >= b;
+                }
+            }
+            return false;
+        }
+
+        // Check for <= (before <)
+        if let Some(pos) = expr.find("<=") {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 2..].trim();
+
+            if let Some(field_value) = value.get(field) {
+                if let (Some(a), Ok(b)) = (field_value.as_f64(), right.parse::<f64>()) {
+                    return a <= b;
+                }
+            }
+            return false;
+        }
+
+        // Check for == (equality)
+        if let Some(pos) = expr.find("==") {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 2..].trim().trim_matches('"').trim_matches('\'');
+
+            if let Some(field_value) = value.get(field) {
+                let right_value = if right == "true" {
+                    serde_json::Value::Bool(true)
+                } else if right == "false" {
+                    serde_json::Value::Bool(false)
+                } else if let Ok(num) = right.parse::<i64>() {
+                    serde_json::Value::Number(num.into())
+                } else if let Ok(num) = right.parse::<f64>() {
+                    serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap())
+                } else {
+                    serde_json::Value::String(right.to_string())
+                };
+
+                return field_value == &right_value;
+            }
+            return false;
+        }
+
+        // Check for != (inequality)
+        if let Some(pos) = expr.find("!=") {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 2..].trim().trim_matches('"').trim_matches('\'');
+
+            if let Some(field_value) = value.get(field) {
+                let right_value = if right == "true" {
+                    serde_json::Value::Bool(true)
+                } else if right == "false" {
+                    serde_json::Value::Bool(false)
+                } else if let Ok(num) = right.parse::<i64>() {
+                    serde_json::Value::Number(num.into())
+                } else if let Ok(num) = right.parse::<f64>() {
+                    serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap())
+                } else {
+                    serde_json::Value::String(right.to_string())
+                };
+
+                return field_value != &right_value;
+            }
+            return false;
+        }
+
+        // Check for > (greater than)
+        if let Some(pos) = expr.find('>') {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 1..].trim();
+
+            if let Some(field_value) = value.get(field) {
+                if let (Some(a), Ok(b)) = (field_value.as_f64(), right.parse::<f64>()) {
+                    return a > b;
+                }
+            }
+            return false;
+        }
+
+        // Check for < (less than)
+        if let Some(pos) = expr.find('<') {
+            let field = expr[..pos].trim();
+            let right = expr[pos + 1..].trim();
+
+            if let Some(field_value) = value.get(field) {
+                if let (Some(a), Ok(b)) = (field_value.as_f64(), right.parse::<f64>()) {
+                    return a < b;
+                }
+            }
+            return false;
+        }
+
+        false
+    }
+
+    /// Recursive descent - find all matching fields at any depth
+    fn recursive_descent(value: &serde_json::Value, field: &str) -> Vec<serde_json::Value> {
+        let mut results = Vec::new();
+
+        fn traverse(value: &serde_json::Value, field: &str, results: &mut Vec<serde_json::Value>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, val) in map {
+                        // If field name matches, collect this value
+                        if key == field {
+                            results.push(val.clone());
+                        }
+                        // Continue traversing into nested structures
+                        traverse(val, field, results);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for item in arr {
+                        traverse(item, field, results);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        traverse(value, field, &mut results);
+        results
     }
 
     /// Handle errors based on error strategy
@@ -373,6 +733,23 @@ impl AggregationExecutor {
             }
         }
     }
+}
+
+/// JSONPath segment types
+#[derive(Debug, Clone)]
+enum PathSegment {
+    /// Field access: .field or ['field']
+    Field(String),
+    /// Array index: [0], [1], [-1]
+    Index(i64),
+    /// Array slice: [0:3], [:2], [1:]
+    Slice(Option<i64>, Option<i64>),
+    /// Wildcard: [*] or .*
+    Wildcard,
+    /// Filter: [?(@.age > 18)]
+    Filter(String),
+    /// Recursive descent: ..field
+    RecursiveDescent(String),
 }
 
 #[cfg(test)]
@@ -418,6 +795,96 @@ mod tests {
 
         let result = AggregationExecutor::extract_json_path(&Some(json), "$.missing");
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_json_path_array_index() {
+        let json = serde_json::json!({
+            "users": [
+                {"name": "Alice"},
+                {"name": "Bob"},
+                {"name": "Charlie"}
+            ]
+        });
+
+        let result = AggregationExecutor::extract_json_path(&Some(json.clone()), "$.users[0].name");
+        assert_eq!(result, Some(serde_json::json!("Alice")));
+
+        let result = AggregationExecutor::extract_json_path(&Some(json.clone()), "$.users[1].name");
+        assert_eq!(result, Some(serde_json::json!("Bob")));
+
+        let result = AggregationExecutor::extract_json_path(&Some(json), "$.users[-1].name");
+        assert_eq!(result, Some(serde_json::json!("Charlie")));
+    }
+
+    #[test]
+    fn test_extract_json_path_array_slice() {
+        let json = serde_json::json!({
+            "numbers": [1, 2, 3, 4, 5]
+        });
+
+        let result = AggregationExecutor::extract_json_path(&Some(json.clone()), "$.numbers[0:3]");
+        assert_eq!(result, Some(serde_json::json!([1, 2, 3])));
+
+        let result = AggregationExecutor::extract_json_path(&Some(json.clone()), "$.numbers[:2]");
+        assert_eq!(result, Some(serde_json::json!([1, 2])));
+
+        let result = AggregationExecutor::extract_json_path(&Some(json), "$.numbers[2:]");
+        assert_eq!(result, Some(serde_json::json!([3, 4, 5])));
+    }
+
+    #[test]
+    fn test_extract_json_path_wildcard() {
+        let json = serde_json::json!({
+            "users": [
+                {"name": "Alice", "age": 30},
+                {"name": "Bob", "age": 25},
+                {"name": "Charlie", "age": 35}
+            ]
+        });
+
+        let result = AggregationExecutor::extract_json_path(&Some(json), "$.users[*].name");
+        assert_eq!(result, Some(serde_json::json!(["Alice", "Bob", "Charlie"])));
+    }
+
+    #[test]
+    fn test_extract_json_path_filter() {
+        let json = serde_json::json!({
+            "users": [
+                {"name": "Alice", "age": 30},
+                {"name": "Bob", "age": 17},
+                {"name": "Charlie", "age": 25}
+            ]
+        });
+
+        let result = AggregationExecutor::extract_json_path(&Some(json), "$.users[?(@.age > 18)]");
+        assert!(result.is_some());
+        let results = result.unwrap();
+        assert!(results.is_array());
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 2); // Alice and Charlie
+    }
+
+    #[test]
+    fn test_extract_json_path_recursive_descent() {
+        let json = serde_json::json!({
+            "store": {
+                "book": [
+                    {"title": "Book 1", "price": 10.0},
+                    {"title": "Book 2", "price": 20.0}
+                ],
+                "bicycle": {
+                    "price": 100.0
+                }
+            }
+        });
+
+        let result = AggregationExecutor::extract_json_path(&Some(json), "$..price");
+        assert!(result.is_some());
+        let results = result.unwrap();
+        assert!(results.is_array());
+        let arr = results.as_array().unwrap();
+        assert_eq!(arr.len(), 3); // All prices
     }
 
     #[test]

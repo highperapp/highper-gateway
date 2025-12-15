@@ -2,13 +2,24 @@
 //!
 //! Provides transparent WebSocket proxying with ws:// and wss:// support.
 //! Uses existing TLS infrastructure for secure connections.
+//! Supports sticky sessions for proper load balancing and per-connection state tracking.
 
 pub mod handler;
+pub mod session;
+pub mod connection;
+pub mod shutdown;
+pub mod keepalive;
+pub mod recovery;
 
 use serde::{Deserialize, Serialize};
+pub use session::{SessionId, SessionManager, WebSocketSession};
+pub use connection::{ConnectionId, ConnectionInfo, ConnectionState, ConnectionTracker, ConnectionMetrics, ConnectionMetricsSnapshot};
+pub use shutdown::{ShutdownCoordinator, ShutdownStats, graceful_close_handshake};
+pub use keepalive::{KeepAliveManager, KeepAliveConfig, KeepAliveStats, send_ping_frame, send_pong_frame};
+pub use recovery::{RecoveryManager, RecoveryConfig, WebSocketError, CircuitState, BackendRecoveryStats};
 
-/// WebSocket configuration (minimal)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// WebSocket configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketConfig {
     /// Enable WebSocket support
     #[serde(default = "default_true")]
@@ -25,6 +36,42 @@ pub struct WebSocketConfig {
     /// Connection timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+
+    /// Enable sticky sessions (session affinity)
+    #[serde(default = "default_true")]
+    pub sticky_sessions: bool,
+
+    /// Cookie name for session ID
+    #[serde(default = "default_cookie_name")]
+    pub session_cookie_name: String,
+
+    /// Session timeout in seconds
+    #[serde(default = "default_session_timeout")]
+    pub session_timeout: u64,
+
+    /// Enable per-connection state tracking
+    #[serde(default = "default_true")]
+    pub track_connections: bool,
+
+    /// Idle connection timeout in seconds (for cleanup)
+    #[serde(default = "default_idle_timeout")]
+    pub idle_timeout: u64,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            max_message_size: default_max_message_size(),
+            ping_interval: default_ping_interval(),
+            timeout: default_timeout(),
+            sticky_sessions: default_true(),
+            session_cookie_name: default_cookie_name(),
+            session_timeout: default_session_timeout(),
+            track_connections: default_true(),
+            idle_timeout: default_idle_timeout(),
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -41,4 +88,16 @@ fn default_ping_interval() -> u64 {
 
 fn default_timeout() -> u64 {
     300 // 5 minutes
+}
+
+fn default_cookie_name() -> String {
+    "HPGW_WS_SESSION".to_string()
+}
+
+fn default_session_timeout() -> u64 {
+    3600 // 1 hour
+}
+
+fn default_idle_timeout() -> u64 {
+    600 // 10 minutes
 }

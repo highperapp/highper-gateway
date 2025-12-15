@@ -2,7 +2,7 @@
 
 use crate::config::{Config, RouteConfig, UpstreamConfig};
 use crate::gateway::routing::HostnameRouter;
-use crate::http::{CollectedBody, collect_body_validated, ResponseBody};
+use crate::http::{alt_svc, CollectedBody, collect_body_validated, ResponseBody};
 use crate::middleware::{MiddlewareChain, compression_middleware::CompressionMiddleware};
 use crate::observability::metrics::{record_request, record_upstream_request};
 use crate::proxy::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
@@ -11,6 +11,7 @@ use crate::state::ProxyState;
 use crate::tls::ChallengeStore;
 use crate::websocket::handler as ws_handler;
 use crate::grpc::detector as grpc_detector;
+use crate::grpc::handler as grpc_handler;
 use crate::webserver::StaticFileHandler;
 use crate::webserver::PhpFpmPool;
 use crate::Result;
@@ -37,6 +38,16 @@ pub struct Handler {
     static_file_handler: Option<Arc<StaticFileHandler>>,
     /// PHP-FPM pool for PHP processing (optional)
     php_fpm_pool: Option<Arc<PhpFpmPool>>,
+    /// WebSocket session manager (optional, enabled via config)
+    ws_session_manager: Option<Arc<crate::websocket::SessionManager>>,
+    /// WebSocket connection tracker (optional, enabled via config)
+    ws_connection_tracker: Option<Arc<crate::websocket::ConnectionTracker>>,
+    /// WebSocket keep-alive manager (optional, enabled via config)
+    ws_keepalive_manager: Option<Arc<crate::websocket::KeepAliveManager>>,
+    /// WebSocket recovery manager (optional, enabled via config)
+    ws_recovery_manager: Option<Arc<crate::websocket::RecoveryManager>>,
+    /// WebSocket shutdown coordinator (optional, enabled via config)
+    ws_shutdown_coordinator: Option<Arc<crate::websocket::ShutdownCoordinator>>,
 }
 
 /// Upstream server group with load balancing and circuit breaker
@@ -73,6 +84,22 @@ impl Upstream {
     fn select_backend(&self, client_ip: Option<&str>) -> Option<String> {
         self.load_balancer
             .select(client_ip, None)
+            .map(|backend| backend.server.url.clone())
+    }
+
+    /// Select backend for gRPC request using gRPC-specific load balancing
+    fn select_backend_grpc(
+        &self,
+        policy: crate::grpc::GrpcLoadBalancingPolicy,
+        metadata: &[(String, String)],
+        affinity_key: Option<&str>,
+    ) -> Option<String> {
+        // Convert Vec<(String, String)> to HashMap for select_grpc
+        let metadata_map: std::collections::HashMap<String, String> =
+            metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        self.load_balancer
+            .select_grpc(policy, Some(&metadata_map), affinity_key)
             .map(|backend| backend.server.url.clone())
     }
 
@@ -115,6 +142,55 @@ impl Handler {
             middleware_chain.middleware_names()
         );
 
+        // Initialize WebSocket managers if enabled
+        let (ws_session_manager, ws_connection_tracker, ws_keepalive_manager,
+             ws_recovery_manager, ws_shutdown_coordinator) =
+            if config.websocket.enabled && config.websocket.track_connections {
+                use std::time::Duration;
+
+                let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
+                    Duration::from_secs(config.websocket.idle_timeout)
+                ));
+
+                let session_manager = if config.websocket.sticky_sessions {
+                    Some(Arc::new(crate::websocket::SessionManager::new(
+                        Duration::from_secs(config.websocket.session_timeout)
+                    )))
+                } else {
+                    None
+                };
+
+                let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
+                    crate::websocket::KeepAliveConfig {
+                        ping_interval: Duration::from_secs(config.websocket.ping_interval),
+                        pong_timeout: Duration::from_secs(5),
+                        max_missed_pongs: 3,
+                        enabled: true,
+                    },
+                    tracker.clone()
+                )));
+
+                let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
+                    crate::websocket::RecoveryConfig::default(),
+                    tracker.clone()
+                )));
+
+                let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
+                    tracker.clone(),
+                    Duration::from_secs(30), // graceful timeout
+                    Duration::from_secs(5),  // force timeout
+                )));
+
+                info!("Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
+                    config.websocket.sticky_sessions,
+                    config.websocket.track_connections
+                );
+
+                (session_manager, Some(tracker), keepalive, recovery, shutdown)
+            } else {
+                (None, None, None, None, None)
+            };
+
         Self {
             config,
             client,
@@ -125,6 +201,11 @@ impl Handler {
             hostname_router: None,
             static_file_handler: None,
             php_fpm_pool: None,
+            ws_session_manager,
+            ws_connection_tracker,
+            ws_keepalive_manager,
+            ws_recovery_manager,
+            ws_shutdown_coordinator,
         }
     }
 
@@ -159,6 +240,55 @@ impl Handler {
             middleware_chain.middleware_names()
         );
 
+        // Initialize WebSocket managers if enabled
+        let (ws_session_manager, ws_connection_tracker, ws_keepalive_manager,
+             ws_recovery_manager, ws_shutdown_coordinator) =
+            if config.websocket.enabled && config.websocket.track_connections {
+                use std::time::Duration;
+
+                let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
+                    Duration::from_secs(config.websocket.idle_timeout)
+                ));
+
+                let session_manager = if config.websocket.sticky_sessions {
+                    Some(Arc::new(crate::websocket::SessionManager::new(
+                        Duration::from_secs(config.websocket.session_timeout)
+                    )))
+                } else {
+                    None
+                };
+
+                let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
+                    crate::websocket::KeepAliveConfig {
+                        ping_interval: Duration::from_secs(config.websocket.ping_interval),
+                        pong_timeout: Duration::from_secs(5),
+                        max_missed_pongs: 3,
+                        enabled: true,
+                    },
+                    tracker.clone()
+                )));
+
+                let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
+                    crate::websocket::RecoveryConfig::default(),
+                    tracker.clone()
+                )));
+
+                let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
+                    tracker.clone(),
+                    Duration::from_secs(30), // graceful timeout
+                    Duration::from_secs(5),  // force timeout
+                )));
+
+                info!("Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
+                    config.websocket.sticky_sessions,
+                    config.websocket.track_connections
+                );
+
+                (session_manager, Some(tracker), keepalive, recovery, shutdown)
+            } else {
+                (None, None, None, None, None)
+            };
+
         Self {
             config,
             client,
@@ -169,6 +299,11 @@ impl Handler {
             hostname_router: None,
             static_file_handler: None,
             php_fpm_pool: None,
+            ws_session_manager,
+            ws_connection_tracker,
+            ws_keepalive_manager,
+            ws_recovery_manager,
+            ws_shutdown_coordinator,
         }
     }
 
@@ -367,6 +502,13 @@ impl Handler {
             debug!("Detected WebSocket upgrade request");
             info!("WebSocket upgrade detected for path: {}", path);
 
+            // Extract session ID from cookie if sticky sessions enabled
+            let existing_session_id = if self.ws_session_manager.is_some() {
+                ws_handler::extract_session_id_from_cookie(&req, &self.config.websocket.session_cookie_name)
+            } else {
+                None
+            };
+
             // Find matching route (with hostname router support)
             let upstream_name = self.find_route_async(&method, &host, path).await;
 
@@ -374,9 +516,39 @@ impl Handler {
                 Some(upstream_name) => {
                     // Get upstream
                     if let Some(upstream) = self.upstreams.get(&upstream_name) {
-                        // Select backend server
-                        if let Some(backend_url) = upstream.select_backend(client_ip.as_deref()) {
-                            debug!("WebSocket backend selected: {}", backend_url);
+                        // Use session ID as request key for consistent hashing (sticky sessions)
+                        let request_key = existing_session_id.as_ref().map(|sid| sid.to_string());
+
+                        // Select backend using session ID for consistency
+                        let backend_selection = upstream.load_balancer.select(
+                            client_ip.as_deref(),
+                            request_key.as_deref()
+                        );
+
+                        if let Some(selected_backend) = backend_selection {
+                            let backend_url = &selected_backend.server.url;
+
+                            debug!("WebSocket backend selected: url={}", backend_url);
+
+                            // Use hash of backend URL as index for tracking (since servers list is private)
+                            use std::collections::hash_map::DefaultHasher;
+                            use std::hash::{Hash, Hasher};
+                            let mut hasher = DefaultHasher::new();
+                            backend_url.hash(&mut hasher);
+                            let backend_idx = (hasher.finish() % 1000) as usize;
+
+                            // Create or update session
+                            let session_for_cookie = if let Some(session_mgr) = &self.ws_session_manager {
+                                if existing_session_id.is_none() {
+                                    // Create new session
+                                    Some(session_mgr.create_session(backend_idx, client_ip.clone()))
+                                } else {
+                                    // Get existing session (updates last_activity)
+                                    existing_session_id.and_then(|sid| session_mgr.get_session(&sid))
+                                }
+                            } else {
+                                None
+                            };
 
                             // Parse backend URL for WebSocket connection
                             let backend_ws_url = backend_url
@@ -386,19 +558,52 @@ impl Handler {
 
                             info!("Establishing WebSocket connection to backend: {}", backend_ws_url);
 
-                            // Create WebSocket upgrade response
-                            match ws_handler::create_upgrade_response(&req) {
+                            // Create WebSocket upgrade response with session cookie
+                            let upgrade_response = if let Some(session) = session_for_cookie.as_ref() {
+                                ws_handler::create_upgrade_response_with_session(
+                                    &req,
+                                    Some(&session.id),
+                                    Some(&self.config.websocket.session_cookie_name),
+                                    self.config.websocket.session_timeout,
+                                )
+                            } else {
+                                ws_handler::create_upgrade_response(&req)
+                            };
+
+                            match upgrade_response {
                                 Ok(response) => {
                                     info!("WebSocket upgrade response created for {}", path);
                                     let duration = start.elapsed().as_secs_f64();
                                     record_request(method.as_str(), StatusCode::SWITCHING_PROTOCOLS.as_u16(), duration);
 
+                                    // Register connection if tracking enabled
+                                    let conn_id = if let Some(tracker) = &self.ws_connection_tracker {
+                                        let session_id = session_for_cookie.as_ref().map(|s| s.id);
+                                        Some(tracker.register(backend_idx, session_id, client_ip.clone()))
+                                    } else {
+                                        None
+                                    };
+
+                                    // Clone managers for async task
+                                    let tracker_clone = self.ws_connection_tracker.clone();
+                                    let recovery_clone = self.ws_recovery_manager.clone();
+
                                     // Spawn async task for WebSocket proxying after upgrade
                                     tokio::spawn(async move {
+                                        // Update connection state to Connecting
+                                        if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                            tracker.update_state(cid, crate::websocket::ConnectionState::Connecting);
+                                        }
+
                                         // Wait for the upgrade to complete
                                         match hyper::upgrade::on(req).await {
                                             Ok(upgraded) => {
                                                 info!("Client WebSocket connection upgraded, connecting to backend");
+
+                                                // Update connection state to Connected
+                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                                    tracker.update_state(cid, crate::websocket::ConnectionState::Connected);
+                                                }
 
                                                 // Wrap upgraded connection with TokioIo for AsyncRead/AsyncWrite
                                                 use hyper_util::rt::TokioIo;
@@ -409,6 +614,11 @@ impl Handler {
                                                     Ok((backend_ws, _)) => {
                                                         info!("Connected to backend WebSocket: {}", backend_ws_url);
 
+                                                        // Record successful connection
+                                                        if let Some(recovery) = recovery_clone.as_ref() {
+                                                            recovery.record_success(backend_idx);
+                                                        }
+
                                                         // Convert upgraded connection to WebSocket frames
                                                         let client_ws = tokio_tungstenite::WebSocketStream::from_raw_socket(
                                                             upgraded_io,
@@ -416,21 +626,40 @@ impl Handler {
                                                             None,
                                                         ).await;
 
-                                                        // Proxy bidirectionally
+                                                        // Proxy bidirectionally with tracking
                                                         if let Err(e) = Self::proxy_websocket_streams(client_ws, backend_ws).await {
                                                             error!("WebSocket proxy error: {}", e);
+                                                            if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                                                tracker.record_error(cid, format!("Proxy error: {}", e));
+                                                            }
                                                         } else {
                                                             info!("WebSocket connection closed cleanly");
                                                         }
                                                     }
                                                     Err(e) => {
                                                         error!("Failed to connect to backend WebSocket: {}", e);
+                                                        if let Some(recovery) = recovery_clone.as_ref() {
+                                                            recovery.record_failure(backend_idx, crate::websocket::WebSocketError::ConnectionRefused);
+                                                        }
                                                     }
+                                                }
+
+                                                // Update connection state to Closing
+                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                                    tracker.update_state(cid, crate::websocket::ConnectionState::Closing);
                                                 }
                                             }
                                             Err(e) => {
                                                 error!("Failed to upgrade client connection: {}", e);
+                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                                    tracker.record_error(cid, format!("Upgrade error: {}", e));
+                                                }
                                             }
+                                        }
+
+                                        // Unregister connection
+                                        if let (Some(cid), Some(tracker)) = (conn_id, tracker_clone.as_ref()) {
+                                            tracker.unregister(&cid);
                                         }
                                     });
 
@@ -463,17 +692,19 @@ impl Handler {
             );
         }
 
-        // Check for gRPC request
-        if self.config.grpc.enabled && grpc_detector::is_grpc_request(&req) {
+        // Check for gRPC request and store info for later use
+        let grpc_request_info = if self.config.grpc.enabled && grpc_detector::is_grpc_request(&req) {
             debug!("Detected gRPC request");
             if let Some(grpc_req) = grpc_detector::parse_grpc_request(&req) {
                 info!("gRPC request: {} (service: {:?})", grpc_req.path,
                     grpc_detector::extract_service_name(&grpc_req.path));
-                // For now, gRPC will be proxied as regular HTTP/2
-                // Full gRPC-aware proxying with streaming will be added in a future update
-                debug!("Proxying gRPC request as HTTP/2");
+                Some(grpc_req)
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
         // Find matching route (with hostname router support)
         let upstream_name = self.find_route_async(&method, &host, path).await;
@@ -497,19 +728,105 @@ impl Handler {
                     }
 
                     // Select backend server using load balancing algorithm
-                    if let Some(backend_url) = upstream.select_backend(client_ip.as_deref()) {
+                    // Use gRPC-specific load balancing for gRPC requests
+                    let backend_url = if let Some(ref grpc_req) = grpc_request_info {
+                        // Use gRPC-specific load balancing
+                        let grpc_config = &self.config.grpc.load_balancing;
+                        let affinity_key = grpc_config.affinity_key.as_deref();
+                        upstream.select_backend_grpc(
+                            grpc_config.policy,
+                            &grpc_req.metadata,
+                            affinity_key,
+                        )
+                    } else {
+                        // Use standard load balancing
+                        upstream.select_backend(client_ip.as_deref())
+                    };
+
+                    if let Some(backend_url) = backend_url {
                         debug!("Selected backend: {}", backend_url);
 
-                        // Execute request with circuit breaker protection
-                        let client = self.client.clone();
-                        let backend_url_clone = backend_url.clone();
-                        let method_clone = method.clone();
-                        let path_str = path.to_string();
-                        let headers = req.headers().clone();
+                        // Check if this is a gRPC request that needs special handling
+                        if let Some(ref grpc_req) = grpc_request_info {
+                            // gRPC-specific proxying with streaming support
+                            info!("Using gRPC-aware proxying for {}", grpc_req.path);
 
-                        let result = circuit_breaker.execute(|| async {
-                            client.forward(&backend_url_clone, method_clone.clone(), &path_str, headers.clone()).await
-                        }).await;
+                            let grpc_req_clone = grpc_req.clone();
+                            let backend_url_clone = backend_url.clone();
+
+                            let result = circuit_breaker.execute(|| async move {
+                                grpc_handler::proxy_grpc_request(&grpc_req_clone, &backend_url_clone, req).await
+                            }).await;
+
+                            match result {
+                                Ok(response) => {
+                                    // For gRPC, return streaming response directly (preserve trailers)
+                                    let status = response.status();
+
+                                    // Extract gRPC status from trailers if available
+                                    let grpc_status = grpc_handler::extract_grpc_status(&response);
+                                    if let Some(grpc_status) = grpc_status {
+                                        debug!("gRPC response status: {:?}", grpc_status);
+                                    }
+
+                                    // Record metrics
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(method.as_str(), status.as_u16(), duration);
+                                    record_upstream_request(&upstream_name, status.as_u16(), duration);
+
+                                    // Convert Incoming body to ResponseBody for return type compatibility
+                                    // Incoming needs to be boxed and error type converted
+                                    let (parts, body) = response.into_parts();
+                                    use http_body_util::BodyExt as _;
+                                    let boxed_body = body
+                                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                                        .boxed_unsync();
+                                    let response = Response::from_parts(parts, ResponseBody::Stream(boxed_body));
+                                    Ok(response)
+                                }
+                                Err(CircuitBreakerError::Open) => {
+                                    warn!("Circuit breaker opened for upstream: {}", upstream_name);
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
+
+                                    let grpc_error = grpc_handler::create_grpc_error_response(
+                                        crate::grpc::GrpcStatusCode::Unavailable,
+                                        "Circuit breaker is open",
+                                    );
+                                    // Convert Full<Bytes> body to ResponseBody
+                                    let (parts, body) = grpc_error.into_parts();
+                                    use http_body_util::BodyExt as _;
+                                    let bytes = body.collect().await.unwrap().to_bytes();
+                                    Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
+                                }
+                                Err(CircuitBreakerError::Failure(e)) => {
+                                    error!("gRPC backend request failed: {}", e);
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);
+                                    record_upstream_request(&upstream_name, StatusCode::BAD_GATEWAY.as_u16(), duration);
+
+                                    let grpc_error = grpc_handler::create_grpc_error_response(
+                                        crate::grpc::GrpcStatusCode::Unavailable,
+                                        &format!("Backend request failed: {}", e),
+                                    );
+                                    // Convert Full<Bytes> body to ResponseBody
+                                    let (parts, body) = grpc_error.into_parts();
+                                    use http_body_util::BodyExt as _;
+                                    let bytes = body.collect().await.unwrap().to_bytes();
+                                    Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
+                                }
+                            }
+                        } else {
+                            // Regular HTTP/HTTPS proxying
+                            let client = self.client.clone();
+                            let backend_url_clone = backend_url.clone();
+                            let method_clone = method.clone();
+                            let path_str = path.to_string();
+                            let headers = req.headers().clone();
+
+                            let result = circuit_breaker.execute(|| async {
+                                client.forward(&backend_url_clone, method_clone.clone(), &path_str, headers.clone()).await
+                            }).await;
 
                         match result {
                             Ok(response) => {
@@ -554,7 +871,7 @@ impl Handler {
                                         let response = resp.body(ResponseBody::buffered(body_bytes))?;
 
                                         // Apply middleware chain (compression, etc.)
-                                        let response = match self.middleware_chain.process_response(response).await {
+                                        let mut response = match self.middleware_chain.process_response(response).await {
                                             Ok(resp) => resp,
                                             Err(e) => {
                                                 error!("Middleware processing failed: {}", e);
@@ -565,6 +882,11 @@ impl Handler {
                                                 );
                                             }
                                         };
+
+                                        // Add Alt-Svc header to advertise HTTP/3 if enabled
+                                        if self.config.server.http3.enabled {
+                                            alt_svc::add_alt_svc_header(&mut response, self.config.server.http3.port);
+                                        }
 
                                         // Record metrics
                                         let duration = start.elapsed().as_secs_f64();
@@ -605,6 +927,7 @@ impl Handler {
                                     "Failed to connect to upstream",
                                 )
                             }
+                        }
                         }
                     } else {
                         warn!("No healthy backends available for upstream: {}", upstream_name);

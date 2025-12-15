@@ -35,6 +35,7 @@ pub struct AdminServer {
     reload_tx: Option<mpsc::UnboundedSender<ReloadTrigger>>,
     hostname_router: Option<Arc<crate::gateway::routing::HostnameRouter>>,
     auth_db: Option<Arc<crate::admin::auth::AuthDb>>,
+    route_manager: Arc<crate::admin::RouteManager>,
 }
 
 impl AdminServer {
@@ -47,6 +48,7 @@ impl AdminServer {
             reload_tx: None,
             hostname_router: None,
             auth_db: None,
+            route_manager: Arc::new(crate::admin::RouteManager::new()),
         }
     }
 
@@ -63,6 +65,7 @@ impl AdminServer {
             reload_tx: None,
             hostname_router: None,
             auth_db: None,
+            route_manager: Arc::new(crate::admin::RouteManager::new()),
         }
     }
 
@@ -79,6 +82,7 @@ impl AdminServer {
             reload_tx: Some(reload_tx),
             hostname_router: None,
             auth_db: None,
+            route_manager: Arc::new(crate::admin::RouteManager::new()),
         }
     }
 
@@ -96,6 +100,7 @@ impl AdminServer {
             reload_tx: Some(reload_tx),
             hostname_router: None,
             auth_db: None,
+            route_manager: Arc::new(crate::admin::RouteManager::new()),
         }
     }
 
@@ -200,8 +205,21 @@ impl AdminServer {
             // Backend control
             (&Method::GET, "/api/backends") => self.list_backends().await,
 
-            // Routes (stub for now)
+            // Routes management
             (&Method::GET, "/api/routes") => self.list_routes().await,
+            (&Method::POST, "/api/routes") => self.create_route(req).await,
+            _ if method == Method::GET && path.starts_with("/api/routes/") && !path.contains("/metrics") => {
+                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                self.get_route(route_name).await
+            }
+            _ if method == Method::PUT && path.starts_with("/api/routes/") => {
+                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                self.update_route(route_name, req).await
+            }
+            _ if method == Method::DELETE && path.starts_with("/api/routes/") => {
+                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                self.delete_route(route_name).await
+            }
 
             // Upstreams (stub for now)
             (&Method::GET, "/api/upstreams") => self.list_upstreams().await,
@@ -481,6 +499,164 @@ impl AdminServer {
                 "source": "config"
             })
         )
+    }
+
+    /// Create a new route
+    async fn create_route(&self, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let route: crate::admin::RouteDefinition = match serde_json::from_slice(&body_bytes) {
+            Ok(route) => route,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid route definition: {}", e)
+                    }),
+                );
+            }
+        };
+
+        // Add route to manager
+        match self.route_manager.add_route(route.clone()).await {
+            Ok(()) => json_response(
+                StatusCode::CREATED,
+                json!({
+                    "status": "ok",
+                    "message": format!("Route '{}' created successfully", route.name),
+                    "route": route
+                }),
+            ),
+            Err(e) => json_response(
+                StatusCode::CONFLICT,
+                json!({
+                    "error": e
+                }),
+            ),
+        }
+    }
+
+    /// Get a specific route by name
+    async fn get_route(&self, route_name: &str) -> Response<Full<Bytes>> {
+        match self.route_manager.get_route(route_name).await {
+            Some(route) => json_response(StatusCode::OK, json!(route)),
+            None => json_response(
+                StatusCode::NOT_FOUND,
+                json!({
+                    "error": format!("Route '{}' not found", route_name)
+                }),
+            ),
+        }
+    }
+
+    /// Update an existing route
+    async fn update_route(&self, route_name: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let route: crate::admin::RouteDefinition = match serde_json::from_slice(&body_bytes) {
+            Ok(route) => route,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid route definition: {}", e)
+                    }),
+                );
+            }
+        };
+
+        // Update route in manager
+        match self.route_manager.update_route(route_name, route.clone()).await {
+            Ok(()) => json_response(
+                StatusCode::OK,
+                json!({
+                    "status": "ok",
+                    "message": format!("Route '{}' updated successfully", route_name),
+                    "route": route
+                }),
+            ),
+            Err(e) => json_response(
+                StatusCode::NOT_FOUND,
+                json!({
+                    "error": e
+                }),
+            ),
+        }
+    }
+
+    /// Delete a route
+    async fn delete_route(&self, route_name: &str) -> Response<Full<Bytes>> {
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        match self.route_manager.remove_route(route_name).await {
+            Ok(()) => json_response(
+                StatusCode::OK,
+                json!({
+                    "status": "ok",
+                    "message": format!("Route '{}' deleted successfully", route_name)
+                }),
+            ),
+            Err(e) => json_response(
+                StatusCode::NOT_FOUND,
+                json!({
+                    "error": e
+                }),
+            ),
+        }
     }
 
     /// List all upstreams

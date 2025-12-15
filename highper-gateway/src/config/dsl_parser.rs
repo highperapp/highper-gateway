@@ -1251,7 +1251,7 @@ api.example.com {
 "#;
         let config = parse_dsl(input).unwrap();
 
-        if let Directive::RateLimit { rate, per } = &config.sites[0].directives[1] {
+        if let Directive::RateLimit { rate, per, .. } = &config.sites[0].directives[1] {
             assert_eq!(*rate, 100);
             assert_eq!(*per, Some(Duration::from_secs(1)));
         } else {

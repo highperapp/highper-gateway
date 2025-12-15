@@ -293,9 +293,9 @@ impl ConnectionPoolMetrics {
         // Collect per-host metrics
         let per_host = self.per_host_stats
             .iter()
-            .map(|entry| {
+            .filter_map(|entry| {
                 let host = entry.key().clone();
-                self.get_host_metrics(&host).unwrap()
+                self.get_host_metrics(&host)
             })
             .collect();
 
@@ -351,20 +351,20 @@ mod tests {
 
         // Create connection
         metrics.record_connection_created(host);
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 1);
         assert_eq!(host_metrics.total_created, 1);
 
         // Return to pool (idle)
         metrics.record_connection_idle(host);
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 0);
         assert_eq!(host_metrics.idle_connections, 1);
 
         // Reuse from pool
         metrics.record_connection_activated(host);
         metrics.record_connection_reused(host);
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 1);
         assert_eq!(host_metrics.idle_connections, 0);
         assert_eq!(host_metrics.total_reused, 1);
@@ -388,7 +388,7 @@ mod tests {
             metrics.record_connection_reused(host);
         }
 
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         // 40 reuses out of 50 total uses = 0.8 ratio
         assert!((host_metrics.reuse_ratio - 0.8).abs() < 0.01);
     }
@@ -416,7 +416,7 @@ mod tests {
         metrics.record_connection_error(host);
         metrics.record_connection_error(host);
 
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.connection_errors, 2);
 
         let global = metrics.get_global_metrics();
@@ -430,7 +430,7 @@ mod tests {
 
         metrics.record_pool_exhausted(host);
 
-        let host_metrics = metrics.get_host_metrics(host).unwrap();
+        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.pool_exhausted_count, 1);
 
         let global = metrics.get_global_metrics();

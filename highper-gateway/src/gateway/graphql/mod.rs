@@ -181,10 +181,80 @@ impl GraphQLGateway {
             }
         }
 
-        // Execute query on first backend (simplified for now)
-        let response = if !self.config.backends.is_empty() {
+        // Execute query - use federation if enabled and multiple backends configured
+        let response = if self.config.enable_stitching && self.config.backends.len() > 1 {
+            // Federation mode - analyze query, split across backends, and merge results
+            debug!("Using federation mode with {} backends", self.config.backends.len());
+
+            match self.stitcher.analyze_and_split_query(&req.query, &self.schema_registry) {
+                Ok(fragments) => {
+                    if fragments.is_empty() {
+                        // No fragments - query doesn't match any backend fields
+                        GraphQLResponse {
+                            data: None,
+                            errors: Some(vec![GraphQLError {
+                                message: "Query fields don't match any configured backend".to_string(),
+                                locations: None,
+                                path: None,
+                            }]),
+                        }
+                    } else {
+                        // Execute fragments in parallel across backends
+                        match self.executor.execute_federated(fragments, req.variables.clone()).await {
+                            Ok(fragment_results) => {
+                                // Merge results from all backends
+                                match self.stitcher.merge_results(fragment_results) {
+                                    Ok(merged_data) => {
+                                        GraphQLResponse {
+                                            data: Some(merged_data),
+                                            errors: None,
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to merge results: {}", e);
+                                        GraphQLResponse {
+                                            data: None,
+                                            errors: Some(vec![GraphQLError {
+                                                message: format!("Result merge failed: {}", e),
+                                                locations: None,
+                                                path: None,
+                                            }]),
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Federation execution failed: {}", e);
+                                GraphQLResponse {
+                                    data: None,
+                                    errors: Some(vec![GraphQLError {
+                                        message: format!("Execution failed: {}", e),
+                                        locations: None,
+                                        path: None,
+                                    }]),
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Query analysis failed: {}", e);
+                    GraphQLResponse {
+                        data: None,
+                        errors: Some(vec![GraphQLError {
+                            message: format!("Query analysis failed: {}", e),
+                            locations: None,
+                            path: None,
+                        }]),
+                    }
+                }
+            }
+        } else if !self.config.backends.is_empty() {
+            // Single backend mode - execute directly on first backend
+            debug!("Using single backend mode");
             self.executor.execute_simple(&self.config.backends[0], req.query.clone(), req.variables.clone()).await?
         } else {
+            // No backends configured
             GraphQLResponse {
                 data: None,
                 errors: Some(vec![GraphQLError {
@@ -303,5 +373,193 @@ mod tests {
         let key2 = gateway.generate_cache_key(&req2);
 
         assert_eq!(key1, key2);
+    }
+
+    #[tokio::test]
+    async fn test_federation_mode_detection() {
+        // Test with federation enabled and multiple backends
+        let config_federated = GraphQLConfig {
+            enable_stitching: true,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: false,
+            max_batch_size: 10,
+            introspection_enabled: true,
+            backends: vec![
+                GraphQLBackend {
+                    name: "users".to_string(),
+                    url: "http://localhost:8081/graphql".to_string(),
+                    namespace: None,
+                    type_mappings: vec![],
+                },
+                GraphQLBackend {
+                    name: "posts".to_string(),
+                    url: "http://localhost:8082/graphql".to_string(),
+                    namespace: None,
+                    type_mappings: vec![],
+                },
+            ],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config_federated, client).await.unwrap();
+
+        // Verify gateway was created with federation config
+        assert!(gateway.config.enable_stitching);
+        assert_eq!(gateway.config.backends.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_single_backend_mode() {
+        // Test with federation disabled or single backend
+        let config_single = GraphQLConfig {
+            enable_stitching: false,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: false,
+            max_batch_size: 10,
+            introspection_enabled: true,
+            backends: vec![
+                GraphQLBackend {
+                    name: "api".to_string(),
+                    url: "http://localhost:8081/graphql".to_string(),
+                    namespace: None,
+                    type_mappings: vec![],
+                },
+            ],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config_single, client).await.unwrap();
+
+        // Verify single backend mode
+        assert!(!gateway.config.enable_stitching);
+        assert_eq!(gateway.config.backends.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_no_backends_configured() {
+        let config_empty = GraphQLConfig {
+            enable_stitching: true,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: false,
+            max_batch_size: 10,
+            introspection_enabled: true,
+            backends: vec![],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config_empty, client).await.unwrap();
+
+        let req = GraphQLRequest {
+            query: "{ hello }".to_string(),
+            operation_name: None,
+            variables: None,
+        };
+
+        let response = gateway.handle_request(req).await.unwrap();
+
+        // Should return error about no backends
+        assert!(response.data.is_none());
+        assert!(response.errors.is_some());
+        let errors = response.errors.unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("No backends configured"));
+    }
+
+    #[tokio::test]
+    async fn test_introspection_disabled() {
+        let config = GraphQLConfig {
+            enable_stitching: true,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: false,
+            max_batch_size: 10,
+            introspection_enabled: false,
+            backends: vec![],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config, client).await.unwrap();
+
+        let response = gateway.handle_introspection().await.unwrap();
+
+        // Should return error
+        assert!(response.data.is_none());
+        assert!(response.errors.is_some());
+        let errors = response.errors.unwrap();
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("Introspection is disabled"));
+    }
+
+    #[tokio::test]
+    async fn test_batch_request_disabled() {
+        let config = GraphQLConfig {
+            enable_stitching: true,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: false,
+            max_batch_size: 10,
+            introspection_enabled: true,
+            backends: vec![],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config, client).await.unwrap();
+
+        let requests = vec![
+            GraphQLRequest {
+                query: "{ hello }".to_string(),
+                operation_name: None,
+                variables: None,
+            },
+        ];
+
+        let result = gateway.handle_batch(requests).await;
+
+        // Should return error about batching disabled
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Batching is disabled"));
+    }
+
+    #[tokio::test]
+    async fn test_batch_request_size_limit() {
+        let config = GraphQLConfig {
+            enable_stitching: true,
+            enable_cache: false,
+            cache_ttl: Duration::from_secs(300),
+            enable_batching: true,
+            max_batch_size: 2,
+            introspection_enabled: true,
+            backends: vec![],
+        };
+
+        let client = Arc::new(Client::new());
+        let gateway = GraphQLGateway::new(config, client).await.unwrap();
+
+        let requests = vec![
+            GraphQLRequest {
+                query: "{ hello }".to_string(),
+                operation_name: None,
+                variables: None,
+            },
+            GraphQLRequest {
+                query: "{ world }".to_string(),
+                operation_name: None,
+                variables: None,
+            },
+            GraphQLRequest {
+                query: "{ foo }".to_string(),
+                operation_name: None,
+                variables: None,
+            },
+        ];
+
+        let result = gateway.handle_batch(requests).await;
+
+        // Should return error about batch size
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Batch size exceeds maximum"));
     }
 }

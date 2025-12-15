@@ -555,6 +555,104 @@ impl LoadBalancer {
     pub fn servers(&self) -> &[Arc<BackendServer>] {
         &self.servers
     }
+
+    /// Select a backend server for gRPC requests using gRPC-specific policies
+    ///
+    /// This method implements gRPC-specific load balancing strategies:
+    /// - RoundRobin: Standard round-robin
+    /// - LeastRequest: Select backend with fewest active connections (same as LeastConn)
+    /// - Random: Random selection
+    /// - PowerOfTwo: Random selection from two choices, pick one with fewer connections
+    /// - ConsistentHash: Hash-based selection using gRPC metadata
+    ///
+    /// # Arguments
+    /// * `policy` - The gRPC load balancing policy to use
+    /// * `metadata` - Optional gRPC metadata for affinity (e.g., from headers)
+    /// * `affinity_key` - Optional header name to use for consistent hashing
+    pub fn select_grpc(
+        &self,
+        policy: crate::grpc::GrpcLoadBalancingPolicy,
+        metadata: Option<&std::collections::HashMap<String, String>>,
+        affinity_key: Option<&str>,
+    ) -> Option<Arc<BackendServer>> {
+        if self.servers.is_empty() {
+            return None;
+        }
+
+        match policy {
+            crate::grpc::GrpcLoadBalancingPolicy::RoundRobin => self.round_robin(),
+            crate::grpc::GrpcLoadBalancingPolicy::LeastRequest => self.least_connections(),
+            crate::grpc::GrpcLoadBalancingPolicy::Random => self.random(),
+            crate::grpc::GrpcLoadBalancingPolicy::PowerOfTwo => self.power_of_two(),
+            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash => {
+                // Extract affinity value from metadata
+                if let Some(affinity_value) = self.extract_affinity_value(metadata, affinity_key) {
+                    self.consistent_hash(&affinity_value)
+                } else {
+                    // Fallback to round-robin if no affinity value
+                    self.round_robin()
+                }
+            }
+        }
+    }
+
+    /// Async version of select_grpc with backend availability checking
+    pub async fn select_grpc_async(
+        &self,
+        policy: crate::grpc::GrpcLoadBalancingPolicy,
+        metadata: Option<&std::collections::HashMap<String, String>>,
+        affinity_key: Option<&str>,
+    ) -> Option<Arc<BackendServer>> {
+        let selected = self.select_grpc(policy, metadata, affinity_key);
+
+        // Verify the selected backend is available
+        if let Some(ref backend) = selected {
+            let index = self.servers.iter().position(|s| Arc::ptr_eq(s, backend))?;
+            if !self.is_backend_available(index).await {
+                // Try to find another available backend
+                return self.find_available_backend().await;
+            }
+        }
+
+        selected
+    }
+
+    /// Extract affinity value from gRPC metadata for consistent hashing
+    ///
+    /// If an affinity_key is provided, tries to extract that specific header.
+    /// Otherwise, tries common gRPC affinity headers in order:
+    /// 1. x-grpc-affinity
+    /// 2. x-session-id
+    /// 3. x-user-id
+    /// 4. authorization (uses full value as key)
+    fn extract_affinity_value(
+        &self,
+        metadata: Option<&std::collections::HashMap<String, String>>,
+        affinity_key: Option<&str>,
+    ) -> Option<String> {
+        let metadata = metadata?;
+
+        // If specific affinity key is provided, use it
+        if let Some(key) = affinity_key {
+            return metadata.get(key).cloned();
+        }
+
+        // Try common affinity headers in order of preference
+        let common_keys = [
+            "x-grpc-affinity",
+            "x-session-id",
+            "x-user-id",
+            "authorization",
+        ];
+
+        for key in &common_keys {
+            if let Some(value) = metadata.get(*key) {
+                return Some(value.clone());
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]
@@ -769,5 +867,185 @@ mod tests {
                 count
             );
         }
+    }
+
+    // gRPC Load Balancing Tests
+
+    #[test]
+    fn test_grpc_select_round_robin() {
+        let servers = create_test_servers(3);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
+
+        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
+        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
+        let s3 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
+        let s4 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
+
+        assert_eq!(s1.server.url, "http://backend-0");
+        assert_eq!(s2.server.url, "http://backend-1");
+        assert_eq!(s3.server.url, "http://backend-2");
+        assert_eq!(s4.server.url, "http://backend-0"); // Wraps around
+    }
+
+    #[test]
+    fn test_grpc_select_least_request() {
+        let servers = create_test_servers(3);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::LeastConn, servers);
+
+        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::LeastRequest, None, None).unwrap();
+        s1.acquire(); // 1 connection
+
+        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::LeastRequest, None, None).unwrap();
+        // Should not be s1 since it has a connection
+        assert_ne!(s1.server.url, s2.server.url);
+    }
+
+    #[test]
+    fn test_grpc_select_consistent_hash_with_metadata() {
+        let servers = create_test_servers(5);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::ConsistentHash, servers);
+
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("x-grpc-affinity".to_string(), "user123".to_string());
+
+        let s1 = lb.select_grpc(
+            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+            Some(&metadata),
+            None,
+        ).unwrap();
+
+        let s2 = lb.select_grpc(
+            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+            Some(&metadata),
+            None,
+        ).unwrap();
+
+        // Same metadata should route to same backend
+        assert_eq!(s1.server.url, s2.server.url);
+    }
+
+    #[test]
+    fn test_grpc_select_consistent_hash_with_custom_key() {
+        let servers = create_test_servers(5);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::ConsistentHash, servers);
+
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("custom-key".to_string(), "session456".to_string());
+
+        let s1 = lb.select_grpc(
+            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+            Some(&metadata),
+            Some("custom-key"),
+        ).unwrap();
+
+        let s2 = lb.select_grpc(
+            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+            Some(&metadata),
+            Some("custom-key"),
+        ).unwrap();
+
+        // Same custom key should route to same backend
+        assert_eq!(s1.server.url, s2.server.url);
+    }
+
+    #[test]
+    fn test_grpc_select_consistent_hash_fallback() {
+        let servers = create_test_servers(3);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
+
+        // No metadata provided, should fallback to round-robin
+        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash, None, None).unwrap();
+        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash, None, None).unwrap();
+
+        // Should use round-robin behavior
+        assert_ne!(s1.server.url, s2.server.url);
+    }
+
+    #[test]
+    fn test_extract_affinity_value_with_common_headers() {
+        let servers = create_test_servers(2);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
+
+        // Test x-grpc-affinity (highest priority)
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("x-grpc-affinity".to_string(), "affinity1".to_string());
+        metadata.insert("x-session-id".to_string(), "session1".to_string());
+
+        let value = lb.extract_affinity_value(Some(&metadata), None);
+        assert_eq!(value, Some("affinity1".to_string()));
+
+        // Test x-session-id (second priority)
+        let mut metadata2 = std::collections::HashMap::new();
+        metadata2.insert("x-session-id".to_string(), "session2".to_string());
+        metadata2.insert("x-user-id".to_string(), "user2".to_string());
+
+        let value2 = lb.extract_affinity_value(Some(&metadata2), None);
+        assert_eq!(value2, Some("session2".to_string()));
+
+        // Test x-user-id (third priority)
+        let mut metadata3 = std::collections::HashMap::new();
+        metadata3.insert("x-user-id".to_string(), "user3".to_string());
+
+        let value3 = lb.extract_affinity_value(Some(&metadata3), None);
+        assert_eq!(value3, Some("user3".to_string()));
+
+        // Test authorization (fourth priority)
+        let mut metadata4 = std::collections::HashMap::new();
+        metadata4.insert("authorization".to_string(), "Bearer token123".to_string());
+
+        let value4 = lb.extract_affinity_value(Some(&metadata4), None);
+        assert_eq!(value4, Some("Bearer token123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_affinity_value_with_custom_key() {
+        let servers = create_test_servers(2);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
+
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("my-custom-key".to_string(), "custom-value".to_string());
+        metadata.insert("x-grpc-affinity".to_string(), "affinity-value".to_string());
+
+        // Custom key should take precedence
+        let value = lb.extract_affinity_value(Some(&metadata), Some("my-custom-key"));
+        assert_eq!(value, Some("custom-value".to_string()));
+    }
+
+    #[test]
+    fn test_extract_affinity_value_no_metadata() {
+        let servers = create_test_servers(2);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
+
+        let value = lb.extract_affinity_value(None, None);
+        assert_eq!(value, None);
+    }
+
+    #[test]
+    fn test_grpc_select_power_of_two() {
+        let servers = create_test_servers(5);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::PowerOfTwo, servers);
+
+        // Power of two should always return a valid backend
+        for _ in 0..10 {
+            let server = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::PowerOfTwo, None, None);
+            assert!(server.is_some());
+        }
+    }
+
+    #[test]
+    fn test_grpc_select_random() {
+        let servers = create_test_servers(5);
+        let lb = LoadBalancer::new(LoadBalancingAlgorithm::Random, servers);
+
+        let mut seen_servers = std::collections::HashSet::new();
+
+        // With 5 servers and 20 selections, we should see multiple servers
+        for _ in 0..20 {
+            let server = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::Random, None, None).unwrap();
+            seen_servers.insert(server.server.url.clone());
+        }
+
+        // Should have seen at least 3 different servers
+        assert!(seen_servers.len() >= 3, "Random selection should distribute across servers");
     }
 }

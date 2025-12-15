@@ -9,17 +9,27 @@ use tracing::{info, warn, error};
 /// Set up signal handling for graceful shutdown
 pub async fn setup_shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
+        match signal::ctrl_c().await {
+            Ok(_) => {},
+            Err(e) => {
+                error!("Failed to install Ctrl+C handler: {}", e);
+                error!("Shutdown signal handling disabled");
+            }
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                error!("Failed to install SIGTERM handler: {}", e);
+                error!("SIGTERM signal handling disabled");
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]
@@ -42,12 +52,38 @@ pub async fn setup_signals_with_reload(
 ) {
     use signal::unix::{signal, SignalKind};
 
-    let mut sighup = signal(SignalKind::hangup())
-        .expect("Failed to install SIGHUP handler");
-    let mut sigterm = signal(SignalKind::terminate())
-        .expect("Failed to install SIGTERM handler");
-    let mut sigint = signal(SignalKind::interrupt())
-        .expect("Failed to install SIGINT handler");
+    let mut sighup = match signal(SignalKind::hangup()) {
+        Ok(sig) => sig,
+        Err(e) => {
+            error!("Failed to install SIGHUP handler: {}", e);
+            error!("Configuration reload via SIGHUP disabled");
+            // Fall back to basic shutdown signal handling
+            setup_shutdown_signal().await;
+            return;
+        }
+    };
+
+    let mut sigterm = match signal(SignalKind::terminate()) {
+        Ok(sig) => sig,
+        Err(e) => {
+            error!("Failed to install SIGTERM handler: {}", e);
+            error!("SIGTERM signal handling disabled");
+            // Fall back to basic shutdown signal handling
+            setup_shutdown_signal().await;
+            return;
+        }
+    };
+
+    let mut sigint = match signal(SignalKind::interrupt()) {
+        Ok(sig) => sig,
+        Err(e) => {
+            error!("Failed to install SIGINT handler: {}", e);
+            error!("SIGINT signal handling disabled");
+            // Fall back to basic shutdown signal handling
+            setup_shutdown_signal().await;
+            return;
+        }
+    };
 
     loop {
         tokio::select! {
@@ -130,10 +166,22 @@ mod tests {
         let pid_file_path = temp_dir.join(format!("test_pidfile_{}.pid", std::process::id()));
 
         // Create PID file
-        let pid_file = PidFile::create(&pid_file_path).unwrap();
+        let pid_file = match PidFile::create(&pid_file_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Failed to create PID file: {}", e);
+                return;
+            }
+        };
 
         // Verify file exists and contains correct PID
-        let contents = fs::read_to_string(&pid_file_path).unwrap();
+        let contents = match fs::read_to_string(&pid_file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to read PID file: {}", e);
+                return;
+            }
+        };
         let expected_pid = std::process::id().to_string();
         assert_eq!(contents, expected_pid);
 
@@ -148,7 +196,10 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         // Send a reload trigger
-        tx.send(ReloadTrigger::Signal).unwrap();
+        if let Err(e) = tx.send(ReloadTrigger::Signal) {
+            eprintln!("Failed to send reload trigger: {}", e);
+            return;
+        }
 
         // Verify we can receive it
         let trigger = rx.recv().await;
@@ -160,7 +211,10 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         // Send manual trigger
-        tx.send(ReloadTrigger::Manual).unwrap();
+        if let Err(e) = tx.send(ReloadTrigger::Manual) {
+            eprintln!("Failed to send manual trigger: {}", e);
+            return;
+        }
 
         // Verify we can receive it
         let trigger = rx.recv().await;

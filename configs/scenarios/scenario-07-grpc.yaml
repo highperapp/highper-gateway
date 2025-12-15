@@ -1,0 +1,101 @@
+# Scenario 07: gRPC Gateway with Load Balancing
+# Full gRPC support with health checks and 5 load balancing policies
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.3 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8447"  # HTTPS (Required for gRPC)
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2  # gRPC requires HTTP/2
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+
+# TLS configuration (gRPC typically requires TLS)
+tls:
+  certificates:
+    - domain: "grpc.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# gRPC Configuration (FULLY IMPLEMENTED)
+grpc:
+  enabled: true
+  max_message_size: 4194304  # 4 MB
+  timeout_seconds: 30
+
+  # gRPC Health Checks (protobuf-based)
+  health_check_enabled: true
+  health_check_interval: 10
+  health_check_service: ""  # Empty = check server health
+
+  # gRPC-Specific Load Balancing
+  load_balancing:
+    policy: "least_request"  # Options: round_robin, least_request, random, power_of_two, consistent_hash
+    enable_affinity: true
+    affinity_key: "x-session-id"  # Also tries: x-grpc-affinity, x-user-id, authorization
+
+  # gRPC reflection (not implemented - optional feature)
+  reflection_enabled: false
+
+# Upstream backends
+upstreams:
+  - name: "grpc_backends"
+    servers:
+      - url: "http://127.0.0.1:8081"  # gRPC backends
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+
+    load_balancing:
+      algorithm: "least_conn"  # Used for non-gRPC fallback
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      path: "/health"
+      max_failures: 3
+
+# Routes
+routes:
+  - name: "grpc_route"
+    match:
+      hosts:
+        - "grpc.loadtest.local"
+      paths:
+        - "/*"
+    upstream: "grpc_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"
+
+# Circuit Breaker (integrated with gRPC)
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  success_threshold: 2
+  timeout: 30

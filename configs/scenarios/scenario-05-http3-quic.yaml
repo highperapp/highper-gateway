@@ -1,0 +1,93 @@
+# Scenario 05: HTTP/3 + QUIC Load Balancer
+# Full HTTP/3 support with QUIC protocol
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.2 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP/1.1
+  tls_bind:
+    - "0.0.0.0:8445"  # HTTPS (HTTP/2)
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+    - http3
+
+  # HTTP/3 (QUIC) Configuration
+  http3:
+    enabled: true
+    port: 8445  # Same as HTTPS for alt-svc
+    bind: "0.0.0.0"
+    enable_0rtt: false  # Can be enabled for 0-RTT resumption
+    max_concurrent_streams: 100
+    initial_window_size: 10485760  # 10 MB
+    max_datagram_size: 1350
+    idle_timeout_secs: 30
+    # Address validation with HMAC tokens (implemented)
+    address_validation: true
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+      max_lifetime: 300
+    backpressure:
+      enabled: true
+      max_connections: 1000000
+      memory_limit_mb: 4096
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "http3.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# Upstream backends
+upstreams:
+  - name: "http3_backends"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+
+    load_balancing:
+      algorithm: "round_robin"  # Can use: least_conn, ip_hash, random, weighted, consistent_hash, power_of_two, maglev
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      path: "/health"
+      max_failures: 3
+
+# Routes
+routes:
+  - name: "http3_route"
+    match:
+      hosts:
+        - "http3.loadtest.local"
+      paths:
+        - "/*"
+    upstream: "http3_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"

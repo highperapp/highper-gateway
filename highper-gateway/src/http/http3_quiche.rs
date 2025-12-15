@@ -38,6 +38,8 @@ pub struct Http3Server {
     client: Client,
     upstreams: HashMap<String, Arc<Upstream>>,
     middleware_chain: Arc<MiddlewareChain>,
+    /// Secret key for address validation tokens (HMAC)
+    token_secret: [u8; 32],
 }
 
 /// Upstream server group with load balancing and circuit breaker
@@ -111,12 +113,19 @@ impl Http3Server {
             middleware_chain.middleware_names()
         );
 
+        // Generate random secret for address validation tokens
+        let mut token_secret = [0u8; 32];
+        use ring::rand::{SecureRandom, SystemRandom};
+        let rng = SystemRandom::new();
+        rng.fill(&mut token_secret).expect("Failed to generate token secret");
+
         // Upstreams will be populated in the run() method after reading config
         Self {
             config,
             client,
             upstreams: HashMap::new(),
             middleware_chain: Arc::new(middleware_chain),
+            token_secret,
         }
     }
 
@@ -303,11 +312,46 @@ impl Http3Server {
                             continue;
                         }
 
-                        // Validate token (for address validation)
+                        // Check version support
                         if !quiche::version_is_supported(hdr.version) {
                             warn!("Unsupported version: {}", hdr.version);
                             continue;
                         }
+
+                        // Validate address validation token
+                        let token = hdr.token.as_ref().map(|t| t.as_ref());
+                        let token_valid = token.map_or(false, |t| self.validate_token(t, &from));
+
+                        if !token_valid {
+                            // No valid token - send Retry packet with a fresh token
+                            info!("No valid token from {}, sending Retry", from);
+
+                            let new_token = self.mint_token(&from);
+                            let scid = quiche::ConnectionId::from_ref(&hdr.dcid);
+
+                            match quiche::retry(
+                                &hdr.scid,
+                                &hdr.dcid,
+                                &scid,
+                                &new_token,
+                                hdr.version,
+                                &mut out_buf,
+                            ) {
+                                Ok(written) => {
+                                    if let Err(e) = socket.send_to(&out_buf[..written], from) {
+                                        error!("Failed to send Retry packet: {}", e);
+                                    } else {
+                                        debug!("Sent Retry packet ({} bytes) to {}", written, from);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to create Retry packet: {}", e);
+                                }
+                            }
+                            continue;
+                        }
+
+                        debug!("Valid token from {}, accepting connection", from);
 
                         // Generate new connection ID
                         let mut scid = [0; CONN_ID_LEN];
@@ -1013,6 +1057,129 @@ impl Http3Server {
 
         Ok(quiche_config)
     }
+
+    /// Mint an address validation token for a client address
+    ///
+    /// The token contains:
+    /// - Client IP address (encoded)
+    /// - Timestamp (8 bytes)
+    /// - HMAC-SHA256 signature (32 bytes)
+    fn mint_token(&self, addr: &std::net::SocketAddr) -> Vec<u8> {
+        use ring::hmac;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Encode address and timestamp
+        let mut data = Vec::new();
+
+        // Add address
+        match addr {
+            std::net::SocketAddr::V4(v4) => {
+                data.push(4); // IPv4 marker
+                data.extend_from_slice(&v4.ip().octets());
+                data.extend_from_slice(&v4.port().to_be_bytes());
+            }
+            std::net::SocketAddr::V6(v6) => {
+                data.push(6); // IPv6 marker
+                data.extend_from_slice(&v6.ip().octets());
+                data.extend_from_slice(&v6.port().to_be_bytes());
+            }
+        }
+
+        // Add timestamp (seconds since UNIX epoch)
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+        data.extend_from_slice(&now.to_be_bytes());
+
+        // Create HMAC
+        let key = hmac::Key::new(hmac::HMAC_SHA256, &self.token_secret);
+        let tag = hmac::sign(&key, &data);
+
+        // Combine data + HMAC tag
+        let mut token = data;
+        token.extend_from_slice(tag.as_ref());
+
+        token
+    }
+
+    /// Validate an address validation token
+    ///
+    /// Returns true if the token is valid for the given address and hasn't expired
+    fn validate_token(&self, token: &[u8], addr: &std::net::SocketAddr) -> bool {
+        use ring::hmac;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Token format: [address_data (variable)] + [timestamp (8 bytes)] + [HMAC (32 bytes)]
+        // Minimum size: 1 (marker) + 4 (IPv4) + 2 (port) + 8 (timestamp) + 32 (HMAC) = 47 bytes
+        if token.len() < 47 {
+            debug!("Token too short: {} bytes", token.len());
+            return false;
+        }
+
+        // Split token into data + signature
+        let hmac_start = token.len() - 32;
+        let data = &token[..hmac_start];
+        let expected_tag = &token[hmac_start..];
+
+        // Verify HMAC
+        let key = hmac::Key::new(hmac::HMAC_SHA256, &self.token_secret);
+        if hmac::verify(&key, data, expected_tag).is_err() {
+            debug!("Token HMAC verification failed");
+            return false;
+        }
+
+        // Extract and validate timestamp (last 8 bytes of data)
+        if data.len() < 8 {
+            return false;
+        }
+        let ts_bytes: [u8; 8] = data[data.len() - 8..].try_into().unwrap();
+        let token_time = u64::from_be_bytes(ts_bytes);
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+
+        // Token expires after 30 seconds
+        if now > token_time + 30 {
+            debug!("Token expired: issued at {}, now {}", token_time, now);
+            return false;
+        }
+
+        // Extract and validate address from token
+        let addr_data = &data[..data.len() - 8];
+        if addr_data.is_empty() {
+            return false;
+        }
+
+        match (addr_data[0], addr) {
+            (4, std::net::SocketAddr::V4(v4)) => {
+                // IPv4: 1 (marker) + 4 (IP) + 2 (port) = 7 bytes
+                if addr_data.len() != 7 {
+                    return false;
+                }
+                let token_ip = &addr_data[1..5];
+                let token_port = u16::from_be_bytes([addr_data[5], addr_data[6]]);
+
+                token_ip == v4.ip().octets() && token_port == v4.port()
+            }
+            (6, std::net::SocketAddr::V6(v6)) => {
+                // IPv6: 1 (marker) + 16 (IP) + 2 (port) = 19 bytes
+                if addr_data.len() != 19 {
+                    return false;
+                }
+                let token_ip = &addr_data[1..17];
+                let token_port = u16::from_be_bytes([addr_data[17], addr_data[18]]);
+
+                token_ip == v6.ip().octets() && token_port == v6.port()
+            }
+            _ => {
+                // Mismatch between token address type and actual address type
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1030,5 +1197,153 @@ mod tests {
     fn test_conn_id_len() {
         // quiche recommends 16 bytes
         assert_eq!(CONN_ID_LEN, 16);
+    }
+
+    // Helper to create a test server without full config
+    fn create_test_server() -> Http3Server {
+        use tokio::sync::RwLock;
+        use std::sync::Arc;
+
+        // Create minimal config manually (Config doesn't implement Default)
+        let config = Config {
+            server: crate::config::ServerConfig {
+                bind: vec!["127.0.0.1:8080".to_string()],
+                tls_bind: vec![],
+                workers: "1".to_string(),
+                protocols: vec![],
+                performance: Default::default(),
+                shutdown_timeout: std::time::Duration::from_secs(30),
+                http3: Default::default(),
+            },
+            tls: None,
+            upstreams: vec![],
+            routes: vec![],
+            observability: Default::default(),
+            websocket: Default::default(),
+            grpc: Default::default(),
+            admin: None,
+            cache: None,
+            rate_limit: None,
+            waf: None,
+        };
+
+        Http3Server::new(Arc::new(RwLock::new(config)))
+    }
+
+    #[test]
+    fn test_token_mint_ipv4() {
+        let server = create_test_server();
+
+        let addr: std::net::SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let token = server.mint_token(&addr);
+
+        // IPv4 token: 7 (address) + 8 (timestamp) + 32 (HMAC) = 47 bytes
+        assert_eq!(token.len(), 47);
+
+        // Check IPv4 marker
+        assert_eq!(token[0], 4);
+    }
+
+    #[test]
+    fn test_token_mint_ipv6() {
+        let server = create_test_server();
+
+        let addr: std::net::SocketAddr = "[::1]:8080".parse().unwrap();
+        let token = server.mint_token(&addr);
+
+        // IPv6 token: 19 (address) + 8 (timestamp) + 32 (HMAC) = 59 bytes
+        assert_eq!(token.len(), 59);
+
+        // Check IPv6 marker
+        assert_eq!(token[0], 6);
+    }
+
+    #[test]
+    fn test_token_validate_valid() {
+        let server = create_test_server();
+
+        let addr: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let token = server.mint_token(&addr);
+
+        // Validate immediately - should succeed
+        assert!(server.validate_token(&token, &addr));
+    }
+
+    #[test]
+    fn test_token_validate_wrong_address() {
+        let server = create_test_server();
+
+        let addr1: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let addr2: std::net::SocketAddr = "192.168.1.101:12345".parse().unwrap();
+
+        let token = server.mint_token(&addr1);
+
+        // Validate with different address - should fail
+        assert!(!server.validate_token(&token, &addr2));
+    }
+
+    #[test]
+    fn test_token_validate_wrong_port() {
+        let server = create_test_server();
+
+        let addr1: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let addr2: std::net::SocketAddr = "192.168.1.100:54321".parse().unwrap();
+
+        let token = server.mint_token(&addr1);
+
+        // Validate with different port - should fail
+        assert!(!server.validate_token(&token, &addr2));
+    }
+
+    #[test]
+    fn test_token_validate_tampered() {
+        let server = create_test_server();
+
+        let addr: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let mut token = server.mint_token(&addr);
+
+        // Tamper with the token (flip a bit in the middle)
+        token[20] ^= 0x01;
+
+        // Validation should fail due to HMAC mismatch
+        assert!(!server.validate_token(&token, &addr));
+    }
+
+    #[test]
+    fn test_token_validate_too_short() {
+        let server = create_test_server();
+
+        let addr: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let token = vec![1, 2, 3, 4, 5]; // Too short
+
+        // Validation should fail - token too short
+        assert!(!server.validate_token(&token, &addr));
+    }
+
+    #[test]
+    fn test_token_ipv4_ipv6_mismatch() {
+        let server = create_test_server();
+
+        let addr_v4: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+        let addr_v6: std::net::SocketAddr = "[::1]:12345".parse().unwrap();
+
+        let token = server.mint_token(&addr_v4);
+
+        // Try to validate IPv4 token with IPv6 address - should fail
+        assert!(!server.validate_token(&token, &addr_v6));
+    }
+
+    #[test]
+    fn test_token_different_servers_different_secrets() {
+        // Create two different servers with different secrets
+        let server1 = create_test_server();
+        let server2 = create_test_server();
+
+        let addr: std::net::SocketAddr = "192.168.1.100:12345".parse().unwrap();
+
+        let token1 = server1.mint_token(&addr);
+
+        // Token from server1 should not validate on server2 (different secret keys)
+        assert!(!server2.validate_token(&token1, &addr));
     }
 }

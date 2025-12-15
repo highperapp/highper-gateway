@@ -1,0 +1,97 @@
+# Scenario 06: WebSocket Load Balancer
+# Full WebSocket support with sticky sessions and connection tracking
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.1 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8446"  # HTTPS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "ws.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# WebSocket Configuration (FULLY IMPLEMENTED)
+websocket:
+  enabled: true
+  max_message_size: 16777216  # 16 MB
+
+  # Sticky sessions (cookie-based)
+  sticky_sessions: true
+  session_cookie_name: "HPGW_WS_SESSION"
+  session_timeout: 3600
+
+  # Connection tracking
+  track_connections: true
+  idle_timeout: 600
+
+  # Keep-alive management
+  ping_interval: 30
+  pong_timeout: 10
+  max_missed_pongs: 3
+
+  # Graceful shutdown
+  shutdown_timeout: 30
+
+# Upstream backends
+upstreams:
+  - name: "websocket_backends"
+    servers:
+      - url: "ws://127.0.0.1:8081"
+        weight: 1
+      - url: "ws://127.0.0.1:8082"
+        weight: 1
+      - url: "ws://127.0.0.1:8083"
+        weight: 1
+
+    load_balancing:
+      algorithm: "least_conn"  # Recommended for WebSocket (with sticky sessions)
+      # Also available: round_robin, ip_hash, random, consistent_hash
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      path: "/health"
+      max_failures: 3
+
+# Routes
+routes:
+  - name: "websocket_route"
+    match:
+      hosts:
+        - "ws.loadtest.local"
+      paths:
+        - "/*"
+    upstream: "websocket_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"

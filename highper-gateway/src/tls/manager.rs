@@ -183,7 +183,12 @@ impl TlsManager {
                 // Wrap with OCSP stapler if enabled
                 let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> = if self.config.ocsp_stapling.enabled {
                     info!("Enabling OCSP stapling");
-                    Arc::new(ocsp_stapler::Stapler::new(cert_resolver))
+                    let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
+                        responder_url: self.config.ocsp_stapling.responder_url.clone(),
+                        refresh_interval: self.config.ocsp_stapling.refresh_interval,
+                        timeout: self.config.ocsp_stapling.timeout,
+                    };
+                    crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
                 } else {
                     cert_resolver
                 };
@@ -201,7 +206,12 @@ impl TlsManager {
                 // Wrap with OCSP stapler if enabled
                 let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> = if self.config.ocsp_stapling.enabled {
                     info!("Enabling OCSP stapling");
-                    Arc::new(ocsp_stapler::Stapler::new(cert_resolver))
+                    let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
+                        responder_url: self.config.ocsp_stapling.responder_url.clone(),
+                        refresh_interval: self.config.ocsp_stapling.refresh_interval,
+                        timeout: self.config.ocsp_stapling.timeout,
+                    };
+                    crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
                 } else {
                     cert_resolver
                 };

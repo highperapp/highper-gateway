@@ -70,18 +70,35 @@ impl GeoIpAdapter for Ip2LocationAdapter {
         let mut db = self.db.lock().ok()?;
         match db.ip_lookup(ip) {
             Ok(record) => {
-                // IP2Location 0.4.x uses get_* methods
-                // For now, we provide a stub that returns None
-                // Users need to download the appropriate database package with lat/lon data
-                //
-                // Note: IP2Location requires specific database packages (DB5, DB11, etc.)
-                // that include lat/lon data. The free LITE database may not include this.
-                debug!("IP2Location record found for {}, but lat/lon extraction not yet fully implemented", ip);
-                debug!("Note: Ensure you're using an IP2Location database package that includes latitude/longitude data (DB5+ or commercial)");
+                // Extract LocationRecord from the Record enum
+                // IP2Location 0.4.x returns Record::LocationDb(LocationRecord)
+                let location_record = match record {
+                    ip2location::Record::LocationDb(rec) => rec,
+                    _ => return None,
+                };
 
-                // For now, return None to fallback to round-robin
-                // Full implementation requires mapping IP2Location's specific field access patterns
-                None
+                // Extract latitude and longitude from the record
+                // IP2Location 0.4.x provides latitude and longitude as Option<f32>
+                // Note: Requires DB5+ or commercial database packages with lat/lon data
+                let latitude = location_record.latitude.map(|lat| lat as f64);
+                let longitude = location_record.longitude.map(|lon| lon as f64);
+
+                match (latitude, longitude) {
+                    (Some(lat), Some(lon)) => {
+                        debug!("IP2Location: Found location for {}: ({}, {})", ip, lat, lon);
+                        Some(GeoLocationResult {
+                            latitude: lat,
+                            longitude: lon,
+                        })
+                    }
+                    _ => {
+                        debug!(
+                            "IP2Location: No lat/lon data for {}. Ensure you're using a database package that includes geographic coordinates (DB5+)",
+                            ip
+                        );
+                        None
+                    }
+                }
             }
             Err(e) => {
                 debug!("IP2Location lookup failed for {}: {}", ip, e);
@@ -282,20 +299,21 @@ mod tests {
         let result = GeoLoadBalancer::new(GeoIpProvider::MaxMind, None::<&str>);
         assert!(result.is_ok());
 
-        let lb = result.unwrap();
+        let lb = result.expect("GeoLoadBalancer creation should succeed without DB");
         assert!(!lb.is_available());
 
         // Should not panic without database (IP2Location)
         let result = GeoLoadBalancer::new(GeoIpProvider::Ip2Location, None::<&str>);
         assert!(result.is_ok());
 
-        let lb = result.unwrap();
+        let lb = result.expect("GeoLoadBalancer creation should succeed without DB");
         assert!(!lb.is_available());
     }
 
     #[test]
     fn test_select_nearest_with_empty_servers() {
-        let lb = GeoLoadBalancer::new(GeoIpProvider::MaxMind, None::<&str>).unwrap();
+        let lb = GeoLoadBalancer::new(GeoIpProvider::MaxMind, None::<&str>)
+            .expect("GeoLoadBalancer creation should succeed");
         let servers: Vec<GeoServer> = vec![];
 
         let result = lb.select_nearest(Some("1.2.3.4"), &servers);
@@ -304,7 +322,8 @@ mod tests {
 
     #[test]
     fn test_select_nearest_without_client_ip() {
-        let lb = GeoLoadBalancer::new(GeoIpProvider::MaxMind, None::<&str>).unwrap();
+        let lb = GeoLoadBalancer::new(GeoIpProvider::MaxMind, None::<&str>)
+            .expect("GeoLoadBalancer creation should succeed");
         let servers = vec![GeoServer {
             index: 0,
             location: GeoLocation {

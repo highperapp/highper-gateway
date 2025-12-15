@@ -10,6 +10,7 @@ use super::compression::{
 };
 use crate::http::ResponseBody;
 use bytes::Bytes;
+use http_body_util::Full;
 use hyper::{Response, header};
 use std::future::Future;
 use std::pin::Pin;
@@ -47,12 +48,17 @@ impl Default for CompressionMiddlewareConfig {
 /// Compression middleware
 pub struct CompressionMiddleware {
     config: CompressionMiddlewareConfig,
+    // Store Accept-Encoding from request for use in response processing
+    accept_encoding: std::sync::Arc<tokio::sync::RwLock<Option<String>>>,
 }
 
 impl CompressionMiddleware {
     /// Create new compression middleware with custom configuration
     pub fn new(config: CompressionMiddlewareConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            accept_encoding: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+        }
     }
 
     /// Create compression middleware with default configuration
@@ -81,6 +87,28 @@ impl Middleware for CompressionMiddleware {
         "compression"
     }
 
+    fn process_request(
+        &self,
+        req: hyper::Request<hyper::body::Incoming>,
+    ) -> Pin<Box<dyn Future<Output = Result<hyper::Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+        let accept_encoding = self.accept_encoding.clone();
+
+        Box::pin(async move {
+            // Extract Accept-Encoding header from request
+            if let Some(encoding) = req.headers().get(header::ACCEPT_ENCODING) {
+                if let Ok(encoding_str) = encoding.to_str() {
+                    *accept_encoding.write().await = Some(encoding_str.to_string());
+                    debug!("Captured Accept-Encoding: {}", encoding_str);
+                }
+            } else {
+                // Clear any previous value
+                *accept_encoding.write().await = None;
+            }
+
+            Ok(req)
+        })
+    }
+
     fn process_response(
         &self,
         response: Response<ResponseBody>,
@@ -88,6 +116,7 @@ impl Middleware for CompressionMiddleware {
         let config = self.config.clone();
         let should_compress = self.config.enabled;
         let content_types = self.config.content_types.clone();
+        let accept_encoding = self.accept_encoding.clone();
 
         Box::pin(async move {
             if !should_compress {
@@ -127,16 +156,15 @@ impl Middleware for CompressionMiddleware {
                 return Ok(Response::from_parts(parts, body));
             }
 
-            // Get Accept-Encoding from request (we need to pass this through the middleware chain)
-            // For now, we'll use server preferences directly
-            // TODO: Extract Accept-Encoding from original request context
-            let accept_encoding = "*"; // Accept any compression
+            // Get Accept-Encoding from the stored request header
+            let accept_encoding_value = accept_encoding.read().await.clone();
+            let accept_encoding_str = accept_encoding_value.as_deref().unwrap_or("*");
 
             // Convert preferences Vec<String> to Vec<&str>
             let server_prefs: Vec<&str> = config.preferences.iter().map(|s| s.as_str()).collect();
 
             // Select compressor
-            let compressor = match select_compressor(accept_encoding, &server_prefs) {
+            let compressor = match select_compressor(accept_encoding_str, &server_prefs) {
                 Some(c) => c,
                 None => {
                     debug!("No suitable compressor found, sending uncompressed");

@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # HTTP Backend 1
+  backend-1:
+    image: python:3.11-slim
+    container_name: http3-backend-1
+    working_dir: /app
+    volumes:
+      - ./backend-server.py:/app/server.py:ro
+    environment:
+      - PORT=9001
+      - SERVER_ID=backend-1
+    command: python3 /app/server.py
+    ports:
+      - "9001:9001"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # HTTP Backend 2
+  backend-2:
+    image: python:3.11-slim
+    container_name: http3-backend-2
+    working_dir: /app
+    volumes:
+      - ./backend-server.py:/app/server.py:ro
+    environment:
+      - PORT=9002
+      - SERVER_ID=backend-2
+    command: python3 /app/server.py
+    ports:
+      - "9002:9002"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9002/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # HTTP Backend 3
+  backend-3:
+    image: python:3.11-slim
+    container_name: http3-backend-3
+    working_dir: /app
+    volumes:
+      - ./backend-server.py:/app/server.py:ro
+    environment:
+      - PORT=9003
+      - SERVER_ID=backend-3
+    command: python3 /app/server.py
+    ports:
+      - "9003:9003"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9003/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+networks:
+  test-network:
+    driver: bridge
+    name: http3-test-network

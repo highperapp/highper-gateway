@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend server
+COPY mock_backend.py .
+
+# Make it executable
+RUN chmod +x mock_backend.py
+
+# Set environment variables with defaults
+ENV BACKEND_PORT=8081
+ENV BACKEND_NAME=backend
+
+# Expose port
+EXPOSE ${BACKEND_PORT}
+
+# Run the server
+CMD python3 mock_backend.py --host 0.0.0.0 --port ${BACKEND_PORT}

@@ -186,10 +186,25 @@ impl ModSecurityEngine {
         // Load default rules
         rules.extend(Self::default_rules());
 
+        // Load rules from file if specified
+        if let Some(rules_file) = &config.rules_file {
+            match Self::load_rules_from_file(rules_file) {
+                Ok(file_rules) => {
+                    rules.extend(file_rules);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load rules from {}: {}", rules_file, e);
+                }
+            }
+        }
+
         // Parse inline rules
         for rule_str in &config.inline_rules {
-            if let Ok(rule) = Self::parse_sec_rule(rule_str) {
-                rules.push(rule);
+            match Self::parse_sec_rule(rule_str) {
+                Ok(rule) => rules.push(rule),
+                Err(e) => {
+                    tracing::warn!("Failed to parse rule '{}': {}", rule_str, e);
+                }
             }
         }
 
@@ -204,6 +219,34 @@ impl ModSecurityEngine {
     /// Create with default rules
     pub fn with_defaults() -> Self {
         Self::new(ModSecurityConfig::default()).unwrap()
+    }
+
+    /// Load rules from a .conf file
+    pub fn load_rules_from_file(path: &str) -> anyhow::Result<Vec<SecRule>> {
+        let content = std::fs::read_to_string(path)?;
+        let mut rules = Vec::new();
+
+        for line in content.lines() {
+            let line = line.trim();
+
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            // Parse SecRule directives
+            if line.starts_with("SecRule") {
+                match Self::parse_sec_rule(line) {
+                    Ok(rule) => rules.push(rule),
+                    Err(e) => {
+                        tracing::warn!("Failed to parse rule in {}: {} - {}", path, line, e);
+                    }
+                }
+            }
+            // TODO: Handle other directives (SecAction, SecDefaultAction, etc.)
+        }
+
+        Ok(rules)
     }
 
     /// Default ModSecurity-style rules
@@ -312,13 +355,275 @@ impl ModSecurityEngine {
         ]
     }
 
-    /// Parse a SecRule directive (simplified parser)
-    fn parse_sec_rule(_rule_str: &str) -> anyhow::Result<SecRule> {
-        // This is a simplified implementation
-        // A full parser would need to handle the complete ModSecurity syntax
-        Err(anyhow::anyhow!(
-            "SecRule parsing not fully implemented"
-        ))
+    /// Parse a SecRule directive
+    ///
+    /// Format: SecRule VARIABLES "OPERATOR value" "ACTIONS"
+    /// Example: SecRule REQUEST_URI "@rx \.\./" "id:1,phase:1,deny,msg:'Path Traversal'"
+    fn parse_sec_rule(rule_str: &str) -> anyhow::Result<SecRule> {
+        let rule_str = rule_str.trim();
+
+        // Must start with "SecRule"
+        if !rule_str.starts_with("SecRule") {
+            return Err(anyhow::anyhow!("Rule must start with 'SecRule'"));
+        }
+
+        // Remove "SecRule" prefix
+        let rule_str = rule_str[7..].trim();
+
+        // Split into 3 parts: variables, operator, actions
+        let parts: Vec<&str> = Self::split_secrule_parts(rule_str)?;
+
+        if parts.len() != 3 {
+            return Err(anyhow::anyhow!(
+                "SecRule must have 3 parts: VARIABLES OPERATOR ACTIONS"
+            ));
+        }
+
+        // Parse variables
+        let variables = Self::parse_variables(parts[0])?;
+
+        // Parse operator (format: "@rx pattern" or "!@contains value")
+        let operator = Self::parse_operator(parts[1])?;
+
+        // Parse actions (format: "id:1,phase:2,deny,msg:'message'")
+        let (actions, id, phase, severity, message, tags) = Self::parse_actions(parts[2])?;
+
+        Ok(SecRule {
+            id: id.unwrap_or_else(|| "0".to_string()),
+            phase: phase.unwrap_or(2),
+            variables,
+            operator,
+            actions,
+            severity: severity.unwrap_or(WafSeverity::Medium),
+            message: message.unwrap_or_else(|| "Rule matched".to_string()),
+            tag: tags,
+            chain: None, // TODO: Handle chained rules
+        })
+    }
+
+    /// Split SecRule into 3 parts, handling quoted strings
+    fn split_secrule_parts(s: &str) -> anyhow::Result<Vec<&str>> {
+        let mut parts = Vec::new();
+        let mut current_start = 0;
+        let mut in_quotes = false;
+        let mut quote_char = ' ';
+        let chars: Vec<char> = s.chars().collect();
+
+        for (i, &ch) in chars.iter().enumerate() {
+            if ch == '"' || ch == '\'' {
+                if in_quotes && ch == quote_char {
+                    in_quotes = false;
+                } else if !in_quotes {
+                    in_quotes = true;
+                    quote_char = ch;
+                }
+            } else if ch.is_whitespace() && !in_quotes && i > current_start {
+                let part = &s[current_start..i];
+                if !part.trim().is_empty() {
+                    parts.push(part.trim());
+                    current_start = i + 1;
+                }
+            }
+        }
+
+        // Add last part
+        if current_start < s.len() {
+            let part = &s[current_start..];
+            if !part.trim().is_empty() {
+                parts.push(part.trim());
+            }
+        }
+
+        Ok(parts)
+    }
+
+    /// Parse variables (e.g., "ARGS", "REQUEST_URI", "ARGS|REQUEST_BODY")
+    fn parse_variables(var_str: &str) -> anyhow::Result<Vec<ModSecVariable>> {
+        let var_parts: Vec<&str> = var_str.split('|').map(|s| s.trim()).collect();
+        let mut variables = Vec::new();
+
+        for part in var_parts {
+            let var = match part {
+                "ARGS" => ModSecVariable::Args,
+                "ARGS_GET" => ModSecVariable::ArgsGet,
+                "ARGS_POST" => ModSecVariable::ArgsPost,
+                "REQUEST_URI" => ModSecVariable::RequestUri,
+                "REQUEST_METHOD" => ModSecVariable::RequestMethod,
+                "REQUEST_HEADERS" => ModSecVariable::RequestHeaders,
+                "REQUEST_BODY" => ModSecVariable::RequestBody,
+                "REQUEST_COOKIES" => ModSecVariable::RequestCookies,
+                "REMOTE_ADDR" => ModSecVariable::RemoteAddr,
+                "QUERY_STRING" => ModSecVariable::QueryString,
+                _ => return Err(anyhow::anyhow!("Unknown variable: {}", part)),
+            };
+            variables.push(var);
+        }
+
+        if variables.is_empty() {
+            return Err(anyhow::anyhow!("No variables specified"));
+        }
+
+        Ok(variables)
+    }
+
+    /// Parse operator (e.g., "@rx pattern", "@contains value", "!@streq test")
+    fn parse_operator(op_str: &str) -> anyhow::Result<Operator> {
+        // Remove quotes if present
+        let op_str = op_str.trim().trim_matches('"').trim_matches('\'');
+
+        // Check for negation (!)
+        let _negated = op_str.starts_with('!');
+        let op_str = if _negated { &op_str[1..] } else { op_str };
+
+        // Operator starts with @
+        if !op_str.starts_with('@') {
+            return Err(anyhow::anyhow!("Operator must start with @"));
+        }
+
+        let op_str = &op_str[1..]; // Remove @
+
+        // Split operator and value
+        let parts: Vec<&str> = op_str.splitn(2, ' ').collect();
+        if parts.is_empty() {
+            return Err(anyhow::anyhow!("Invalid operator format"));
+        }
+
+        let op_name = parts[0];
+        let op_value = if parts.len() > 1 {
+            parts[1].trim()
+        } else {
+            ""
+        };
+
+        match op_name {
+            "rx" => Ok(Operator::Rx(op_value.to_string())),
+            "contains" => Ok(Operator::Contains(op_value.to_string())),
+            "streq" => Ok(Operator::StreQ(op_value.to_string())),
+            "beginsWith" => Ok(Operator::BeginsWith(op_value.to_string())),
+            "endsWith" => Ok(Operator::EndsWith(op_value.to_string())),
+            "validateUtf8" => Ok(Operator::ValidateUtf8),
+            "ipMatch" => Ok(Operator::IpMatch(op_value.to_string())),
+            "gt" => {
+                let val = op_value.parse::<i64>()
+                    .map_err(|_| anyhow::anyhow!("Invalid gt value: {}", op_value))?;
+                Ok(Operator::Gt(val))
+            }
+            "lt" => {
+                let val = op_value.parse::<i64>()
+                    .map_err(|_| anyhow::anyhow!("Invalid lt value: {}", op_value))?;
+                Ok(Operator::Lt(val))
+            }
+            _ => Err(anyhow::anyhow!("Unknown operator: {}", op_name)),
+        }
+    }
+
+    /// Parse actions (e.g., "id:1,phase:2,deny,msg:'SQL Injection'")
+    fn parse_actions(
+        action_str: &str,
+    ) -> anyhow::Result<(Vec<RuleAction>, Option<String>, Option<u8>, Option<WafSeverity>, Option<String>, Vec<String>)> {
+        // Remove quotes
+        let action_str = action_str.trim().trim_matches('"').trim_matches('\'');
+
+        let mut actions = Vec::new();
+        let mut id = None;
+        let mut phase = None;
+        let mut severity = None;
+        let mut message = None;
+        let mut tags = Vec::new();
+
+        // Split by comma, but handle quoted strings
+        let action_parts = Self::split_action_parts(action_str);
+
+        for part in action_parts {
+            let part = part.trim();
+
+            if part.contains(':') {
+                let kv: Vec<&str> = part.splitn(2, ':').collect();
+                let key = kv[0];
+                let value = kv[1].trim_matches('\'').trim_matches('"');
+
+                match key {
+                    "id" => {
+                        id = Some(value.to_string());
+                        actions.push(RuleAction::Id(value.to_string()));
+                    }
+                    "phase" => {
+                        let p = value.parse::<u8>()
+                            .map_err(|_| anyhow::anyhow!("Invalid phase: {}", value))?;
+                        phase = Some(p);
+                        actions.push(RuleAction::Phase(p));
+                    }
+                    "severity" => {
+                        let sev = match value.to_uppercase().as_str() {
+                            "CRITICAL" | "5" => WafSeverity::Critical,
+                            "HIGH" | "4" => WafSeverity::High,
+                            "MEDIUM" | "3" => WafSeverity::Medium,
+                            "LOW" | "2" => WafSeverity::Low,
+                            _ => WafSeverity::Medium,
+                        };
+                        severity = Some(sev);
+                        actions.push(RuleAction::Severity(sev));
+                    }
+                    "msg" => {
+                        message = Some(value.to_string());
+                        actions.push(RuleAction::Msg(value.to_string()));
+                    }
+                    "tag" => {
+                        tags.push(value.to_string());
+                        actions.push(RuleAction::Tag(value.to_string()));
+                    }
+                    _ => {} // Ignore unknown action parameters
+                }
+            } else {
+                // Simple action without value
+                match part {
+                    "block" => actions.push(RuleAction::Block),
+                    "deny" => actions.push(RuleAction::Deny),
+                    "allow" => actions.push(RuleAction::Allow),
+                    "pass" => actions.push(RuleAction::Pass),
+                    "log" => actions.push(RuleAction::Log),
+                    "nolog" => actions.push(RuleAction::NoLog),
+                    "chain" => actions.push(RuleAction::Chain),
+                    _ => {} // Ignore unknown simple actions
+                }
+            }
+        }
+
+        Ok((actions, id, phase, severity, message, tags))
+    }
+
+    /// Split action string by commas, respecting quotes
+    fn split_action_parts(s: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut in_quotes = false;
+        let mut quote_char = ' ';
+
+        for ch in s.chars() {
+            if ch == '\'' || ch == '"' {
+                if in_quotes && ch == quote_char {
+                    in_quotes = false;
+                } else if !in_quotes {
+                    in_quotes = true;
+                    quote_char = ch;
+                }
+                // Keep the quote in the string for later processing
+                current.push(ch);
+            } else if ch == ',' && !in_quotes {
+                if !current.trim().is_empty() {
+                    parts.push(current.trim().to_string());
+                    current.clear();
+                }
+            } else {
+                current.push(ch);
+            }
+        }
+
+        if !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+        }
+
+        parts
     }
 
     /// Extract variable value from context
@@ -604,6 +909,107 @@ mod tests {
         match engine.check_request(&context) {
             WafDecision::Block { .. } => (),
             _ => panic!("Expected Block decision for path traversal"),
+        }
+    }
+
+    #[test]
+    fn test_parse_secrule_simple() {
+        let rule_str = r#"SecRule REQUEST_URI "@rx \.\.\/" "id:1,phase:1,deny,msg:'Path Traversal'"#;
+        let rule = ModSecurityEngine::parse_sec_rule(rule_str).unwrap();
+
+        assert_eq!(rule.id, "1");
+        assert_eq!(rule.phase, 1);
+        assert_eq!(rule.variables.len(), 1);
+        assert!(matches!(rule.variables[0], ModSecVariable::RequestUri));
+        assert!(matches!(rule.operator, Operator::Rx(_)));
+        assert!(rule.message.contains("Path Traversal"));
+    }
+
+    #[test]
+    fn test_parse_secrule_multiple_variables() {
+        let rule_str = r#"SecRule ARGS|REQUEST_BODY "@contains <script" "id:2,phase:2,deny,severity:high,msg:'XSS Attack'"#;
+        let rule = ModSecurityEngine::parse_sec_rule(rule_str).unwrap();
+
+        assert_eq!(rule.id, "2");
+        assert_eq!(rule.phase, 2);
+        assert_eq!(rule.variables.len(), 2);
+        assert!(rule.message.contains("XSS"));
+        assert_eq!(rule.severity, WafSeverity::High);
+    }
+
+    #[test]
+    fn test_parse_secrule_operators() {
+        // Test @rx operator
+        let rule1 = ModSecurityEngine::parse_sec_rule(
+            r#"SecRule ARGS "@rx pattern" "id:1,deny""#
+        ).unwrap();
+        assert!(matches!(rule1.operator, Operator::Rx(_)));
+
+        // Test @contains operator
+        let rule2 = ModSecurityEngine::parse_sec_rule(
+            r#"SecRule ARGS "@contains test" "id:2,deny""#
+        ).unwrap();
+        assert!(matches!(rule2.operator, Operator::Contains(_)));
+
+        // Test @streq operator
+        let rule3 = ModSecurityEngine::parse_sec_rule(
+            r#"SecRule REQUEST_METHOD "@streq POST" "id:3,deny""#
+        ).unwrap();
+        assert!(matches!(rule3.operator, Operator::StreQ(_)));
+    }
+
+    #[test]
+    fn test_parse_secrule_actions() {
+        let rule_str = r#"SecRule ARGS "@rx test" "id:100,phase:2,deny,severity:critical,msg:'Test',tag:'ATTACK/TEST'"#;
+        let rule = ModSecurityEngine::parse_sec_rule(rule_str).unwrap();
+
+        assert_eq!(rule.id, "100");
+        assert_eq!(rule.phase, 2);
+        assert_eq!(rule.severity, WafSeverity::Critical);
+        assert_eq!(rule.message, "Test");
+        assert_eq!(rule.tag.len(), 1);
+        assert_eq!(rule.tag[0], "ATTACK/TEST");
+
+        // Check actions contain deny
+        assert!(rule.actions.iter().any(|a| matches!(a, RuleAction::Deny)));
+    }
+
+    #[test]
+    fn test_inline_rules() {
+        let config = ModSecurityConfig {
+            enabled: true,
+            rules_file: None,
+            inline_rules: vec![
+                r#"SecRule ARGS "@rx malicious" "id:999,phase:2,deny,msg:'Malicious pattern detected'"#.to_string(),
+            ],
+            detection_mode: DetectionMode::On,
+            request_body_access: true,
+            response_body_access: false,
+            request_body_limit: 1024 * 1024,
+        };
+
+        let engine = ModSecurityEngine::new(config).unwrap();
+
+        // Should have default rules + 1 inline rule
+        assert!(engine.rules.len() > 5);
+
+        // Test the inline rule works
+        let context = WafContext {
+            method: "GET".to_string(),
+            path: "/test".to_string(),
+            query: Some("param=malicious".to_string()),
+            headers: HashMap::new(),
+            client_ip: "192.168.1.1".to_string(),
+            body: None,
+            content_type: None,
+            user_agent: None,
+        };
+
+        match engine.check_request(&context) {
+            WafDecision::Block { reason, .. } => {
+                assert!(reason.contains("Malicious pattern"));
+            }
+            _ => panic!("Expected Block decision"),
         }
     }
 }

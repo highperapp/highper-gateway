@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn test_health_check_result() {
         let result = HealthCheckResult {
-            addr: "127.0.0.1:3306".parse().unwrap(),
+            addr: "127.0.0.1:3306".parse().expect("Valid test address"),
             status: HealthStatus::Healthy,
             last_check: std::time::Instant::now(),
             consecutive_successes: 3,
@@ -357,7 +357,7 @@ mod tests {
     #[tokio::test]
     async fn test_health_checker_creation() {
         let backends = vec![TcpBackend {
-            addr: "127.0.0.1:3306".parse().unwrap(),
+            addr: "127.0.0.1:3306".parse().expect("Valid test address"),
             weight: 1,
             max_conns: None,
             health_check: None,
@@ -379,13 +379,13 @@ mod tests {
     async fn test_get_all_results() {
         let backends = vec![
             TcpBackend {
-                addr: "127.0.0.1:3306".parse().unwrap(),
+                addr: "127.0.0.1:3306".parse().expect("Valid test address"),
                 weight: 1,
                 max_conns: None,
                 health_check: None,
             },
             TcpBackend {
-                addr: "127.0.0.1:3307".parse().unwrap(),
+                addr: "127.0.0.1:3307".parse().expect("Valid test address"),
                 weight: 1,
                 max_conns: None,
                 health_check: None,

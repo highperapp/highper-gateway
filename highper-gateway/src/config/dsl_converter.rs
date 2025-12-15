@@ -645,6 +645,7 @@ mod tests {
                         path: Some("/healthz".to_string()),
                         healthy_threshold: Some(3),
                         unhealthy_threshold: Some(2),
+                        grpc: false,
                     }),
                 ],
             }],
@@ -704,6 +705,8 @@ mod tests {
                     Directive::RateLimit {
                         rate: 100,
                         per: Some(std::time::Duration::from_secs(60)),
+                        burst: None,
+                        per_ip: false,
                     },
                 ],
             }],

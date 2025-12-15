@@ -1,11 +1,13 @@
 //! WebSocket upgrade and proxying handler
 //!
 //! Detects WebSocket upgrade requests and establishes bidirectional proxying
+//! Supports sticky sessions via cookies for load balancing
 
 use hyper::{Request, Response, StatusCode, header::{self, HeaderValue}};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use anyhow::{Result, anyhow};
+use crate::websocket::{SessionId, SessionManager};
 
 /// Check if a request is a WebSocket upgrade request
 pub fn is_websocket_upgrade<B>(req: &Request<B>) -> bool {
@@ -47,8 +49,51 @@ pub fn get_websocket_accept_key(client_key: &str) -> String {
     BASE64.encode(hash)
 }
 
+/// Extract session ID from Cookie header
+pub fn extract_session_id_from_cookie<B>(req: &Request<B>, cookie_name: &str) -> Option<SessionId> {
+    let cookie_header = req.headers().get(header::COOKIE)?.to_str().ok()?;
+
+    // Parse cookies (format: "name1=value1; name2=value2")
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some((name, value)) = cookie.split_once('=') {
+            if name == cookie_name {
+                // Try to parse the session ID as UUID
+                if let Ok(session_id) = value.parse::<SessionId>() {
+                    debug!("Found existing session ID in cookie: {}", session_id);
+                    return Some(session_id);
+                } else {
+                    warn!("Invalid session ID format in cookie: {}", value);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Create Set-Cookie header value for session ID
+pub fn create_session_cookie(session_id: &SessionId, cookie_name: &str, max_age_secs: u64) -> String {
+    format!(
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        cookie_name,
+        session_id,
+        max_age_secs
+    )
+}
+
 /// Create a WebSocket upgrade response
 pub fn create_upgrade_response<B>(req: &Request<B>) -> Result<Response<crate::http::ResponseBody>> {
+    create_upgrade_response_with_session(req, None, None, 0)
+}
+
+/// Create a WebSocket upgrade response with optional session cookie
+pub fn create_upgrade_response_with_session<B>(
+    req: &Request<B>,
+    session_id: Option<&SessionId>,
+    cookie_name: Option<&str>,
+    max_age_secs: u64,
+) -> Result<Response<crate::http::ResponseBody>> {
     let client_key = req.headers()
         .get(header::SEC_WEBSOCKET_KEY)
         .and_then(|v| v.to_str().ok())
@@ -70,6 +115,16 @@ pub fn create_upgrade_response<B>(req: &Request<B>) -> Result<Response<crate::ht
     // Copy Sec-WebSocket-Protocol if present
     if let Some(protocol) = req.headers().get(header::SEC_WEBSOCKET_PROTOCOL) {
         headers.insert(header::SEC_WEBSOCKET_PROTOCOL, protocol.clone());
+    }
+
+    // Inject session cookie if provided
+    if let (Some(sid), Some(cookie_name)) = (session_id, cookie_name) {
+        let cookie_value = create_session_cookie(sid, cookie_name, max_age_secs);
+        headers.insert(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&cookie_value)?
+        );
+        debug!("Injected session cookie: {} = {}", cookie_name, sid);
     }
 
     Ok(response)
@@ -163,5 +218,86 @@ mod tests {
             response.headers().get(header::SEC_WEBSOCKET_ACCEPT).unwrap(),
             "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
         );
+    }
+
+    #[test]
+    fn test_extract_session_id_from_cookie() {
+        use uuid::Uuid;
+
+        let session_id = Uuid::now_v7();
+        let req = Request::builder()
+            .header(
+                header::COOKIE,
+                format!("other=value; HPGW_WS_SESSION={}; another=data", session_id)
+            )
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let extracted = extract_session_id_from_cookie(&req, "HPGW_WS_SESSION");
+        assert!(extracted.is_some());
+        assert_eq!(extracted.unwrap(), session_id);
+    }
+
+    #[test]
+    fn test_extract_session_id_no_cookie() {
+        let req = Request::builder()
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let extracted = extract_session_id_from_cookie(&req, "HPGW_WS_SESSION");
+        assert!(extracted.is_none());
+    }
+
+    #[test]
+    fn test_extract_session_id_invalid_format() {
+        let req = Request::builder()
+            .header(header::COOKIE, "HPGW_WS_SESSION=invalid-uuid-format")
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let extracted = extract_session_id_from_cookie(&req, "HPGW_WS_SESSION");
+        assert!(extracted.is_none());
+    }
+
+    #[test]
+    fn test_create_session_cookie() {
+        use uuid::Uuid;
+
+        let session_id = Uuid::now_v7();
+        let cookie = create_session_cookie(&session_id, "HPGW_WS_SESSION", 3600);
+
+        assert!(cookie.contains("HPGW_WS_SESSION="));
+        assert!(cookie.contains(&session_id.to_string()));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(cookie.contains("Max-Age=3600"));
+    }
+
+    #[test]
+    fn test_create_upgrade_response_with_session_cookie() {
+        use uuid::Uuid;
+
+        let session_id = Uuid::now_v7();
+        let req = Request::builder()
+            .header(header::SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+            .body(Empty::<Bytes>::new())
+            .unwrap();
+
+        let response = create_upgrade_response_with_session(
+            &req,
+            Some(&session_id),
+            Some("HPGW_WS_SESSION"),
+            3600
+        ).unwrap();
+
+        assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+        // Check that Set-Cookie header is present
+        let set_cookie = response.headers().get(header::SET_COOKIE).unwrap();
+        let set_cookie_str = set_cookie.to_str().unwrap();
+
+        assert!(set_cookie_str.contains("HPGW_WS_SESSION="));
+        assert!(set_cookie_str.contains(&session_id.to_string()));
+        assert!(set_cookie_str.contains("HttpOnly"));
     }
 }

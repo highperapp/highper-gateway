@@ -1,6 +1,7 @@
 //! HTTP server implementation
 
 use crate::config::{Config, Protocol};
+use crate::http::http3_quiche::Http3Server;
 use crate::proxy::Handler;
 use crate::proxy::connection_pool::{ConnectionPoolManager, PoolConfig, PoolStats};
 use crate::runtime::GLOBAL_IO;
@@ -19,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncWriteExt, copy_bidirectional};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 /// HTTP server
@@ -205,14 +207,31 @@ impl Server {
         // Determine which protocols are enabled
         let supports_http1 = self.config.server.protocols.contains(&Protocol::Http1);
         let supports_http2 = self.config.server.protocols.contains(&Protocol::Http2);
+        let supports_http3 = self.config.server.protocols.contains(&Protocol::Http3) && self.config.server.http3.enabled;
 
         info!(
-            "Enabled protocols: HTTP/1.1={}, HTTP/2={}",
-            supports_http1, supports_http2
+            "Enabled protocols: HTTP/1.1={}, HTTP/2={}, HTTP/3={}",
+            supports_http1, supports_http2, supports_http3
         );
 
-        // Accept connections on all listeners
+        // Spawn HTTP/3 server if enabled
         let mut tasks = Vec::new();
+        if supports_http3 {
+            // Wrap config in RwLock for HTTP/3 server
+            let http3_config = Arc::new(RwLock::new((*self.config).clone()));
+            let http3_server = Http3Server::new(http3_config);
+
+            let http3_task = tokio::spawn(async move {
+                if let Err(e) = http3_server.run().await {
+                    error!("HTTP/3 server error: {}", e);
+                }
+            });
+
+            tasks.push(http3_task);
+            info!("HTTP/3 server task spawned");
+        }
+
+        // Accept connections on all listeners
         for (listener, is_tls) in all_listeners {
             let handler = self.handler.clone();
             let config = self.config.clone();
