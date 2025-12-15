@@ -49,6 +49,10 @@ pub struct Config {
     /// WAF (Web Application Firewall) configuration
     #[serde(default)]
     pub waf: Option<WafConfig>,
+
+    /// GraphQL gateway configuration
+    #[serde(default)]
+    pub graphql: Option<crate::gateway::graphql::GraphQLConfig>,
 }
 
 /// Server configuration

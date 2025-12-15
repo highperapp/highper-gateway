@@ -98,6 +98,7 @@ mod tests {
             cache: None,
             rate_limit: None,
             waf: None,
+            graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
         };

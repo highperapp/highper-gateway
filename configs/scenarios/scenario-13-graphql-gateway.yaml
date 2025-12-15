@@ -1,0 +1,325 @@
+# Scenario 13: GraphQL Gateway with Schema Stitching
+# Federation of multiple GraphQL backends into a unified API
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.3 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 50
+      max_idle: 5000
+      max_lifetime: 300
+    backpressure:
+      enabled: true
+      max_connections: 50000
+      memory_limit_mb: 2048
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "graphql.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# GraphQL Gateway Configuration
+graphql:
+  enable_stitching: true      # Enable schema stitching across backends
+  enable_cache: true           # Enable query result caching
+  cache_ttl: "5m"             # Cache queries for 5 minutes
+  enable_batching: true        # Enable query batching
+  max_batch_size: 10          # Maximum 10 queries per batch
+  introspection_enabled: true  # Enable schema introspection
+
+  # Backend GraphQL services to federate
+  backends:
+    - name: "users"
+      url: "http://127.0.0.1:8081/graphql"
+      namespace: null  # Optional namespace for type prefixing
+      type_mappings: []
+
+    - name: "posts"
+      url: "http://127.0.0.1:8082/graphql"
+      namespace: null
+      type_mappings: []
+
+    - name: "comments"
+      url: "http://127.0.0.1:8083/graphql"
+      namespace: null
+      type_mappings: []
+
+# Upstream backends (for non-GraphQL routes)
+upstreams:
+  - name: "graphql_users"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+
+  - name: "graphql_posts"
+    servers:
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+
+  - name: "graphql_comments"
+    servers:
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+
+# Routes (GraphQL requests are handled automatically at /graphql)
+routes:
+  - name: "graphql_gateway"
+    match:
+      hosts:
+        - "graphql.loadtest.local"
+      paths:
+        - "/graphql"
+      methods:
+        - POST
+        - GET
+    upstream: "graphql_users"  # Fallback (not used if GraphQL gateway is active)
+
+  - name: "health_check"
+    match:
+      paths:
+        - "/health"
+    upstream: "graphql_users"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 1.0
+  logging:
+    level: "info"
+    format: "json"
+
+---
+# Testing Instructions for Scenario 13
+
+## Setup
+1. Start 3 GraphQL backend servers on ports 8081-8083
+2. Each backend should expose a /graphql endpoint
+3. Start highper-gateway with this config
+
+## Backend Examples
+
+### Users Service (8081)
+```graphql
+type User {
+  id: ID!
+  name: String!
+  email: String!
+}
+
+type Query {
+  user(id: ID!): User
+  users: [User!]!
+}
+```
+
+### Posts Service (8082)
+```graphql
+type Post {
+  id: ID!
+  title: String!
+  content: String!
+  authorId: ID!
+}
+
+type Query {
+  post(id: ID!): Post
+  posts: [Post!]!
+  postsByAuthor(authorId: ID!): [Post!]!
+}
+```
+
+### Comments Service (8083)
+```graphql
+type Comment {
+  id: ID!
+  text: String!
+  postId: ID!
+  authorId: ID!
+}
+
+type Query {
+  comment(id: ID!): Comment
+  comments: [Comment!]!
+  commentsByPost(postId: ID!): [Comment!]!
+}
+```
+
+## Test Cases
+
+### 1. Single Backend Query
+```bash
+# Query only users service
+curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "{ users { id name email } }"
+  }'
+
+# Expected: List of users from users service
+```
+
+### 2. Federated Query (Multiple Backends)
+```bash
+# Query across multiple services
+curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "{ users { id name } posts { id title } }"
+  }'
+
+# Expected: Merged results from users and posts services
+```
+
+### 3. Query with Variables
+```bash
+curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "query GetUser($id: ID!) { user(id: $id) { id name email } }",
+    "variables": {"id": "123"}
+  }'
+
+# Expected: Single user with ID 123
+```
+
+### 4. Introspection Query (GET)
+```bash
+# Get unified schema
+curl -X GET http://graphql.loadtest.local:8080/graphql
+
+# Expected: Stitched schema from all backends
+```
+
+### 5. Query Caching
+```bash
+# First request - cache miss
+time curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ users { id name } }"}'
+# Note the response time (e.g., 50ms)
+
+# Second request - cache hit
+time curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ users { id name } }"}'
+# Should be much faster (e.g., 5ms)
+```
+
+### 6. Batch Queries
+```bash
+# Send multiple queries in one request
+curl -X POST http://graphql.loadtest.local:8080/graphql/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"query": "{ users { id } }"},
+    {"query": "{ posts { id } }"},
+    {"query": "{ comments { id } }"}
+  ]'
+
+# Expected: Array of 3 responses
+```
+
+### 7. Error Handling
+```bash
+# Query with syntax error
+curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ users { invalidField } }"}'
+
+# Expected: GraphQL error response with details
+```
+
+### 8. Federation with Field Mapping
+```bash
+# Query fields from different backends
+curl -X POST http://graphql.loadtest.local:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "{ user(id: \"1\") { id name } posts(authorId: \"1\") { title } }"
+  }'
+
+# Expected: User info + their posts (federated from 2 backends)
+```
+
+## Performance Testing
+```bash
+# Load test GraphQL gateway
+ab -n 10000 -c 100 -p graphql_query.json \
+  -T "application/json" \
+  http://graphql.loadtest.local:8080/graphql
+
+# Expected:
+# - Query caching should improve throughput
+# - Federation should work correctly under load
+# - All backends should be load balanced
+```
+
+## Expected Behavior
+1. **Single Backend**: Queries route to the appropriate backend
+2. **Federation**: Queries spanning multiple backends are split, executed in parallel, and merged
+3. **Caching**: Identical queries are cached for TTL duration
+4. **Batching**: Multiple queries can be sent in a single HTTP request
+5. **Introspection**: Unified schema is available via GET /graphql
+6. **Error Handling**: GraphQL errors are properly formatted and returned
+7. **Performance**: Federation executes backend queries in parallel
+
+## GraphQL Features
+- ✅ Schema stitching from multiple backends
+- ✅ Query federation and result merging
+- ✅ Query caching with configurable TTL
+- ✅ Query batching support
+- ✅ Schema introspection
+- ✅ Parallel backend execution
+- ✅ Error handling and propagation
+- ✅ Support for queries and mutations
+- ✅ Variable support
+- ✅ Type mapping and namespacing
+
+## Architecture
+```
+Client -> Gateway (/graphql)
+            |
+            ├─> Users Service (8081)
+            ├─> Posts Service (8082)
+            └─> Comments Service (8083)
+
+Gateway performs:
+1. Query parsing and analysis
+2. Query splitting by backend ownership
+3. Parallel execution across backends
+4. Result merging into unified response
+5. Caching of final result
+```
+
+## Notes
+- GraphQL gateway is automatically initialized if `graphql` config is present
+- Requests to `/graphql` are intercepted by the gateway
+- Non-GraphQL routes still use standard routing
+- Caching uses SHA256 hash of query + variables as cache key
+- Federation works best with well-designed backend schemas

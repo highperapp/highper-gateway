@@ -51,6 +51,8 @@ pub struct Handler {
     ws_shutdown_coordinator: Option<Arc<crate::websocket::ShutdownCoordinator>>,
     /// Response cache for CDN features (optional, enabled via config)
     cache: Option<Arc<crate::gateway::cache::LocalCache>>,
+    /// GraphQL gateway for schema stitching and federation (optional, enabled via config)
+    graphql_gateway: Option<Arc<crate::gateway::graphql::GraphQLGateway>>,
 }
 
 /// Upstream server group with load balancing and circuit breaker
@@ -258,6 +260,7 @@ impl Handler {
             ws_recovery_manager,
             ws_shutdown_coordinator,
             cache,
+            graphql_gateway: None,  // Initialize in with_graphql_gateway method
         }
     }
 
@@ -405,12 +408,19 @@ impl Handler {
             ws_recovery_manager,
             ws_shutdown_coordinator,
             cache,
+            graphql_gateway: None,  // Initialize in with_graphql_gateway method
         }
     }
 
     /// Set hostname router for API Gateway features
     pub fn with_hostname_router(mut self, router: Arc<HostnameRouter>) -> Self {
         self.hostname_router = Some(router);
+        self
+    }
+
+    /// Set GraphQL gateway for schema stitching and federation
+    pub fn with_graphql_gateway(mut self, gateway: Arc<crate::gateway::graphql::GraphQLGateway>) -> Self {
+        self.graphql_gateway = Some(gateway);
         self
     }
 
@@ -489,6 +499,115 @@ impl Handler {
                         .body(ResponseBody::buffered(Bytes::from(key_auth)))?);
                 } else {
                     debug!("No ACME challenge found for token: {}", token);
+                }
+            }
+        }
+
+        // Check for GraphQL request
+        if let Some(graphql_gateway) = &self.graphql_gateway {
+            // GraphQL requests are typically POST to /graphql
+            if (path == "/graphql" || path.starts_with("/graphql/")) && method == Method::POST {
+                debug!("Detected GraphQL request to {}", path);
+
+                // Split request to access body
+                let (parts, incoming_body) = req.into_parts();
+
+                // Extract content length
+                let content_length = parts.headers
+                    .get("content-length")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+
+                match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                    Ok(body) => {
+                        // Parse GraphQL request
+                        match serde_json::from_slice::<crate::gateway::graphql::GraphQLRequest>(&body.bytes) {
+                            Ok(graphql_req) => {
+                                debug!("GraphQL query: {}", graphql_req.query);
+
+                                // Handle GraphQL request
+                                match graphql_gateway.handle_request(graphql_req).await {
+                                    Ok(graphql_response) => {
+                                        let response_json = serde_json::to_vec(&graphql_response)
+                                            .unwrap_or_else(|_| b"{}".to_vec());
+
+                                        let duration = start.elapsed().as_secs_f64();
+                                        let status = if graphql_response.errors.is_some() {
+                                            StatusCode::OK // GraphQL errors still return 200
+                                        } else {
+                                            StatusCode::OK
+                                        };
+                                        record_request(method.as_str(), status.as_u16(), duration);
+
+                                        return Ok(Response::builder()
+                                            .status(status)
+                                            .header("content-type", "application/json")
+                                            .body(ResponseBody::buffered(Bytes::from(response_json)))?);
+                                    }
+                                    Err(e) => {
+                                        error!("GraphQL request failed: {}", e);
+                                        let duration = start.elapsed().as_secs_f64();
+                                        record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+
+                                        return self.error_response(
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            "GraphQL request failed",
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to parse GraphQL request: {}", e);
+                                let duration = start.elapsed().as_secs_f64();
+                                record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
+
+                                return self.error_response(
+                                    StatusCode::BAD_REQUEST,
+                                    "Invalid GraphQL request",
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to read GraphQL request body: {}", e);
+                        let duration = start.elapsed().as_secs_f64();
+                        record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
+
+                        return self.error_response(
+                            StatusCode::BAD_REQUEST,
+                            "Failed to read request body",
+                        );
+                    }
+                }
+            }
+
+            // Handle GraphQL introspection query (GET to /graphql)
+            if path == "/graphql" && method == Method::GET {
+                debug!("Detected GraphQL introspection request");
+
+                match graphql_gateway.handle_introspection().await {
+                    Ok(graphql_response) => {
+                        let response_json = serde_json::to_vec(&graphql_response)
+                            .unwrap_or_else(|_| b"{}".to_vec());
+
+                        let duration = start.elapsed().as_secs_f64();
+                        record_request(method.as_str(), StatusCode::OK.as_u16(), duration);
+
+                        return Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header("content-type", "application/json")
+                            .body(ResponseBody::buffered(Bytes::from(response_json)))?);
+                    }
+                    Err(e) => {
+                        error!("GraphQL introspection failed: {}", e);
+                        let duration = start.elapsed().as_secs_f64();
+                        record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+
+                        return self.error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "GraphQL introspection failed",
+                        );
+                    }
                 }
             }
         }
@@ -1564,6 +1683,7 @@ impl Default for Handler {
             cache: None,
             rate_limit: None,
             waf: None,
+            graphql: None,
         }))
     }
 }
