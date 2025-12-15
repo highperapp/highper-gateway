@@ -1,0 +1,215 @@
+# Scenario 11: CDN with Response Caching
+# Local in-memory caching for API gateway and CDN features
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.2 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings optimized for caching
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+      max_lifetime: 300
+    backpressure:
+      enabled: true
+      max_connections: 100000
+      memory_limit_mb: 2048
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "cdn.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# Response Caching Configuration
+cache:
+  enabled: true
+  default_ttl: "5m"  # Cache for 5 minutes by default
+  max_size: 10000    # Maximum 10,000 cached entries
+  cleanup_interval: "60s"  # Clean up expired entries every 60 seconds
+
+# Upstream backends (simulating API servers or origin servers)
+upstreams:
+  - name: "cdn_origin"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+
+# Routes
+routes:
+  - name: "api_cached"
+    match:
+      hosts:
+        - "cdn.loadtest.local"
+      paths:
+        - "/api/*"
+      methods:
+        - GET
+    upstream: "cdn_origin"
+
+  - name: "static_cached"
+    match:
+      hosts:
+        - "cdn.loadtest.local"
+      paths:
+        - "/static/*"
+        - "/images/*"
+        - "/js/*"
+        - "/css/*"
+      methods:
+        - GET
+    upstream: "cdn_origin"
+
+  - name: "all_requests"
+    match:
+      hosts:
+        - "*"
+      paths:
+        - "/*"
+    upstream: "cdn_origin"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 1.0
+  logging:
+    level: "info"
+    format: "json"
+
+---
+# Testing Instructions for Scenario 11
+
+## Setup
+1. Start 3 backend servers on ports 8081-8083
+2. Start highper-gateway with this config
+
+## Test Cases
+
+### 1. Cache Miss (First Request)
+```bash
+# First request - should be a MISS (goes to backend)
+curl -i http://cdn.loadtest.local:8080/api/users
+# Check for: X-Cache: MISS (not present on first request)
+# Response time: Normal (e.g., 50-100ms)
+```
+
+### 2. Cache Hit (Subsequent Requests)
+```bash
+# Second request - should be a HIT (from cache)
+curl -i http://cdn.loadtest.local:8080/api/users
+# Check for:
+# - X-Cache: HIT
+# - Age: <seconds> (how old the cached entry is)
+# - Response time: Fast (e.g., 1-5ms)
+```
+
+### 3. Cache Headers Respect
+```bash
+# Backend returns Cache-Control: no-cache
+# Should NOT be cached
+curl -i http://cdn.loadtest.local:8080/api/private
+
+# Backend returns Cache-Control: max-age=60
+# Should be cached for 60 seconds
+curl -i http://cdn.loadtest.local:8080/api/public
+```
+
+### 4. Different URLs Get Different Cache Entries
+```bash
+curl -i http://cdn.loadtest.local:8080/api/users
+curl -i http://cdn.loadtest.local:8080/api/posts
+# Each should have its own cache entry
+```
+
+### 5. Only GET Requests Are Cached
+```bash
+# POST request - should NOT be cached
+curl -X POST -i http://cdn.loadtest.local:8080/api/users -d '{"name":"test"}'
+# Subsequent POST to same URL should hit backend again
+```
+
+### 6. Cache Expiry (After TTL)
+```bash
+# Request immediately
+curl -i http://cdn.loadtest.local:8080/api/users
+# Check: No X-Cache header (first request)
+
+# Request again within 5 minutes
+curl -i http://cdn.loadtest.local:8080/api/users
+# Check: X-Cache: HIT
+
+# Wait 6 minutes (beyond 5m TTL)
+sleep 360
+
+# Request again after expiry
+curl -i http://cdn.loadtest.local:8080/api/users
+# Check: No X-Cache header or X-Cache: MISS (cache expired, goes to backend)
+```
+
+### 7. Cache Performance Test
+```bash
+# Load test with ApacheBench
+ab -n 10000 -c 100 http://cdn.loadtest.local:8080/api/users
+
+# Expected results:
+# - First request: Normal latency (cache miss)
+# - Remaining 9,999 requests: Very fast (cache hits)
+# - Requests per second should be VERY high (10K+ RPS)
+```
+
+### 8. Cache Metrics
+```bash
+# Check metrics endpoint
+curl http://localhost:9090/metrics | grep cache
+# Should show cache hit/miss rates
+```
+
+## Expected Behavior
+1. GET requests with 2xx status codes are cached
+2. POST, PUT, DELETE requests are NOT cached
+3. Cache-Control: no-store/no-cache prevents caching
+4. Cache entries expire after TTL (default 5 minutes)
+5. X-Cache: HIT header on cache hits
+6. Age header shows cache entry age
+7. Cleanup task removes expired entries every 60 seconds
+8. Cache significantly improves response time and throughput
+
+## Cache Features
+- ✅ Local in-memory cache (DashMap for thread-safety)
+- ✅ Configurable TTL per entry
+- ✅ Automatic expiry and cleanup
+- ✅ Cache-Control header respect
+- ✅ Only caches safe methods (GET)
+- ✅ Only caches successful responses (2xx)
+- ✅ Cache key includes method, URI, and headers
+- ✅ X-Cache and Age headers for debugging
+- ✅ Zero-copy caching with Bytes

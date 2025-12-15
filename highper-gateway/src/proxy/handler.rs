@@ -49,6 +49,8 @@ pub struct Handler {
     ws_recovery_manager: Option<Arc<crate::websocket::RecoveryManager>>,
     /// WebSocket shutdown coordinator (optional, enabled via config)
     ws_shutdown_coordinator: Option<Arc<crate::websocket::ShutdownCoordinator>>,
+    /// Response cache for CDN features (optional, enabled via config)
+    cache: Option<Arc<crate::gateway::cache::LocalCache>>,
 }
 
 /// Upstream server group with load balancing and circuit breaker
@@ -222,6 +224,24 @@ impl Handler {
                 (None, None, None, None, None)
             };
 
+        // Initialize cache if enabled
+        let cache = if let Some(cache_config) = &config.cache {
+            if cache_config.enabled {
+                use std::time::Duration;
+                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(cache_config.default_ttl));
+
+                // Start cleanup task (runs every 60 seconds)
+                local_cache.clone().start_cleanup_task(Duration::from_secs(60));
+
+                info!("Initialized response cache (TTL: {:?})", cache_config.default_ttl);
+                Some(local_cache)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             client,
@@ -237,6 +257,7 @@ impl Handler {
             ws_keepalive_manager,
             ws_recovery_manager,
             ws_shutdown_coordinator,
+            cache,
         }
     }
 
@@ -350,6 +371,24 @@ impl Handler {
                 (None, None, None, None, None)
             };
 
+        // Initialize cache if enabled
+        let cache = if let Some(cache_config) = &config.cache {
+            if cache_config.enabled {
+                use std::time::Duration;
+                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(cache_config.default_ttl));
+
+                // Start cleanup task (runs every 60 seconds)
+                local_cache.clone().start_cleanup_task(Duration::from_secs(60));
+
+                info!("Initialized response cache (TTL: {:?})", cache_config.default_ttl);
+                Some(local_cache)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             client,
@@ -365,6 +404,7 @@ impl Handler {
             ws_keepalive_manager,
             ws_recovery_manager,
             ws_shutdown_coordinator,
+            cache,
         }
     }
 
@@ -774,6 +814,48 @@ impl Handler {
             Some(upstream_name) => {
                 debug!("Matched route to upstream: {}", upstream_name);
 
+                // Check cache for GET requests (only cache safe, idempotent requests)
+                if method == Method::GET && self.cache.is_some() {
+                    let cache = self.cache.as_ref().unwrap();
+
+                    // Generate cache key from method and URI
+                    let cache_key = crate::gateway::cache::LocalCache::generate_key(
+                        method.as_str(),
+                        &uri.to_string(),
+                        &[]
+                    );
+
+                    // Try to get from cache
+                    if let Some(cached_entry) = cache.get(&cache_key) {
+                        debug!("Cache HIT for {}", uri);
+
+                        // Build response from cache
+                        let mut response_builder = Response::builder()
+                            .status(StatusCode::from_u16(cached_entry.status).unwrap_or(StatusCode::OK))
+                            .header("x-cache", "HIT");
+
+                        // Add cached headers
+                        for (name, value) in cached_entry.headers {
+                            response_builder = response_builder.header(name, value);
+                        }
+
+                        // Add Age header (how old is this cached entry)
+                        let age_secs = cached_entry.created_at.elapsed().as_secs();
+                        response_builder = response_builder.header("age", age_secs.to_string());
+
+                        let cached_response = response_builder
+                            .body(ResponseBody::buffered(cached_entry.body))?;
+
+                        // Record metrics
+                        let duration = start.elapsed().as_secs_f64();
+                        record_request(method.as_str(), cached_entry.status, duration);
+
+                        return Ok(cached_response);
+                    } else {
+                        debug!("Cache MISS for {}", uri);
+                    }
+                }
+
                 // Get upstream
                 if let Some(upstream) = self.upstreams.get(&upstream_name) {
                     // Check circuit breaker
@@ -929,7 +1011,60 @@ impl Handler {
                                             resp = resp.header(key, value);
                                         }
 
-                                        let response = resp.body(ResponseBody::buffered(body_bytes))?;
+                                        let response = resp.body(ResponseBody::buffered(body_bytes.clone()))?;
+
+                                        // Store in cache for GET requests with successful status
+                                        if method == Method::GET && self.cache.is_some() && status.is_success() {
+                                            let cache = self.cache.as_ref().unwrap();
+
+                                            // Check Cache-Control header to respect caching directives
+                                            let should_cache = if let Some(cache_control) = headers.get("cache-control") {
+                                                if let Ok(cc_str) = cache_control.to_str() {
+                                                    let cc_lower = cc_str.to_lowercase();
+                                                    // Don't cache if no-store or no-cache
+                                                    !cc_lower.contains("no-store") && !cc_lower.contains("no-cache")
+                                                } else {
+                                                    true
+                                                }
+                                            } else {
+                                                true // No cache-control header, safe to cache
+                                            };
+
+                                            if should_cache {
+                                                // Generate cache key
+                                                let cache_key = crate::gateway::cache::LocalCache::generate_key(
+                                                    method.as_str(),
+                                                    &uri.to_string(),
+                                                    &[]
+                                                );
+
+                                                // Convert headers to Vec<(String, String)>
+                                                let header_vec: Vec<(String, String)> = headers
+                                                    .iter()
+                                                    .filter_map(|(name, value)| {
+                                                        value.to_str().ok().map(|v| (name.to_string(), v.to_string()))
+                                                    })
+                                                    .collect();
+
+                                                // Create cache entry (use TTL from config)
+                                                let ttl = if let Some(cache_config) = &self.config.cache {
+                                                    cache_config.default_ttl
+                                                } else {
+                                                    std::time::Duration::from_secs(300) // Default 5 minutes
+                                                };
+
+                                                let cache_entry = crate::gateway::cache::CacheEntry {
+                                                    body: body_bytes.clone(),
+                                                    status: status.as_u16(),
+                                                    headers: header_vec,
+                                                    created_at: std::time::Instant::now(),
+                                                    ttl,
+                                                };
+
+                                                cache.set(cache_key.clone(), cache_entry);
+                                                debug!("Cached response for {} (key: {})", uri, cache_key);
+                                            }
+                                        }
 
                                         // Apply middleware chain (compression, etc.)
                                         let mut response = match self.middleware_chain.process_response(response).await {
