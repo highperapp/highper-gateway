@@ -1,0 +1,353 @@
+# Scenario 15: Geographic Load Balancing
+# Routes requests to nearest backend based on client IP geolocation
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.4 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+      max_lifetime: 300
+    backpressure:
+      enabled: true
+      max_connections: 100000
+      memory_limit_mb: 2048
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "geo.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# Upstream backends with geographic locations
+upstreams:
+  - name: "global_api"
+    servers:
+      # US East (Virginia)
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+        location:
+          lat: 37.5483    # Ashburn, VA
+          lon: -77.4728
+          region: "us-east-1"
+
+      # Europe (Ireland)
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+        location:
+          lat: 53.3498    # Dublin
+          lon: -6.2603
+          region: "eu-west-1"
+
+      # Asia Pacific (Tokyo)
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+        location:
+          lat: 35.6762    # Tokyo
+          lon: 139.6503
+          region: "ap-northeast-1"
+
+    load_balancing:
+      algorithm: "geographic"
+      geoip_provider: "maxmind"    # or "ip2location"
+      geoip_db_path: "/var/lib/GeoIP/GeoLite2-City.mmdb"  # Path to GeoIP database
+      fallback_algorithm: "least_conn"  # Fallback if GeoIP unavailable
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+
+# Routes
+routes:
+  - name: "geo_api"
+    match:
+      hosts:
+        - "geo.loadtest.local"
+      paths:
+        - "/api/*"
+    upstream: "global_api"
+
+  - name: "all_requests"
+    match:
+      hosts:
+        - "*"
+      paths:
+        - "/*"
+    upstream: "global_api"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 1.0
+  logging:
+    level: "info"
+    format: "json"
+
+---
+# Testing Instructions for Scenario 15
+
+## Setup
+
+### 1. Download GeoIP Database
+
+#### Option A: MaxMind GeoLite2 (Free)
+```bash
+# Register for free account at https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+
+# Download GeoLite2-City database
+curl -o /tmp/GeoLite2-City.tar.gz \
+  "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_LICENSE_KEY&suffix=tar.gz"
+
+# Extract
+mkdir -p /var/lib/GeoIP
+tar -xzf /tmp/GeoLite2-City.tar.gz -C /var/lib/GeoIP --strip-components=1
+
+# Verify
+ls -lh /var/lib/GeoIP/GeoLite2-City.mmdb
+```
+
+#### Option B: IP2Location (Free/Commercial)
+```bash
+# Download from https://www.ip2location.com/
+# Requires DB5+ package for lat/lon coordinates
+
+# For testing, download IP2Location LITE database
+wget https://download.ip2location.com/lite/IP2LOCATION-LITE-DB5.BIN.ZIP
+unzip IP2LOCATION-LITE-DB5.BIN.ZIP
+mkdir -p /var/lib/IP2Location
+mv IP2LOCATION-LITE-DB5.BIN /var/lib/IP2Location/
+
+# Update config to use IP2Location:
+# geoip_provider: "ip2location"
+# geoip_db_path: "/var/lib/IP2Location/IP2LOCATION-LITE-DB5.BIN"
+```
+
+### 2. Start Backend Servers
+```bash
+# US East (8081)
+python3 -m http.server 8081 &
+
+# Europe (8082)
+python3 -m http.server 8082 &
+
+# Asia Pacific (8083)
+python3 -m http.server 8083 &
+```
+
+### 3. Start Gateway
+```bash
+./highper-gateway -c configs/scenarios/scenario-15-geographic-routing.yaml
+```
+
+## Test Cases
+
+### 1. Request from US IP
+```bash
+# Simulate request from US East Coast (e.g., 4.2.2.2 - Level 3 Communications)
+curl -i http://geo.loadtest.local:8080/api/test \
+  -H "X-Forwarded-For: 4.2.2.2"
+
+# Expected: Routed to backend 8081 (US East - closest)
+# Check logs for: "Selected nearest server 0 at distance X.XX km"
+```
+
+### 2. Request from Europe IP
+```bash
+# Simulate request from UK (e.g., 151.101.1.1 - Fastly CDN)
+curl -i http://geo.loadtest.local:8080/api/test \
+  -H "X-Forwarded-For: 151.101.1.1"
+
+# Expected: Routed to backend 8082 (Europe - closest)
+# Check logs for: "Selected nearest server 1 at distance X.XX km"
+```
+
+### 3. Request from Asia IP
+```bash
+# Simulate request from Tokyo (e.g., 202.12.27.33 - IIJ Japan)
+curl -i http://geo.loadtest.local:8080/api/test \
+  -H "X-Forwarded-For: 202.12.27.33"
+
+# Expected: Routed to backend 8083 (Asia Pacific - closest)
+# Check logs for: "Selected nearest server 2 at distance X.XX km"
+```
+
+### 4. Multiple Requests Show Geographic Distribution
+```bash
+# US requests
+for i in {1..10}; do
+  curl -s http://geo.loadtest.local:8080/api/test \
+    -H "X-Forwarded-For: 4.2.2.2" | head -1
+done
+
+# Europe requests
+for i in {1..10}; do
+  curl -s http://geo.loadtest.local:8080/api/test \
+    -H "X-Forwarded-For: 151.101.1.1" | head -1
+done
+
+# Asia requests
+for i in {1..10}; do
+  curl -s http://geo.loadtest.local:8080/api/test \
+    -H "X-Forwarded-For: 202.12.27.33" | head -1
+done
+
+# Expected: Each region's requests go to their nearest server
+```
+
+### 5. Fallback When GeoIP Unavailable
+```bash
+# Request without X-Forwarded-For header
+curl -i http://geo.loadtest.local:8080/api/test
+
+# Expected: Falls back to least_conn algorithm
+# Check logs for: "No client IP provided, using fallback algorithm"
+```
+
+### 6. Invalid IP Handling
+```bash
+# Request with invalid IP
+curl -i http://geo.loadtest.local:8080/api/test \
+  -H "X-Forwarded-For: invalid-ip"
+
+# Expected: Falls back to least_conn algorithm
+# Check logs for: "Failed to parse client IP"
+```
+
+### 7. GeoIP Lookup Verification
+```bash
+# Check what location is detected for a specific IP
+# Look in gateway logs for lines like:
+# "Client IP 4.2.2.2 located at (38.0, -97.0)"
+# "Distance to server 0 (region: Some(\"us-east-1\")): 1234.56 km"
+```
+
+### 8. Performance Test
+```bash
+# Test with ApacheBench from different "locations"
+ab -n 10000 -c 100 -H "X-Forwarded-For: 4.2.2.2" \
+  http://geo.loadtest.local:8080/api/test
+
+ab -n 10000 -c 100 -H "X-Forwarded-For: 151.101.1.1" \
+  http://geo.loadtest.local:8080/api/test
+
+ab -n 10000 -c 100 -H "X-Forwarded-For: 202.12.27.33" \
+  http://geo.loadtest.local:8080/api/test
+
+# Expected: Requests routed to nearest server for each region
+```
+
+## Expected Behavior
+
+1. **Client IP Detection**: Extracts IP from X-Forwarded-For or X-Real-IP headers
+2. **GeoIP Lookup**: Determines client's latitude/longitude using MaxMind or IP2Location
+3. **Distance Calculation**: Uses Haversine formula to calculate distance to each backend
+4. **Nearest Selection**: Routes request to backend with minimum distance
+5. **Fallback**: Uses least_conn algorithm if:
+   - No GeoIP database configured
+   - Client IP cannot be determined
+   - GeoIP lookup fails
+   - No location data in database
+6. **Health Checks**: Only routes to healthy backends
+7. **Logging**: Detailed logs show distance calculations and server selection
+
+## Distance Examples
+
+Based on server locations in this config:
+
+### Client in New York (40.7128°N, 74.0060°W)
+- **US East (Ashburn, VA)**: ~360 km ✅ NEAREST
+- **Europe (Dublin)**: ~5,100 km
+- **Asia (Tokyo)**: ~10,850 km
+
+### Client in London (51.5074°N, 0.1278°W)
+- **US East (Ashburn, VA)**: ~5,900 km
+- **Europe (Dublin)**: ~465 km ✅ NEAREST
+- **Asia (Tokyo)**: ~9,560 km
+
+### Client in Singapore (1.3521°N, 103.8198°E)
+- **US East (Ashburn, VA)**: ~15,350 km
+- **Europe (Dublin)**: ~10,880 km
+- **Asia (Tokyo)**: ~5,310 km ✅ NEAREST
+
+## Geographic Load Balancing Features
+- ✅ MaxMind GeoLite2/GeoIP2 support
+- ✅ IP2Location support (DB5+ with lat/lon)
+- ✅ Haversine distance calculation
+- ✅ Adapter pattern for multiple providers
+- ✅ Fallback algorithm when GeoIP unavailable
+- ✅ X-Forwarded-For and X-Real-IP support
+- ✅ Server location configuration (lat/lon/region)
+- ✅ Health check integration
+- ✅ Distance logging for debugging
+- ✅ Thread-safe database access
+
+## Implementation Details
+
+### Haversine Formula
+Calculates great-circle distance between two points on Earth's surface:
+```
+a = sin²(Δlat/2) + cos(lat1) × cos(lat2) × sin²(Δlon/2)
+c = 2 × atan2(√a, √(1−a))
+distance = R × c  (where R = 6371 km)
+```
+
+### GeoIP Providers
+
+**MaxMind GeoIP2/GeoLite2**:
+- Binary format (.mmdb)
+- High accuracy
+- Regular updates
+- Free tier available
+
+**IP2Location**:
+- Binary format (.BIN)
+- Commercial and free tiers
+- Requires DB5+ for coordinates
+- Good Asia-Pacific coverage
+
+## Troubleshooting
+
+### Issue: "Geographic load balancing disabled"
+- **Cause**: GeoIP database not found or failed to load
+- **Solution**: Check database path and file permissions
+
+### Issue: "No lat/lon data for IP"
+- **Cause**: Database doesn't include coordinate data
+- **Solution**: Use MaxMind GeoLite2-City or IP2Location DB5+
+
+### Issue: Requests not routing to nearest server
+- **Cause**: Client IP not detected
+- **Solution**: Ensure X-Forwarded-For header is set
+
+### Issue: All requests go to same server
+- **Cause**: GeoIP database not loaded
+- **Solution**: Check logs for initialization errors, verify database path
+
+## Notes
+- Geographic routing requires GeoIP database (not included)
+- MaxMind GeoLite2 is free but requires registration
+- IP2Location has free LITE databases
+- Database should be updated monthly for accuracy
+- Private/internal IPs will fall back to configured algorithm
+- Distance calculation is accurate to within ~0.5%
