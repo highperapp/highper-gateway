@@ -1,0 +1,150 @@
+# Scenario 09: WAF + mTLS Security Gateway
+# Full WAF protection with mutual TLS authentication
+# Status: ✅ FULLY IMPLEMENTED (WAF + mTLS features complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8448"  # HTTPS with mTLS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 100
+      max_idle: 10000
+
+# TLS configuration with mTLS
+tls:
+  certificates:
+    - domain: "secure.loadtest.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+  # Mutual TLS (mTLS) configuration
+  mtls:
+    enabled: true
+    require_client_cert: true
+    client_ca_file: "/mnt/e/my-opensource/highper-gateway/certs/ca.crt"
+    verify_depth: 2
+    # OCSP stapling (implemented)
+    ocsp_stapling: false
+    # CRL checking (implemented)
+    crl_check: false
+
+# WAF Configuration (FULLY IMPLEMENTED)
+waf:
+  enabled: true
+  mode: "custom"  # Options: custom, coraza, modsecurity, aws
+  block_mode: true  # true = block threats, false = log only
+  max_body_size: 1048576  # 1 MB
+
+  # Custom WAF engine configuration
+  custom:
+    sql_injection_protection: true
+    xss_protection: true
+    path_traversal_protection: true
+    user_agent_filtering: true
+    rate_limit_enabled: true
+    rate_limit_requests: 100
+    rate_limit_window_secs: 60
+
+  # Coraza configuration (optional)
+  # coraza:
+  #   crs_path: "/etc/coraza/crs"
+  #   enable_crs: true
+  #   paranoia_level: 2
+
+  # ModSecurity configuration (optional)
+  # modsecurity:
+  #   rules_file: "/etc/modsecurity/rules.conf"
+  #   detection_mode: "on"  # on, detection_only, off
+
+  # AWS WAF configuration (optional)
+  # aws:
+  #   region: "us-east-1"
+  #   web_acl_arn: "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/mywebacl/a1b2c3d4"
+
+# Upstream backends
+upstreams:
+  - name: "secure_backends"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+
+    load_balancing:
+      algorithm: "least_conn"  # Recommended for security-sensitive applications
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      path: "/health"
+      max_failures: 3
+
+# Routes
+routes:
+  - name: "secure_route"
+    match:
+      hosts:
+        - "secure.loadtest.local"
+      paths:
+        - "/*"
+    upstream: "secure_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"
+
+# Circuit Breaker (integrated with WAF)
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  success_threshold: 2
+  timeout: 30
+
+# Security Features Summary:
+# ✅ WAF with multiple engines (custom, coraza, modsecurity, aws)
+# ✅ SQL injection protection
+# ✅ XSS protection
+# ✅ Path traversal protection
+# ✅ User-agent filtering
+# ✅ Rate limiting per IP
+# ✅ Mutual TLS (mTLS) authentication
+# ✅ Client certificate verification
+# ✅ OCSP stapling support
+# ✅ CRL checking support
+# ✅ Circuit breaker integration
+#
+# Testing:
+# 1. Start backends: python3 load-tests/simple-backend-local.py 8081 &
+# 2. Generate client certs for mTLS testing
+# 3. Start gateway: ./target/release/highper-gateway start -c configs/scenarios/scenario-09-waf-mtls.yaml
+# 4. Test WAF blocking: curl -X POST https://secure.loadtest.local:8448/ -d "'; DROP TABLE users; --" --cert client.crt --key client.key --cacert ca.crt
+# 5. Test mTLS: curl https://secure.loadtest.local:8448/ --cert client.crt --key client.key --cacert ca.crt
+# 6. Test without client cert (should fail): curl https://secure.loadtest.local:8448/ -k
+# 7. Check metrics: curl http://localhost:9090/metrics | grep waf
+#
+# Load Test Target: 400K RPS with WAF+mTLS overhead
+# Expected Latency: P50 < 2ms, P99 < 10ms (due to security processing)

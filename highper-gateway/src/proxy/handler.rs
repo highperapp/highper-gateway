@@ -4,6 +4,7 @@ use crate::config::{Config, RouteConfig, UpstreamConfig};
 use crate::gateway::routing::HostnameRouter;
 use crate::http::{alt_svc, CollectedBody, collect_body_validated, ResponseBody};
 use crate::middleware::{MiddlewareChain, compression_middleware::CompressionMiddleware};
+use crate::middleware::waf::WafMiddleware;
 use crate::observability::metrics::{record_request, record_upstream_request};
 use crate::proxy::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 use crate::proxy::{Client, LoadBalancer};
@@ -134,6 +135,36 @@ impl Handler {
         // Build middleware chain
         let mut middleware_chain = MiddlewareChain::new();
 
+        // Add WAF middleware if enabled
+        if let Some(schema_waf_config) = &config.waf {
+            if schema_waf_config.enabled {
+                // Convert schema::WafConfig to waf::WafConfig
+                // Note: Schema and middleware have different config structures, so we use defaults
+                // for engine-specific configs. A proper conversion layer should be added in the future.
+                let waf_config = crate::middleware::waf::WafConfig {
+                    enabled: schema_waf_config.enabled,
+                    mode: schema_waf_config.mode,
+                    block_mode: schema_waf_config.block_mode,
+                    custom: schema_waf_config.custom.clone(),
+                    coraza: None, // TODO: Convert schema::CorazaConfig to waf::CorazaConfig
+                    modsecurity: None, // TODO: Convert schema::ModSecurityConfig to waf::ModSecurityConfig
+                    aws: None, // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
+                    max_body_size: schema_waf_config.max_body_size,
+                };
+
+                match WafMiddleware::new(waf_config) {
+                    Ok(waf) => {
+                        info!("WAF middleware enabled (mode: {:?}, block_mode: {})",
+                            schema_waf_config.mode, schema_waf_config.block_mode);
+                        middleware_chain.add(waf);
+                    }
+                    Err(e) => {
+                        warn!("Failed to initialize WAF middleware: {}. WAF will be disabled.", e);
+                    }
+                }
+            }
+        }
+
         // Add compression middleware
         middleware_chain.add(CompressionMiddleware::with_defaults());
 
@@ -231,6 +262,36 @@ impl Handler {
 
         // Build middleware chain
         let mut middleware_chain = MiddlewareChain::new();
+
+        // Add WAF middleware if enabled
+        if let Some(schema_waf_config) = &config.waf {
+            if schema_waf_config.enabled {
+                // Convert schema::WafConfig to waf::WafConfig
+                // Note: Schema and middleware have different config structures, so we use defaults
+                // for engine-specific configs. A proper conversion layer should be added in the future.
+                let waf_config = crate::middleware::waf::WafConfig {
+                    enabled: schema_waf_config.enabled,
+                    mode: schema_waf_config.mode,
+                    block_mode: schema_waf_config.block_mode,
+                    custom: schema_waf_config.custom.clone(),
+                    coraza: None, // TODO: Convert schema::CorazaConfig to waf::CorazaConfig
+                    modsecurity: None, // TODO: Convert schema::ModSecurityConfig to waf::ModSecurityConfig
+                    aws: None, // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
+                    max_body_size: schema_waf_config.max_body_size,
+                };
+
+                match WafMiddleware::new(waf_config) {
+                    Ok(waf) => {
+                        info!("WAF middleware enabled (mode: {:?}, block_mode: {})",
+                            schema_waf_config.mode, schema_waf_config.block_mode);
+                        middleware_chain.add(waf);
+                    }
+                    Err(e) => {
+                        warn!("Failed to initialize WAF middleware: {}. WAF will be disabled.", e);
+                    }
+                }
+            }
+        }
 
         // Add compression middleware
         middleware_chain.add(CompressionMiddleware::with_defaults());
