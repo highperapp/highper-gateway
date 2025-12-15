@@ -1,0 +1,573 @@
+# Scenario 12: Microservices Architecture
+# Circuit breaker, health checks, and resilient service-to-service communication
+# Status: ✅ FULLY IMPLEMENTED (Phase 2.5 complete)
+
+server:
+  bind:
+    - "0.0.0.0:8080"  # HTTP
+  tls_bind:
+    - "0.0.0.0:8443"  # HTTPS
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance settings for microservices
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 200
+      max_idle: 10000
+      max_lifetime: 300
+    backpressure:
+      enabled: true
+      max_connections: 100000
+      memory_limit_mb: 4096
+
+# TLS configuration
+tls:
+  certificates:
+    - domain: "api.microservices.local"
+      cert_file: "/mnt/e/my-opensource/highper-gateway/certs/api.crt"
+      key_file: "/mnt/e/my-opensource/highper-gateway/certs/api.key"
+
+# Microservice Upstreams
+upstreams:
+  # User Service
+  - name: "user_service"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+    load_balancing:
+      algorithm: "least_conn"
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        path: "/health"
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      success_threshold: 2
+      timeout: 30
+      half_open_requests: 3
+
+  # Order Service
+  - name: "order_service"
+    servers:
+      - url: "http://127.0.0.1:8091"
+        weight: 1
+      - url: "http://127.0.0.1:8092"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        path: "/health"
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      success_threshold: 2
+      timeout: 30
+      half_open_requests: 3
+
+  # Inventory Service
+  - name: "inventory_service"
+    servers:
+      - url: "http://127.0.0.1:8101"
+        weight: 1
+      - url: "http://127.0.0.1:8102"
+        weight: 1
+    load_balancing:
+      algorithm: "least_conn"
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        path: "/health"
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 3
+      success_threshold: 2
+      timeout: 20
+      half_open_requests: 2
+
+  # Payment Service
+  - name: "payment_service"
+    servers:
+      - url: "http://127.0.0.1:8111"
+        weight: 1
+      - url: "http://127.0.0.1:8112"
+        weight: 1
+    load_balancing:
+      algorithm: "least_conn"
+      health_checks:
+        enabled: true
+        interval: 5
+        timeout: 3
+        healthy_threshold: 2
+        unhealthy_threshold: 2
+        path: "/health"
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 2        # More sensitive - payment is critical
+      success_threshold: 3         # Requires more successes to close
+      timeout: 60                  # Longer timeout for critical service
+      half_open_requests: 1        # Conservative half-open testing
+
+  # Notification Service
+  - name: "notification_service"
+    servers:
+      - url: "http://127.0.0.1:8121"
+        weight: 1
+    load_balancing:
+      algorithm: "round_robin"
+      health_checks:
+        enabled: true
+        interval: 10
+        timeout: 2
+        healthy_threshold: 2
+        unhealthy_threshold: 3
+        path: "/health"
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 10        # Less sensitive - non-critical
+      success_threshold: 2
+      timeout: 15
+      half_open_requests: 5
+
+# Routes for each microservice
+routes:
+  # User Service routes
+  - name: "users_api"
+    match:
+      hosts:
+        - "api.microservices.local"
+      paths:
+        - "/api/users"
+        - "/api/users/*"
+        - "/api/auth"
+        - "/api/auth/*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+    upstream: "user_service"
+
+  # Order Service routes
+  - name: "orders_api"
+    match:
+      hosts:
+        - "api.microservices.local"
+      paths:
+        - "/api/orders"
+        - "/api/orders/*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+    upstream: "order_service"
+
+  # Inventory Service routes
+  - name: "inventory_api"
+    match:
+      hosts:
+        - "api.microservices.local"
+      paths:
+        - "/api/inventory"
+        - "/api/inventory/*"
+        - "/api/products"
+        - "/api/products/*"
+      methods:
+        - GET
+        - POST
+        - PUT
+    upstream: "inventory_service"
+
+  # Payment Service routes
+  - name: "payments_api"
+    match:
+      hosts:
+        - "api.microservices.local"
+      paths:
+        - "/api/payments"
+        - "/api/payments/*"
+      methods:
+        - POST
+    upstream: "payment_service"
+
+  # Notification Service routes
+  - name: "notifications_api"
+    match:
+      hosts:
+        - "api.microservices.local"
+      paths:
+        - "/api/notifications"
+        - "/api/notifications/*"
+      methods:
+        - GET
+        - POST
+    upstream: "notification_service"
+
+  # Health check endpoint
+  - name: "health"
+    match:
+      paths:
+        - "/health"
+    upstream: "user_service"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    port: 9090
+  tracing:
+    enabled: true
+    exporter: "stdout"
+    sample_rate: 1.0
+  logging:
+    level: "info"
+    format: "json"
+
+---
+# Testing Instructions for Scenario 12
+
+## Setup
+
+### 1. Start Microservices
+
+#### User Service (Ports 8081-8083)
+```bash
+# Simulate 3 user service instances
+for port in 8081 8082 8083; do
+  (while true; do
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"user\",\"port\":$port,\"status\":\"healthy\"}" | nc -l -p $port
+  done) &
+done
+```
+
+#### Order Service (Ports 8091-8092)
+```bash
+for port in 8091 8092; do
+  (while true; do
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"order\",\"port\":$port,\"status\":\"healthy\"}" | nc -l -p $port
+  done) &
+done
+```
+
+#### Inventory Service (Ports 8101-8102)
+```bash
+for port in 8101 8102; do
+  (while true; do
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"inventory\",\"port\":$port,\"status\":\"healthy\"}" | nc -l -p $port
+  done) &
+done
+```
+
+#### Payment Service (Ports 8111-8112)
+```bash
+for port in 8111 8112; do
+  (while true; do
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"payment\",\"port\":$port,\"status\":\"healthy\"}" | nc -l -p $port
+  done) &
+done
+```
+
+#### Notification Service (Port 8121)
+```bash
+(while true; do
+  echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"notification\",\"port\":8121,\"status\":\"healthy\"}" | nc -l -p 8121
+done) &
+```
+
+### 2. Start Gateway
+```bash
+./highper-gateway -c configs/scenarios/scenario-12-microservices.yaml
+```
+
+## Test Cases
+
+### 1. Basic Microservice Routing
+```bash
+# Test user service
+curl -i http://api.microservices.local:8080/api/users
+# Expected: Routed to user_service (8081-8083)
+
+# Test order service
+curl -i http://api.microservices.local:8080/api/orders
+# Expected: Routed to order_service (8091-8092)
+
+# Test inventory service
+curl -i http://api.microservices.local:8080/api/inventory
+# Expected: Routed to inventory_service (8101-8102)
+
+# Test payment service
+curl -i http://api.microservices.local:8080/api/payments -X POST
+# Expected: Routed to payment_service (8111-8112)
+
+# Test notification service
+curl -i http://api.microservices.local:8080/api/notifications
+# Expected: Routed to notification_service (8121)
+```
+
+### 2. Load Balancing Across Instances
+```bash
+# Multiple requests to see load balancing
+for i in {1..10}; do
+  curl -s http://api.microservices.local:8080/api/users | jq -r '.port'
+done
+
+# Expected: Requests distributed across 8081, 8082, 8083 using least_conn
+```
+
+### 3. Circuit Breaker - Fault Tolerance
+```bash
+# Stop one backend instance (e.g., kill process on port 8081)
+pkill -f "nc -l -p 8081"
+
+# Make requests - should still work with remaining instances
+for i in {1..20}; do
+  curl -s http://api.microservices.local:8080/api/users | jq -r '.port'
+done
+
+# Expected:
+# - First few requests may fail (circuit learning)
+# - Circuit breaker opens after failure_threshold (5 failures)
+# - Subsequent requests route to healthy backends (8082, 8083)
+# - Check logs for "Circuit breaker OPEN" message
+```
+
+### 4. Circuit Breaker Recovery
+```bash
+# Restart the failed backend
+(while true; do
+  echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"user\",\"port\":8081,\"status\":\"healthy\"}" | nc -l -p 8081
+done) &
+
+# Wait for circuit breaker timeout (30 seconds)
+sleep 35
+
+# Make requests
+for i in {1..10}; do
+  curl -s http://api.microservices.local:8080/api/users | jq -r '.port'
+done
+
+# Expected:
+# - Circuit enters HALF_OPEN state
+# - Test requests sent to recovered backend
+# - After success_threshold (2) successes, circuit CLOSES
+# - Backend 8081 receives traffic again
+# - Check logs for "Circuit breaker HALF_OPEN" and "Circuit breaker CLOSED"
+```
+
+### 5. Health Checks
+```bash
+# Check gateway metrics for health status
+curl http://localhost:9090/metrics | grep health
+
+# Expected: Metrics showing healthy/unhealthy backend counts
+
+# Stop a backend
+pkill -f "nc -l -p 8091"
+
+# Wait for health check interval (5 seconds)
+sleep 10
+
+# Check metrics again
+curl http://localhost:9090/metrics | grep health
+
+# Expected: One fewer healthy backend for order_service
+```
+
+### 6. Service-to-Service Communication Pattern
+```bash
+# Simulate order creation (would call multiple services)
+curl -X POST http://api.microservices.local:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123",
+    "items": [{"product_id": "456", "quantity": 2}]
+  }'
+
+# In a real system, the order service would make internal calls to:
+# 1. User service - verify user exists
+# 2. Inventory service - check stock
+# 3. Payment service - process payment
+# 4. Notification service - send confirmation
+
+# Expected: Gateway routes request to order_service
+# Internal service calls handled by each microservice
+```
+
+### 7. Critical Service Protection (Payment)
+```bash
+# Payment service has stricter circuit breaker settings
+# failure_threshold: 2 (vs 5 for others)
+# timeout: 60s (vs 30s for others)
+
+# Stop payment backends
+pkill -f "nc -l -p 8111"
+pkill -f "nc -l -p 8112"
+
+# Make payment requests
+for i in {1..5}; do
+  curl -i http://api.microservices.local:8080/api/payments -X POST
+done
+
+# Expected:
+# - Circuit opens after just 2 failures
+# - Returns 503 Service Unavailable
+# - Check logs for "Circuit breaker OPEN for upstream: payment_service"
+# - Longer timeout (60s) before retry
+```
+
+### 8. Non-Critical Service Tolerance (Notifications)
+```bash
+# Notification service has relaxed circuit breaker
+# failure_threshold: 10 (more tolerant of failures)
+
+# Stop notification backend
+pkill -f "nc -l -p 8121"
+
+# Make requests
+for i in {1..12}; do
+  curl -i http://api.microservices.local:8080/api/notifications
+done
+
+# Expected:
+# - Takes 10 failures before circuit opens
+# - Demonstrates different resilience policies per service
+```
+
+### 9. Concurrent Load Test
+```bash
+# Test multiple services concurrently
+ab -n 10000 -c 100 http://api.microservices.local:8080/api/users &
+ab -n 5000 -c 50 http://api.microservices.local:8080/api/orders &
+ab -n 5000 -c 50 http://api.microservices.local:8080/api/inventory &
+
+wait
+
+# Expected:
+# - All services handle load independently
+# - Circuit breakers protect each service
+# - Load balancing distributes across instances
+# - Check metrics for request distribution
+```
+
+### 10. Metrics and Observability
+```bash
+# Check circuit breaker states
+curl http://localhost:9090/metrics | grep circuit_breaker
+
+# Check load balancing distribution
+curl http://localhost:9090/metrics | grep upstream_requests
+
+# Check health check status
+curl http://localhost:9090/metrics | grep health_check
+
+# Expected: Detailed metrics for each microservice
+```
+
+## Expected Behavior
+
+1. **Service Isolation**: Each microservice routes independently
+2. **Circuit Breaker**: Protects against cascading failures
+3. **Load Balancing**: Distributes requests across instances
+4. **Health Checks**: Automatically detects and removes unhealthy backends
+5. **Fault Tolerance**: System remains operational with partial failures
+6. **Recovery**: Circuit breakers automatically recover when backends heal
+7. **Observability**: Metrics expose service health and performance
+
+## Microservices Features
+- ✅ Circuit breaker per upstream (configurable thresholds)
+- ✅ Health checks with automatic failover
+- ✅ Load balancing (8 algorithms available)
+- ✅ Service isolation and independent scaling
+- ✅ Fault tolerance and graceful degradation
+- ✅ Automatic recovery from failures
+- ✅ Per-service resilience policies
+- ✅ Metrics and observability
+- ✅ HTTP/1.1 and HTTP/2 support
+- ✅ TLS termination
+
+## Circuit Breaker States
+1. **CLOSED**: Normal operation, requests pass through
+2. **OPEN**: Too many failures, requests fail fast (503 response)
+3. **HALF_OPEN**: Testing if backend recovered, limited requests allowed
+
+## Service Discovery (Optional/Advanced)
+The gateway includes service discovery implementations for:
+- **Consul**: Automatic service registration and discovery
+- **etcd**: Distributed configuration and service discovery
+
+To enable service discovery:
+1. Enable feature flags: `--features consul` or `--features etcd-client`
+2. Configure discovery backend in upstream config
+3. Gateway automatically discovers service instances
+4. Dynamic scaling and instance management
+
+Service discovery requires additional setup and is optional for this scenario.
+
+## Architecture Diagram
+```
+                    API Gateway (8080/8443)
+                            |
+        +-------------------+-------------------+
+        |                   |                   |
+   User Service      Order Service     Inventory Service
+   (8081-8083)        (8091-8092)       (8101-8102)
+        |                   |                   |
+        +-------------------+-------------------+
+                            |
+        +-------------------+-------------------+
+        |                                       |
+  Payment Service                    Notification Service
+  (8111-8112)                            (8121)
+
+Circuit Breaker + Health Checks on all paths
+Load Balancing across all instances
+```
+
+## Troubleshooting
+
+### Issue: Circuit breaker always open
+- **Cause**: All backend instances failing
+- **Solution**: Check backend health, verify ports are listening
+
+### Issue: Requests not distributed evenly
+- **Cause**: Using least_conn with uneven load
+- **Solution**: Expected behavior, least_conn routes to least busy
+
+### Issue: Circuit doesn't close after recovery
+- **Cause**: Not enough successful requests in half-open state
+- **Solution**: Wait for success_threshold requests to succeed
+
+### Issue: Health checks marking healthy backends as down
+- **Cause**: Health check timeout too aggressive
+- **Solution**: Increase timeout in config
+
+## Notes
+- Circuit breaker settings tuned per service criticality
+- Payment service: Most strict (2 failures, 60s timeout)
+- Notification service: Most lenient (10 failures, 15s timeout)
+- Health checks run every 5 seconds
+- Metrics available on port 9090
+- All services support graceful degradation
+- System remains operational with 50%+ backend failures
