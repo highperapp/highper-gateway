@@ -96,6 +96,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     rate_limit: None,
                     cache: None,
                     waf: None,
+                    graphql: None,
                 };
 
                 // Process site-level directives
@@ -129,6 +130,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         rate_limit: None,
                         cache: None,
                         waf: None,
+                        graphql: None,
                     };
 
                     for directive in &site_route.directives {
@@ -180,6 +182,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     rate_limit: None,
                     cache: None,
                     waf: None,
+                    graphql: None,
                 };
 
                 // Process TCP site directives
@@ -350,6 +353,28 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                 for rule in &waf.custom_rules {
                     yaml.push_str(&format!("        - rule_type: \"{}\"\n", rule.rule_type));
                     yaml.push_str(&format!("          action: \"{}\"\n", rule.action));
+                }
+            }
+        }
+
+        if let Some(ref graphql) = route.graphql {
+            yaml.push_str("    graphql:\n");
+            yaml.push_str(&format!("      enabled: {}\n", graphql.enabled));
+            yaml.push_str(&format!("      endpoint: \"{}\"\n", graphql.endpoint));
+            yaml.push_str(&format!("      introspection_enabled: {}\n", graphql.introspection_enabled));
+            yaml.push_str(&format!("      enable_cache: {}\n", graphql.enable_cache));
+            yaml.push_str(&format!("      cache_ttl_secs: {}\n", graphql.cache_ttl_secs));
+            yaml.push_str(&format!("      enable_batching: {}\n", graphql.enable_batching));
+            yaml.push_str(&format!("      max_batch_size: {}\n", graphql.max_batch_size));
+
+            if !graphql.backends.is_empty() {
+                yaml.push_str("      backends:\n");
+                for backend in &graphql.backends {
+                    yaml.push_str(&format!("        - name: \"{}\"\n", backend.name));
+                    yaml.push_str(&format!("          url: \"{}\"\n", backend.url));
+                    if let Some(ref ns) = backend.namespace {
+                        yaml.push_str(&format!("          namespace: \"{}\"\n", ns));
+                    }
                 }
             }
         }
@@ -599,6 +624,24 @@ fn process_directive(
             });
         }
 
+        Directive::GraphQL(graphql_config) => {
+            // Convert DSL GraphQLConfig to GraphQLYaml
+            route.graphql = Some(GraphQLYaml {
+                enabled: graphql_config.enabled,
+                endpoint: graphql_config.endpoint.clone().unwrap_or_else(|| "/graphql".to_string()),
+                introspection_enabled: graphql_config.introspection_enabled,
+                enable_cache: graphql_config.enable_cache,
+                cache_ttl_secs: graphql_config.cache_ttl.map(|d| d.as_secs()).unwrap_or(300),
+                enable_batching: graphql_config.enable_batching,
+                max_batch_size: graphql_config.max_batch_size.unwrap_or(10),
+                backends: graphql_config.backends.iter().map(|backend| GraphQLBackendYaml {
+                    name: backend.name.clone(),
+                    url: backend.url.clone(),
+                    namespace: backend.namespace.clone(),
+                }).collect(),
+            });
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -687,6 +730,7 @@ struct RouteYaml {
     rate_limit: Option<RateLimitYaml>,
     cache: Option<CacheYaml>,
     waf: Option<WafYaml>,
+    graphql: Option<GraphQLYaml>,
 }
 
 struct CertYaml {
@@ -748,6 +792,25 @@ struct CorazaYaml {
 struct WafRuleYaml {
     rule_type: String,
     action: String,
+}
+
+#[derive(Clone)]
+struct GraphQLYaml {
+    enabled: bool,
+    endpoint: String,
+    introspection_enabled: bool,
+    enable_cache: bool,
+    cache_ttl_secs: u64,
+    enable_batching: bool,
+    max_batch_size: usize,
+    backends: Vec<GraphQLBackendYaml>,
+}
+
+#[derive(Clone)]
+struct GraphQLBackendYaml {
+    name: String,
+    url: String,
+    namespace: Option<String>,
 }
 
 #[cfg(test)]

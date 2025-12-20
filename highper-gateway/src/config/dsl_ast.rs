@@ -257,6 +257,9 @@ pub enum Directive {
 
     /// WAF (Web Application Firewall) configuration
     Waf(WafConfig),
+
+    /// GraphQL configuration
+    GraphQL(GraphQLConfig),
 }
 
 /// Backend server
@@ -569,6 +572,41 @@ pub enum WafRuleAction {
     Disabled,
     Block,
     Log,
+}
+
+/// GraphQL configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct GraphQLConfig {
+    pub enabled: bool,
+    pub endpoint: Option<String>,
+    pub introspection_enabled: bool,
+    pub enable_cache: bool,
+    pub cache_ttl: Option<Duration>,
+    pub enable_batching: bool,
+    pub max_batch_size: Option<usize>,
+    pub backends: Vec<GraphQLBackend>,
+}
+
+impl Default for GraphQLConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: Some("/graphql".to_string()),
+            introspection_enabled: true,
+            enable_cache: false,
+            cache_ttl: None,
+            enable_batching: false,
+            max_batch_size: None,
+            backends: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphQLBackend {
+    pub name: String,
+    pub url: String,
+    pub namespace: Option<String>,
 }
 
 /// TLS protocol versions

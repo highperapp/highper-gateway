@@ -128,6 +128,7 @@ directive = {
   | backpressure_directive
   | cache_directive
   | waf_directive
+  | graphql_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -567,3 +568,39 @@ waf_rule_type = {
 waf_rule_action = { "enabled" | "disabled" | "block" | "log" }
 
 identifier = @{ (ASCII_ALPHANUMERIC | "-" | "_")+ }
+
+// GraphQL directives
+graphql_directive = {
+    "graphql" ~ graphql_option* ~ (graphql_block | newline)
+}
+
+graphql_option = {
+    "enabled"
+  | "endpoint=" ~ quoted_string
+  | "introspection"
+  | "cache" ~ "ttl=" ~ duration
+  | "batching" ~ "max_size=" ~ number
+}
+
+graphql_block = {
+    "{" ~ newline* ~
+    (newline* ~ graphql_stitching_directive)* ~ newline* ~
+    "}" ~ newline*
+}
+
+graphql_stitching_directive = {
+    "stitching" ~ "{" ~ newline* ~
+    (newline* ~ graphql_backend_block)* ~ newline* ~
+    "}" ~ newline*
+}
+
+graphql_backend_block = {
+    "backend" ~ identifier ~ "{" ~ newline* ~
+    (newline* ~ graphql_backend_option)* ~ newline* ~
+    "}" ~ newline*
+}
+
+graphql_backend_option = {
+    "url" ~ quoted_string ~ newline
+  | "namespace" ~ identifier ~ newline
+}

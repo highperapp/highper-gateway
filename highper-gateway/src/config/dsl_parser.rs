@@ -400,6 +400,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::waf_directive => {
                 Ok(Some(parse_waf_directive(inner)?))
             }
+            Rule::graphql_directive => {
+                Ok(Some(parse_graphql_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -985,6 +988,106 @@ fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut cr
                 }
             }
             _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_graphql_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    use crate::config::dsl_ast::{GraphQLConfig, GraphQLBackend};
+
+    let mut config = GraphQLConfig::default();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::graphql_option => {
+                let text = inner.as_str();
+                if text == "enabled" {
+                    config.enabled = true;
+                } else if text == "introspection" {
+                    config.introspection_enabled = true;
+                } else if let Some(endpoint_str) = text.strip_prefix("endpoint=") {
+                    let endpoint = endpoint_str.trim_matches('"');
+                    config.endpoint = Some(endpoint.to_string());
+                } else if text.starts_with("cache") {
+                    config.enable_cache = true;
+                    // Look for ttl option in the nested parts
+                    for cache_inner in inner.into_inner() {
+                        let cache_text = cache_inner.as_str();
+                        if let Some(ttl_str) = cache_text.strip_prefix("ttl=") {
+                            config.cache_ttl = Some(parse_duration(ttl_str)?);
+                        }
+                    }
+                } else if text.starts_with("batching") {
+                    config.enable_batching = true;
+                    // Look for max_size option in the nested parts
+                    for batch_inner in inner.into_inner() {
+                        let batch_text = batch_inner.as_str();
+                        if let Some(size_str) = batch_text.strip_prefix("max_size=") {
+                            config.max_batch_size = Some(size_str.parse()?);
+                        }
+                    }
+                }
+            }
+            Rule::graphql_block => {
+                for block_inner in inner.into_inner() {
+                    if let Rule::graphql_stitching_directive = block_inner.as_rule() {
+                        parse_graphql_stitching(block_inner, &mut config)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::GraphQL(config))
+}
+
+fn parse_graphql_stitching(pair: pest::iterators::Pair<Rule>, config: &mut crate::config::dsl_ast::GraphQLConfig) -> Result<()> {
+    use crate::config::dsl_ast::GraphQLBackend;
+
+    for inner in pair.into_inner() {
+        if let Rule::graphql_backend_block = inner.as_rule() {
+            let mut backend_name = String::new();
+            let mut backend_url = String::new();
+            let mut backend_namespace: Option<String> = None;
+
+            for backend_inner in inner.into_inner() {
+                match backend_inner.as_rule() {
+                    Rule::identifier => {
+                        // First identifier is the backend name
+                        if backend_name.is_empty() {
+                            backend_name = backend_inner.as_str().to_string();
+                        }
+                    }
+                    Rule::graphql_backend_option => {
+                        let text = backend_inner.as_str();
+                        if text.starts_with("url") {
+                            for url_inner in backend_inner.into_inner() {
+                                if let Rule::quoted_string = url_inner.as_rule() {
+                                    backend_url = url_inner.as_str().trim_matches('"').to_string();
+                                }
+                            }
+                        } else if text.starts_with("namespace") {
+                            for ns_inner in backend_inner.into_inner() {
+                                if let Rule::identifier = ns_inner.as_rule() {
+                                    backend_namespace = Some(ns_inner.as_str().to_string());
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if !backend_name.is_empty() && !backend_url.is_empty() {
+                config.backends.push(GraphQLBackend {
+                    name: backend_name,
+                    url: backend_url,
+                    namespace: backend_namespace,
+                });
+            }
         }
     }
 
