@@ -254,6 +254,9 @@ pub enum Directive {
 
     /// Cache configuration
     Cache(CacheConfig),
+
+    /// WAF (Web Application Firewall) configuration
+    Waf(WafConfig),
 }
 
 /// Backend server
@@ -486,6 +489,86 @@ impl Default for CacheConfig {
             key_headers: vec![],
         }
     }
+}
+
+/// WAF (Web Application Firewall) configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct WafConfig {
+    pub enabled: bool,
+    pub mode: WafMode,
+    pub block_mode: bool, // true = block, false = log only
+    pub max_body_size: Option<usize>,
+    pub modsecurity: Option<ModSecurityConfig>,
+    pub aws_waf: Option<AwsWafConfig>,
+    pub coraza: Option<CorazaConfig>,
+    pub custom_rules: Vec<WafRule>,
+}
+
+impl Default for WafConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: WafMode::Custom,
+            block_mode: true,
+            max_body_size: Some(10485760), // 10MB
+            modsecurity: None,
+            aws_waf: None,
+            coraza: None,
+            custom_rules: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WafMode {
+    Custom,
+    ModSecurity,
+    Coraza,
+    Aws,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModSecurityConfig {
+    pub rules_file: Option<String>,
+    pub paranoia_level: Option<u8>,
+    pub audit_log: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AwsWafConfig {
+    pub web_acl_id: String,
+    pub region: String,
+    pub api_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorazaConfig {
+    pub rules_dir: Option<String>,
+    pub audit_log: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WafRule {
+    pub rule_type: WafRuleType,
+    pub action: WafRuleAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WafRuleType {
+    SqlInjection,
+    Xss,
+    PathTraversal,
+    RateLimit,
+    UserAgent,
+    Method,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WafRuleAction {
+    Enabled,
+    Disabled,
+    Block,
+    Log,
 }
 
 /// TLS protocol versions

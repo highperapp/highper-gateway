@@ -397,6 +397,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::cache_directive => {
                 Ok(Some(parse_cache_directive(inner)?))
             }
+            Rule::waf_directive => {
+                Ok(Some(parse_waf_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -816,6 +819,176 @@ fn parse_cache_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive>
     }
 
     Ok(Directive::Cache(config))
+}
+
+fn parse_waf_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    use crate::config::dsl_ast::{WafMode, WafConfig, ModSecurityConfig, AwsWafConfig, CorazaConfig, WafRule, WafRuleType, WafRuleAction};
+
+    let mut config = WafConfig {
+        enabled: false,
+        mode: WafMode::Custom,
+        block_mode: true,
+        max_body_size: None,
+        modsecurity: None,
+        aws_waf: None,
+        coraza: None,
+        custom_rules: Vec::new(),
+    };
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::waf_option => {
+                let text = inner.as_str();
+                if text == "enabled" {
+                    config.enabled = true;
+                } else if text == "block" {
+                    config.block_mode = true;
+                } else if text == "log_only" {
+                    config.block_mode = false;
+                } else if let Some(mode_str) = text.strip_prefix("mode=") {
+                    config.mode = match mode_str {
+                        "custom" => WafMode::Custom,
+                        "modsecurity" => WafMode::ModSecurity,
+                        "coraza" => WafMode::Coraza,
+                        "aws" => WafMode::Aws,
+                        _ => return Err(anyhow!("Invalid WAF mode: {}", mode_str)),
+                    };
+                } else if let Some(size_str) = text.strip_prefix("max_body_size=") {
+                    config.max_body_size = Some(size_str.parse()?);
+                }
+            }
+            Rule::waf_block => {
+                // Parse nested WAF engine configurations
+                for engine_inner in inner.into_inner() {
+                    parse_waf_engine_directive(engine_inner, &mut config)?;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Directive::Waf(config))
+}
+
+fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut crate::config::dsl_ast::WafConfig) -> Result<()> {
+    use crate::config::dsl_ast::{ModSecurityConfig, AwsWafConfig, CorazaConfig, WafRule, WafRuleType, WafRuleAction};
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::modsecurity_directive => {
+                let mut modsec_config = ModSecurityConfig {
+                    rules_file: None,
+                    paranoia_level: None,
+                    audit_log: None,
+                };
+
+                for block_inner in inner.into_inner() {
+                    if let Rule::modsecurity_block = block_inner.as_rule() {
+                        for opt_inner in block_inner.into_inner() {
+                            if let Rule::modsecurity_option = opt_inner.as_rule() {
+                                let text = opt_inner.as_str();
+                                if let Some(rules) = text.strip_prefix("rules_file ") {
+                                    modsec_config.rules_file = Some(rules.trim_matches('"').to_string());
+                                } else if let Some(level) = text.strip_prefix("paranoia_level ") {
+                                    modsec_config.paranoia_level = Some(level.parse()?);
+                                } else if let Some(log) = text.strip_prefix("audit_log ") {
+                                    modsec_config.audit_log = Some(log.trim_matches('"').to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                config.modsecurity = Some(modsec_config);
+            }
+            Rule::aws_waf_directive => {
+                let mut aws_config = AwsWafConfig {
+                    web_acl_id: String::new(),
+                    region: String::new(),
+                    api_mode: None,
+                };
+
+                for block_inner in inner.into_inner() {
+                    if let Rule::aws_waf_block = block_inner.as_rule() {
+                        for opt_inner in block_inner.into_inner() {
+                            if let Rule::aws_waf_option = opt_inner.as_rule() {
+                                let text = opt_inner.as_str();
+                                if let Some(acl) = text.strip_prefix("web_acl_id ") {
+                                    aws_config.web_acl_id = acl.trim_matches('"').to_string();
+                                } else if let Some(region) = text.strip_prefix("region ") {
+                                    aws_config.region = region.to_string();
+                                } else if let Some(mode) = text.strip_prefix("api_mode ") {
+                                    aws_config.api_mode = Some(mode.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                config.aws_waf = Some(aws_config);
+            }
+            Rule::coraza_directive => {
+                let mut coraza_config = CorazaConfig {
+                    rules_dir: None,
+                    audit_log: None,
+                };
+
+                for block_inner in inner.into_inner() {
+                    if let Rule::coraza_block = block_inner.as_rule() {
+                        for opt_inner in block_inner.into_inner() {
+                            if let Rule::coraza_option = opt_inner.as_rule() {
+                                let text = opt_inner.as_str();
+                                if let Some(dir) = text.strip_prefix("rules_dir ") {
+                                    coraza_config.rules_dir = Some(dir.trim_matches('"').to_string());
+                                } else if let Some(log) = text.strip_prefix("audit_log ") {
+                                    coraza_config.audit_log = Some(log.trim_matches('"').to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                config.coraza = Some(coraza_config);
+            }
+            Rule::waf_rule_directive => {
+                let mut rule_type = None;
+                let mut rule_action = WafRuleAction::Enabled;
+
+                for rule_inner in inner.into_inner() {
+                    match rule_inner.as_rule() {
+                        Rule::waf_rule_type => {
+                            rule_type = Some(match rule_inner.as_str() {
+                                "sql_injection" => WafRuleType::SqlInjection,
+                                "xss" => WafRuleType::Xss,
+                                "path_traversal" => WafRuleType::PathTraversal,
+                                "rate_limit" => WafRuleType::RateLimit,
+                                "user_agent" => WafRuleType::UserAgent,
+                                "method" => WafRuleType::Method,
+                                _ => return Err(anyhow!("Unknown WAF rule type")),
+                            });
+                        }
+                        Rule::waf_rule_action => {
+                            rule_action = match rule_inner.as_str() {
+                                "enabled" => WafRuleAction::Enabled,
+                                "disabled" => WafRuleAction::Disabled,
+                                "block" => WafRuleAction::Block,
+                                "log" => WafRuleAction::Log,
+                                _ => return Err(anyhow!("Unknown WAF rule action")),
+                            };
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(rt) = rule_type {
+                    config.custom_rules.push(WafRule {
+                        rule_type: rt,
+                        action: rule_action,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

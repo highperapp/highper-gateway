@@ -127,6 +127,7 @@ directive = {
   | buffer_pool_directive
   | backpressure_directive
   | cache_directive
+  | waf_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -470,3 +471,99 @@ cache_option = {
 }
 
 http_method = { "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" }
+
+// WAF (Web Application Firewall) directives
+waf_directive = {
+    "waf" ~ waf_option+ ~ (waf_block | newline)
+}
+
+waf_option = {
+    "enabled"
+  | "mode=" ~ waf_mode
+  | "block"
+  | "log_only"
+  | "max_body_size=" ~ number
+}
+
+waf_mode = { "custom" | "modsecurity" | "coraza" | "aws" }
+
+waf_block = {
+    "{" ~ newline* ~
+    (waf_engine_directive ~ newline*)* ~
+    "}" ~ newline*
+}
+
+waf_engine_directive = {
+    modsecurity_directive
+  | aws_waf_directive
+  | coraza_directive
+  | waf_rule_directive
+}
+
+// ModSecurity configuration
+modsecurity_directive = {
+    "modsecurity" ~ modsecurity_block
+}
+
+modsecurity_block = {
+    "{" ~ newline* ~
+    (modsecurity_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+modsecurity_option = {
+    "rules_file" ~ quoted_string
+  | "paranoia_level" ~ number
+  | "audit_log" ~ quoted_string
+}
+
+// AWS WAF configuration
+aws_waf_directive = {
+    "aws_waf" ~ aws_waf_block
+}
+
+aws_waf_block = {
+    "{" ~ newline* ~
+    (aws_waf_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+aws_waf_option = {
+    "web_acl_id" ~ quoted_string
+  | "region" ~ identifier
+  | "api_mode" ~ identifier
+}
+
+// Coraza configuration
+coraza_directive = {
+    "coraza" ~ coraza_block
+}
+
+coraza_block = {
+    "{" ~ newline* ~
+    (coraza_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+coraza_option = {
+    "rules_dir" ~ quoted_string
+  | "audit_log" ~ quoted_string
+}
+
+// WAF rules
+waf_rule_directive = {
+    "waf_rule" ~ waf_rule_type ~ waf_rule_action
+}
+
+waf_rule_type = {
+    "sql_injection"
+  | "xss"
+  | "path_traversal"
+  | "rate_limit"
+  | "user_agent"
+  | "method"
+}
+
+waf_rule_action = { "enabled" | "disabled" | "block" | "log" }
+
+identifier = @{ (ASCII_ALPHANUMERIC | "-" | "_")+ }

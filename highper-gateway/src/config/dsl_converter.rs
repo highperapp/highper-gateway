@@ -95,6 +95,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     timeout: None,
                     rate_limit: None,
                     cache: None,
+                    waf: None,
                 };
 
                 // Process site-level directives
@@ -127,6 +128,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         timeout: None,
                         rate_limit: None,
                         cache: None,
+                        waf: None,
                     };
 
                     for directive in &site_route.directives {
@@ -177,6 +179,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     timeout: None,
                     rate_limit: None,
                     cache: None,
+                    waf: None,
                 };
 
                 // Process TCP site directives
@@ -299,6 +302,54 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                 yaml.push_str("      key_headers:\n");
                 for header in &cache.key_headers {
                     yaml.push_str(&format!("        - \"{}\"\n", header));
+                }
+            }
+        }
+
+        if let Some(ref waf) = route.waf {
+            yaml.push_str("    waf:\n");
+            yaml.push_str(&format!("      enabled: {}\n", waf.enabled));
+            yaml.push_str(&format!("      mode: \"{}\"\n", waf.mode));
+            yaml.push_str(&format!("      block_mode: {}\n", waf.block_mode));
+            yaml.push_str(&format!("      max_body_size: {}\n", waf.max_body_size));
+
+            if let Some(ref modsec) = waf.modsecurity {
+                yaml.push_str("      modsecurity:\n");
+                if let Some(ref rules) = modsec.rules_file {
+                    yaml.push_str(&format!("        rules_file: \"{}\"\n", rules));
+                }
+                if let Some(level) = modsec.paranoia_level {
+                    yaml.push_str(&format!("        paranoia_level: {}\n", level));
+                }
+                if let Some(ref log) = modsec.audit_log {
+                    yaml.push_str(&format!("        audit_log: \"{}\"\n", log));
+                }
+            }
+
+            if let Some(ref aws) = waf.aws_waf {
+                yaml.push_str("      aws_waf:\n");
+                yaml.push_str(&format!("        web_acl_id: \"{}\"\n", aws.web_acl_id));
+                yaml.push_str(&format!("        region: \"{}\"\n", aws.region));
+                if let Some(ref mode) = aws.api_mode {
+                    yaml.push_str(&format!("        api_mode: \"{}\"\n", mode));
+                }
+            }
+
+            if let Some(ref coraza) = waf.coraza {
+                yaml.push_str("      coraza:\n");
+                if let Some(ref dir) = coraza.rules_dir {
+                    yaml.push_str(&format!("        rules_dir: \"{}\"\n", dir));
+                }
+                if let Some(ref log) = coraza.audit_log {
+                    yaml.push_str(&format!("        audit_log: \"{}\"\n", log));
+                }
+            }
+
+            if !waf.custom_rules.is_empty() {
+                yaml.push_str("      custom_rules:\n");
+                for rule in &waf.custom_rules {
+                    yaml.push_str(&format!("        - rule_type: \"{}\"\n", rule.rule_type));
+                    yaml.push_str(&format!("          action: \"{}\"\n", rule.action));
                 }
             }
         }
@@ -515,6 +566,39 @@ fn process_directive(
             });
         }
 
+        Directive::Waf(waf_config) => {
+            // Convert DSL WafConfig to WafYaml
+            route.waf = Some(WafYaml {
+                enabled: waf_config.enabled,
+                mode: match waf_config.mode {
+                    dsl_ast::WafMode::Custom => "custom".to_string(),
+                    dsl_ast::WafMode::ModSecurity => "modsecurity".to_string(),
+                    dsl_ast::WafMode::Coraza => "coraza".to_string(),
+                    dsl_ast::WafMode::Aws => "aws".to_string(),
+                },
+                block_mode: waf_config.block_mode,
+                max_body_size: waf_config.max_body_size.unwrap_or(10485760),
+                modsecurity: waf_config.modsecurity.as_ref().map(|ms| ModSecurityYaml {
+                    rules_file: ms.rules_file.clone(),
+                    paranoia_level: ms.paranoia_level,
+                    audit_log: ms.audit_log.clone(),
+                }),
+                aws_waf: waf_config.aws_waf.as_ref().map(|aws| AwsWafYaml {
+                    web_acl_id: aws.web_acl_id.clone(),
+                    region: aws.region.clone(),
+                    api_mode: aws.api_mode.clone(),
+                }),
+                coraza: waf_config.coraza.as_ref().map(|cor| CorazaYaml {
+                    rules_dir: cor.rules_dir.clone(),
+                    audit_log: cor.audit_log.clone(),
+                }),
+                custom_rules: waf_config.custom_rules.iter().map(|rule| WafRuleYaml {
+                    rule_type: format!("{:?}", rule.rule_type).to_lowercase(),
+                    action: format!("{:?}", rule.action).to_lowercase(),
+                }).collect(),
+            });
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -602,6 +686,7 @@ struct RouteYaml {
     timeout: Option<u64>,
     rate_limit: Option<RateLimitYaml>,
     cache: Option<CacheYaml>,
+    waf: Option<WafYaml>,
 }
 
 struct CertYaml {
@@ -625,6 +710,44 @@ struct CacheYaml {
     only_success: bool,
     methods: Vec<String>,
     key_headers: Vec<String>,
+}
+
+#[derive(Clone)]
+struct WafYaml {
+    enabled: bool,
+    mode: String,
+    block_mode: bool,
+    max_body_size: usize,
+    modsecurity: Option<ModSecurityYaml>,
+    aws_waf: Option<AwsWafYaml>,
+    coraza: Option<CorazaYaml>,
+    custom_rules: Vec<WafRuleYaml>,
+}
+
+#[derive(Clone)]
+struct ModSecurityYaml {
+    rules_file: Option<String>,
+    paranoia_level: Option<u8>,
+    audit_log: Option<String>,
+}
+
+#[derive(Clone)]
+struct AwsWafYaml {
+    web_acl_id: String,
+    region: String,
+    api_mode: Option<String>,
+}
+
+#[derive(Clone)]
+struct CorazaYaml {
+    rules_dir: Option<String>,
+    audit_log: Option<String>,
+}
+
+#[derive(Clone)]
+struct WafRuleYaml {
+    rule_type: String,
+    action: String,
 }
 
 #[cfg(test)]
