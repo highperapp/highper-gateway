@@ -394,6 +394,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::backpressure_directive => {
                 Ok(Some(parse_backpressure_directive(inner)?))
             }
+            Rule::cache_directive => {
+                Ok(Some(parse_cache_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -768,6 +771,51 @@ fn parse_memory_size(s: &str) -> Result<usize> {
 
     let num: usize = num_str.parse()?;
     Ok(num * unit)
+}
+
+fn parse_cache_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut config = CacheConfig {
+        enabled: false,
+        ttl: None,
+        max_size: None,
+        cleanup_interval: None,
+        only_success: false,
+        methods: Vec::new(),
+        key_headers: Vec::new(),
+    };
+
+    for inner in pair.into_inner() {
+        if let Rule::cache_option = inner.as_rule() {
+            let text = inner.as_str();
+            if text == "enabled" {
+                config.enabled = true;
+            } else if text == "only_success" {
+                config.only_success = true;
+            } else if let Some(ttl_str) = text.strip_prefix("ttl=") {
+                config.ttl = Some(parse_duration(ttl_str)?);
+            } else if let Some(size_str) = text.strip_prefix("max_size=") {
+                config.max_size = Some(size_str.parse()?);
+            } else if let Some(interval_str) = text.strip_prefix("cleanup_interval=") {
+                config.cleanup_interval = Some(parse_duration(interval_str)?);
+            } else if text.starts_with("methods") {
+                // Parse HTTP methods
+                for method_inner in inner.into_inner() {
+                    if let Rule::http_method = method_inner.as_rule() {
+                        config.methods.push(method_inner.as_str().to_string());
+                    }
+                }
+            } else if text.starts_with("key_headers") {
+                // Parse header names
+                for header_inner in inner.into_inner() {
+                    if let Rule::header_name = header_inner.as_rule() {
+                        config.key_headers.push(header_inner.as_str().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Directive::Cache(config))
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

@@ -94,6 +94,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     upstream: upstream_name.clone(),
                     timeout: None,
                     rate_limit: None,
+                    cache: None,
                 };
 
                 // Process site-level directives
@@ -125,6 +126,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         upstream: sub_upstream.name.clone(),
                         timeout: None,
                         rate_limit: None,
+                        cache: None,
                     };
 
                     for directive in &site_route.directives {
@@ -174,6 +176,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     upstream: upstream_name.clone(),
                     timeout: None,
                     rate_limit: None,
+                    cache: None,
                 };
 
                 // Process TCP site directives
@@ -277,6 +280,27 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str("      enabled: true\n");
             yaml.push_str(&format!("      capacity: {}\n", rl.rate));
             yaml.push_str(&format!("      window: {}s\n", rl.window_secs));
+        }
+
+        if let Some(ref cache) = route.cache {
+            yaml.push_str("    cache:\n");
+            yaml.push_str(&format!("      enabled: {}\n", cache.enabled));
+            yaml.push_str(&format!("      default_ttl: {}s\n", cache.ttl_secs));
+            yaml.push_str(&format!("      max_size: {}\n", cache.max_size));
+            yaml.push_str(&format!("      cleanup_interval: {}s\n", cache.cleanup_interval_secs));
+            yaml.push_str(&format!("      cache_only_success: {}\n", cache.only_success));
+            if !cache.methods.is_empty() {
+                yaml.push_str("      methods:\n");
+                for method in &cache.methods {
+                    yaml.push_str(&format!("        - \"{}\"\n", method));
+                }
+            }
+            if !cache.key_headers.is_empty() {
+                yaml.push_str("      key_headers:\n");
+                for header in &cache.key_headers {
+                    yaml.push_str(&format!("        - \"{}\"\n", header));
+                }
+            }
         }
     }
 
@@ -474,6 +498,23 @@ fn process_directive(
             // Requires global config section in YAML generation
         }
 
+        Directive::Cache(cache_config) => {
+            // Convert DSL CacheConfig to CacheYaml
+            route.cache = Some(CacheYaml {
+                enabled: cache_config.enabled,
+                ttl_secs: cache_config.ttl.map(|d| d.as_secs()).unwrap_or(300),
+                max_size: cache_config.max_size.unwrap_or(10000),
+                cleanup_interval_secs: cache_config.cleanup_interval.map(|d| d.as_secs()).unwrap_or(60),
+                only_success: cache_config.only_success,
+                methods: if cache_config.methods.is_empty() {
+                    vec!["GET".to_string(), "HEAD".to_string()]
+                } else {
+                    cache_config.methods.clone()
+                },
+                key_headers: cache_config.key_headers.clone(),
+            });
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -560,6 +601,7 @@ struct RouteYaml {
     upstream: String,
     timeout: Option<u64>,
     rate_limit: Option<RateLimitYaml>,
+    cache: Option<CacheYaml>,
 }
 
 struct CertYaml {
@@ -572,6 +614,17 @@ struct CertYaml {
 struct RateLimitYaml {
     rate: u32,
     window_secs: u64,
+}
+
+#[derive(Clone)]
+struct CacheYaml {
+    enabled: bool,
+    ttl_secs: u64,
+    max_size: usize,
+    cleanup_interval_secs: u64,
+    only_success: bool,
+    methods: Vec<String>,
+    key_headers: Vec<String>,
 }
 
 #[cfg(test)]
