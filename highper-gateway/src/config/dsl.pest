@@ -126,6 +126,7 @@ directive = {
   | grpc_timeout_directive
   | buffer_pool_directive
   | backpressure_directive
+  | cache_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -452,3 +453,20 @@ quic_ack_delay_directive = {
 quic_max_idle_timeout_directive = {
     "quic_max_idle_timeout" ~ duration ~ newline
 }
+
+// Cache directives
+cache_directive = {
+    "cache" ~ cache_option+ ~ newline
+}
+
+cache_option = {
+    "enabled"
+  | "ttl=" ~ duration
+  | "max_size=" ~ number
+  | "cleanup_interval=" ~ duration
+  | "only_success"
+  | "methods" ~ http_method+
+  | "key_headers" ~ header_name+
+}
+
+http_method = { "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" }

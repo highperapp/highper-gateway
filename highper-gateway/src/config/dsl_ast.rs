@@ -251,6 +251,9 @@ pub enum Directive {
 
     /// Backpressure configuration
     Backpressure(BackpressureConfig),
+
+    /// Cache configuration
+    Cache(CacheConfig),
 }
 
 /// Backend server
@@ -455,6 +458,32 @@ impl Default for BackpressureConfig {
             enabled: true,
             max_connections: Some(3000000),
             memory_limit: Some(49152 * 1024 * 1024), // 49152 MB
+        }
+    }
+}
+
+/// Cache configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct CacheConfig {
+    pub enabled: bool,
+    pub ttl: Option<Duration>,
+    pub max_size: Option<usize>,
+    pub cleanup_interval: Option<Duration>,
+    pub only_success: bool,
+    pub methods: Vec<String>,
+    pub key_headers: Vec<String>,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            ttl: Some(Duration::from_secs(300)), // 5 minutes
+            max_size: Some(10000),
+            cleanup_interval: Some(Duration::from_secs(60)),
+            only_success: true,
+            methods: vec!["GET".to_string(), "HEAD".to_string()],
+            key_headers: vec![],
         }
     }
 }
