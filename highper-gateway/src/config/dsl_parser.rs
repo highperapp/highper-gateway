@@ -421,6 +421,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::error_page_directive => {
                 Ok(Some(parse_error_page_directive(inner)?))
             }
+            Rule::directory_listing_directive => {
+                Ok(Some(parse_directory_listing_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -1231,6 +1234,18 @@ fn parse_error_page_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direc
         (Some(code), Some(path)) => Ok(Directive::ErrorPage(code, path)),
         _ => Err(anyhow!("Invalid error_page directive: missing status code or file path")),
     }
+}
+
+fn parse_directory_listing_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        let text = inner.as_str();
+        match text {
+            "on" => return Ok(Directive::DirectoryListing(true)),
+            "off" => return Ok(Directive::DirectoryListing(false)),
+            _ => {}
+        }
+    }
+    Err(anyhow!("Invalid directory_listing directive"))
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

@@ -673,6 +673,10 @@ pub struct RouteConfig {
     /// Custom error pages (status code -> file path)
     #[serde(default)]
     pub error_pages: std::collections::HashMap<u16, String>,
+
+    /// Enable directory listing for directories
+    #[serde(default)]
+    pub directory_listing: bool,
 }
 
 /// Route matching rules

@@ -103,6 +103,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     index: Vec::new(),
                     try_files: Vec::new(),
                     error_pages: std::collections::HashMap::new(),
+                    directory_listing: false,
                 };
 
                 // Process site-level directives
@@ -143,6 +144,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         index: Vec::new(),
                         try_files: Vec::new(),
                         error_pages: std::collections::HashMap::new(),
+                        directory_listing: false,
                     };
 
                     for directive in &site_route.directives {
@@ -218,6 +220,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     index: Vec::new(),
                     try_files: Vec::new(),
                     error_pages: std::collections::HashMap::new(),
+                    directory_listing: false,
                 };
 
                 // Process TCP site directives
@@ -458,6 +461,10 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             for (status_code, file_path) in &route.error_pages {
                 yaml.push_str(&format!("      {}: \"{}\"\n", status_code, file_path));
             }
+        }
+
+        if route.directory_listing {
+            yaml.push_str("    directory_listing: true\n");
         }
     }
 
@@ -761,6 +768,10 @@ fn process_directive(
             route.error_pages.insert(*status_code, file_path.clone());
         }
 
+        Directive::DirectoryListing(enabled) => {
+            route.directory_listing = *enabled;
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -856,6 +867,7 @@ struct RouteYaml {
     index: Vec<String>,
     try_files: Vec<String>,
     error_pages: std::collections::HashMap<u16, String>,
+    directory_listing: bool,
 }
 
 struct CertYaml {

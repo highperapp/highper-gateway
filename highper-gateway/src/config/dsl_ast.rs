@@ -278,6 +278,9 @@ pub enum Directive {
 
     /// Custom error page (status code, file path)
     ErrorPage(u16, String),
+
+    /// Enable directory listing
+    DirectoryListing(bool),
 }
 
 /// Backend server

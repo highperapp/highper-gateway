@@ -1393,6 +1393,13 @@ impl Handler {
                     break;
                 }
             }
+
+            // If no index file found and directory listing is enabled, serve directory listing
+            if resolved_path.is_none() && route.directory_listing {
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), StatusCode::OK.as_u16(), duration);
+                return self.serve_directory_listing(&file_path, path);
+            }
         }
 
         // If not found, try try_files patterns
@@ -1832,6 +1839,186 @@ impl Handler {
         self.error_response(status, message)
     }
 
+    /// Generate HTML directory listing
+    fn serve_directory_listing(
+        &self,
+        dir_path: &std::path::Path,
+        request_path: &str,
+    ) -> Result<Response<ResponseBody>> {
+        use std::fs;
+
+        // Read directory entries
+        let entries = fs::read_dir(dir_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read directory: {}", e))?;
+
+        let mut dirs = Vec::new();
+        let mut files = Vec::new();
+
+        for entry in entries {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip hidden files
+            if name.starts_with('.') {
+                continue;
+            }
+
+            let size = if metadata.is_dir() {
+                "-".to_string()
+            } else {
+                format_file_size(metadata.len())
+            };
+
+            let modified = metadata.modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| {
+                    let secs = d.as_secs();
+                    chrono::DateTime::from_timestamp(secs as i64, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_else(|| "Unknown".to_string())
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            if metadata.is_dir() {
+                dirs.push((name, size, modified));
+            } else {
+                files.push((name, size, modified));
+            }
+        }
+
+        // Sort alphabetically
+        dirs.sort_by(|a, b| a.0.cmp(&b.0));
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+
+        // Generate HTML
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index of {path}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }}
+        h1 {{
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 0.5rem;
+        }}
+        table {{
+            width: 100%;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th {{
+            background: #667eea;
+            color: white;
+            text-align: left;
+            padding: 1rem;
+            font-weight: 600;
+        }}
+        td {{
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #eee;
+        }}
+        tr:hover td {{
+            background: #f8f9ff;
+        }}
+        a {{
+            color: #667eea;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        .dir {{
+            font-weight: 500;
+        }}
+        .dir::before {{
+            content: "📁 ";
+        }}
+        .file::before {{
+            content: "📄 ";
+        }}
+        .size {{
+            text-align: right;
+            color: #666;
+        }}
+        .modified {{
+            color: #888;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <h1>Index of {path}</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th style="text-align: right">Size</th>
+                <th>Modified</th>
+            </tr>
+        </thead>
+        <tbody>
+            {parent_link}
+            {directory_rows}
+            {file_rows}
+        </tbody>
+    </table>
+</body>
+</html>"#,
+            path = request_path,
+            parent_link = if request_path != "/" {
+                r#"<tr>
+                <td><a href=".." class="dir">Parent Directory</a></td>
+                <td class="size">-</td>
+                <td class="modified">-</td>
+            </tr>"#
+            } else {
+                ""
+            },
+            directory_rows = dirs.iter()
+                .map(|(name, size, modified)| format!(
+                    r#"<tr>
+                <td><a href="{}/{}" class="dir">{}/</a></td>
+                <td class="size">{}</td>
+                <td class="modified">{}</td>
+            </tr>"#,
+                    request_path.trim_end_matches('/'), name, name, size, modified
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            file_rows = files.iter()
+                .map(|(name, size, modified)| format!(
+                    r#"<tr>
+                <td><a href="{}/{}" class="file">{}</a></td>
+                <td class="size">{}</td>
+                <td class="modified">{}</td>
+            </tr>"#,
+                    request_path.trim_end_matches('/'), name, name, size, modified
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "text/html; charset=utf-8")
+            .header("cache-control", "no-cache")
+            .body(ResponseBody::buffered(Bytes::from(html)))?)
+    }
+
     /// Parse Range header and return (start, end) byte positions
     /// Supports formats like: "bytes=0-1023", "bytes=1024-", "bytes=-500"
     /// Returns None if range is invalid or not satisfiable
@@ -1901,6 +2088,24 @@ impl Handler {
             metrics.increment_requests();
             metrics.record_status(status_code);
         }
+    }
+}
+
+/// Format file size in human-readable format
+fn format_file_size(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_idx = 0;
+
+    while size >= 1024.0 && unit_idx < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_idx += 1;
+    }
+
+    if unit_idx == 0 {
+        format!("{} {}", size as u64, UNITS[unit_idx])
+    } else {
+        format!("{:.1} {}", size, UNITS[unit_idx])
     }
 }
 

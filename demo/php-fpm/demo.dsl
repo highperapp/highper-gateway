@@ -17,6 +17,9 @@ http://localhost:8080 {
     error_page 404 "/404.html"
     error_page 500 "/500.html"
 
+    # Enable directory listing for directories without index files
+    directory_listing on
+
     # Static files in /static directory
     /static/* {
         static_files
