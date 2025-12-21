@@ -104,6 +104,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     try_files: Vec::new(),
                     error_pages: std::collections::HashMap::new(),
                     directory_listing: false,
+                    limits: None,
                 };
 
                 // Process site-level directives
@@ -145,6 +146,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         try_files: Vec::new(),
                         error_pages: std::collections::HashMap::new(),
                         directory_listing: false,
+                        limits: None,
                     };
 
                     for directive in &site_route.directives {
@@ -221,6 +223,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     try_files: Vec::new(),
                     error_pages: std::collections::HashMap::new(),
                     directory_listing: false,
+                    limits: None,
                 };
 
                 // Process TCP site directives
@@ -465,6 +468,25 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
 
         if route.directory_listing {
             yaml.push_str("    directory_listing: true\n");
+        }
+
+        if let Some(limits) = &route.limits {
+            yaml.push_str("    limits:\n");
+            if let Some(max_file_size) = limits.max_file_size {
+                yaml.push_str(&format!("      max_file_size: {}\n", max_file_size));
+            }
+            if let Some(max_request_body) = limits.max_request_body {
+                yaml.push_str(&format!("      max_request_body: {}\n", max_request_body));
+            }
+            if let Some(max_path_depth) = limits.max_path_depth {
+                yaml.push_str(&format!("      max_path_depth: {}\n", max_path_depth));
+            }
+            if let Some(max_connections_per_ip) = limits.max_connections_per_ip {
+                yaml.push_str(&format!("      max_connections_per_ip: {}\n", max_connections_per_ip));
+            }
+            if let Some(max_requests_per_second) = limits.max_requests_per_second {
+                yaml.push_str(&format!("      max_requests_per_second: {}\n", max_requests_per_second));
+            }
         }
     }
 
@@ -772,6 +794,17 @@ fn process_directive(
             route.directory_listing = *enabled;
         }
 
+        Directive::Limits(limits_config) => {
+            use crate::config::schema::ResourceLimits;
+            route.limits = Some(ResourceLimits {
+                max_file_size: limits_config.max_file_size,
+                max_request_body: limits_config.max_request_body,
+                max_path_depth: limits_config.max_path_depth,
+                max_connections_per_ip: limits_config.max_connections_per_ip,
+                max_requests_per_second: limits_config.max_requests_per_second,
+            });
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -868,6 +901,7 @@ struct RouteYaml {
     try_files: Vec<String>,
     error_pages: std::collections::HashMap<u16, String>,
     directory_listing: bool,
+    limits: Option<crate::config::schema::ResourceLimits>,
 }
 
 struct CertYaml {

@@ -20,6 +20,9 @@ http://localhost:8080 {
     # Enable directory listing for directories without index files
     directory_listing on
 
+    # Resource limits for production hardening
+    limits max_file_size=200MB max_request_body=20MB max_path_depth=32 max_connections_per_ip=150 max_requests_per_second=200
+
     # Static files in /static directory
     /static/* {
         static_files

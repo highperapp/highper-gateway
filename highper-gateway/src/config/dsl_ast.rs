@@ -281,6 +281,19 @@ pub enum Directive {
 
     /// Enable directory listing
     DirectoryListing(bool),
+
+    /// Resource limits configuration
+    Limits(LimitsConfig),
+}
+
+/// Resource limits configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct LimitsConfig {
+    pub max_file_size: Option<u64>,
+    pub max_request_body: Option<usize>,
+    pub max_path_depth: Option<usize>,
+    pub max_connections_per_ip: Option<usize>,
+    pub max_requests_per_second: Option<u32>,
 }
 
 /// Backend server

@@ -424,6 +424,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::directory_listing_directive => {
                 Ok(Some(parse_directory_listing_directive(inner)?))
             }
+            Rule::limits_directive => {
+                Ok(Some(parse_limits_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -1246,6 +1249,62 @@ fn parse_directory_listing_directive(pair: pest::iterators::Pair<Rule>) -> Resul
         }
     }
     Err(anyhow!("Invalid directory_listing directive"))
+}
+
+fn parse_limits_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    use crate::config::dsl_ast::LimitsConfig;
+
+    let mut limits = LimitsConfig {
+        max_file_size: None,
+        max_request_body: None,
+        max_path_depth: None,
+        max_connections_per_ip: None,
+        max_requests_per_second: None,
+    };
+
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::limit_param {
+            let param_text = inner.as_str();
+
+            if param_text.starts_with("max_file_size=") {
+                let value = &param_text[14..]; // Skip "max_file_size="
+                limits.max_file_size = Some(parse_byte_size(value)?);
+            } else if param_text.starts_with("max_request_body=") {
+                let value = &param_text[17..]; // Skip "max_request_body="
+                limits.max_request_body = Some(parse_byte_size(value)? as usize);
+            } else if param_text.starts_with("max_path_depth=") {
+                let value = &param_text[15..]; // Skip "max_path_depth="
+                limits.max_path_depth = Some(value.parse::<usize>()?);
+            } else if param_text.starts_with("max_connections_per_ip=") {
+                let value = &param_text[23..]; // Skip "max_connections_per_ip="
+                limits.max_connections_per_ip = Some(value.parse::<usize>()?);
+            } else if param_text.starts_with("max_requests_per_second=") {
+                let value = &param_text[24..]; // Skip "max_requests_per_second="
+                limits.max_requests_per_second = Some(value.parse::<u32>()?);
+            }
+        }
+    }
+
+    Ok(Directive::Limits(limits))
+}
+
+fn parse_byte_size(value: &str) -> Result<u64> {
+    if value.ends_with("GB") {
+        let num = value[..value.len()-2].parse::<u64>()?;
+        Ok(num * 1024 * 1024 * 1024)
+    } else if value.ends_with("MB") {
+        let num = value[..value.len()-2].parse::<u64>()?;
+        Ok(num * 1024 * 1024)
+    } else if value.ends_with("KB") {
+        let num = value[..value.len()-2].parse::<u64>()?;
+        Ok(num * 1024)
+    } else if value.ends_with("B") {
+        let num = value[..value.len()-1].parse::<u64>()?;
+        Ok(num)
+    } else {
+        // No suffix, treat as bytes
+        Ok(value.parse::<u64>()?)
+    }
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

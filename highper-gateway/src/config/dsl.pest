@@ -136,6 +136,7 @@ directive = {
   | try_files_directive
   | error_page_directive
   | directory_listing_directive
+  | limits_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -664,4 +665,20 @@ error_page_directive = {
 
 directory_listing_directive = {
     "directory_listing" ~ ("on" | "off") ~ newline
+}
+
+limits_directive = {
+    "limits" ~ limit_param+ ~ newline
+}
+
+limit_param = {
+    "max_file_size=" ~ byte_size
+  | "max_request_body=" ~ byte_size
+  | "max_path_depth=" ~ number
+  | "max_connections_per_ip=" ~ number
+  | "max_requests_per_second=" ~ number
+}
+
+byte_size = @{
+    number ~ ("KB" | "MB" | "GB" | "B")?
 }

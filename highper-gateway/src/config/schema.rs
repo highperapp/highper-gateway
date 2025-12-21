@@ -677,6 +677,29 @@ pub struct RouteConfig {
     /// Enable directory listing for directories
     #[serde(default)]
     pub directory_listing: bool,
+
+    /// Resource limits configuration
+    #[serde(default)]
+    pub limits: Option<ResourceLimits>,
+}
+
+/// Resource limits for route
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct ResourceLimits {
+    /// Maximum static file size in bytes (default: 100 MB)
+    pub max_file_size: Option<u64>,
+
+    /// Maximum request body size in bytes (default: 10 MB)
+    pub max_request_body: Option<usize>,
+
+    /// Maximum path depth (default: 32)
+    pub max_path_depth: Option<usize>,
+
+    /// Maximum concurrent connections per IP (default: 100)
+    pub max_connections_per_ip: Option<usize>,
+
+    /// Maximum requests per second per IP (default: 100)
+    pub max_requests_per_second: Option<u32>,
 }
 
 /// Route matching rules
