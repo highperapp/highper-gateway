@@ -649,6 +649,26 @@ pub struct RouteConfig {
     /// API aggregation configuration
     #[serde(default)]
     pub aggregation: Option<crate::gateway::aggregation::AggregationConfig>,
+
+    /// PHP-FPM configuration
+    #[serde(default)]
+    pub php_fpm: Option<PhpFpmConfig>,
+
+    /// Enable static file serving
+    #[serde(default)]
+    pub static_files: bool,
+
+    /// Document root for static files and PHP scripts
+    #[serde(default)]
+    pub root: Option<String>,
+
+    /// Index files to try (e.g., index.php, index.html)
+    #[serde(default)]
+    pub index: Vec<String>,
+
+    /// Try files pattern (Nginx-style: $uri, $uri/, /index.php, =404)
+    #[serde(default)]
+    pub try_files: Vec<String>,
 }
 
 /// Route matching rules
@@ -1398,6 +1418,65 @@ pub struct RouteRateLimitConfig {
 
     /// Key type for this route (overrides global)
     pub key_type: Option<RateLimitKeyType>,
+}
+
+/// PHP-FPM configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PhpFpmConfig {
+    /// Enable PHP-FPM processing
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// PHP-FPM socket path (Unix socket or TCP address like 127.0.0.1:9000)
+    pub socket: String,
+
+    /// Connection pool size
+    #[serde(default = "default_php_fpm_pool_size")]
+    pub pool_size: usize,
+
+    /// Connect timeout in seconds
+    #[serde(default = "default_php_fpm_connect_timeout")]
+    pub connect_timeout_secs: u64,
+
+    /// Read timeout in seconds
+    #[serde(default = "default_php_fpm_read_timeout")]
+    pub read_timeout_secs: u64,
+
+    /// Write timeout in seconds
+    #[serde(default = "default_php_fpm_write_timeout")]
+    pub write_timeout_secs: u64,
+
+    /// Keepalive timeout in seconds
+    #[serde(default = "default_php_fpm_keepalive_timeout")]
+    pub keepalive_timeout_secs: u64,
+
+    /// Script file extensions to process (.php, .phtml, etc.)
+    #[serde(default = "default_php_fpm_script_extensions")]
+    pub script_extensions: Vec<String>,
+}
+
+fn default_php_fpm_pool_size() -> usize {
+    50
+}
+
+fn default_php_fpm_connect_timeout() -> u64 {
+    5
+}
+
+fn default_php_fpm_read_timeout() -> u64 {
+    60
+}
+
+fn default_php_fpm_write_timeout() -> u64 {
+    60
+}
+
+fn default_php_fpm_keepalive_timeout() -> u64 {
+    90
+}
+
+fn default_php_fpm_script_extensions() -> Vec<String> {
+    vec![".php".to_string()]
 }
 
 

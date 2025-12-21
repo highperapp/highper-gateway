@@ -612,112 +612,7 @@ impl Handler {
             }
         }
 
-        // Check for static file or PHP-FPM request (web server features)
-        if let Some(static_handler) = &self.static_file_handler {
-            // Try to resolve the path
-            match static_handler.resolve_path(path) {
-                Ok(file_path) => {
-                    match static_handler.get_file_info(&file_path) {
-                        Ok(file_info) => {
-                            // Check if this is a PHP file
-                            if file_info.is_php {
-                                if let Some(php_pool) = &self.php_fpm_pool {
-                                    debug!("Processing PHP request: {}", path);
-
-                                    // Split request to access parts
-                                    let (parts, incoming_body) = req.into_parts();
-
-                                    // Extract host from parts (owned copy)
-                                    let php_host = parts.headers
-                                        .get("host")
-                                        .and_then(|h| h.to_str().ok())
-                                        .unwrap_or("localhost")
-                                        .to_string();
-
-                                    // Extract Content-Length header
-                                    let content_length = parts.headers
-                                        .get("content-length")
-                                        .and_then(|h| h.to_str().ok())
-                                        .and_then(|s| s.parse::<u64>().ok());
-
-                                    // Collect body for POST/PUT/PATCH requests
-                                    let body = if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
-                                        match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
-                                            Ok(collected) => {
-                                                debug!("Collected {} bytes for PHP request", collected.len());
-                                                collected
-                                            }
-                                            Err(e) => {
-                                                warn!("Failed to collect request body: {}", e);
-                                                let duration = start.elapsed().as_secs_f64();
-                                                record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
-                                                return self.error_response(
-                                                    StatusCode::BAD_REQUEST,
-                                                    "Invalid request body",
-                                                );
-                                            }
-                                        }
-                                    } else {
-                                        // For GET, HEAD, etc., use empty body
-                                        CollectedBody::empty()
-                                    };
-
-                                    // Reconstruct request with empty body
-                                    let req_empty = Request::from_parts(parts, Empty::<Bytes>::new());
-
-                                    match self.serve_php_file(&file_info, php_pool, &req_empty, &php_host, path, body).await {
-                                        Ok(response) => {
-                                            let duration = start.elapsed().as_secs_f64();
-                                            record_request(method.as_str(), response.status().as_u16(), duration);
-                                            return Ok(response);
-                                        }
-                                        Err(e) => {
-                                            error!("PHP-FPM processing failed for {:?}: {}", file_path, e);
-                                            let duration = start.elapsed().as_secs_f64();
-                                            record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
-                                            return self.error_response(
-                                                StatusCode::INTERNAL_SERVER_ERROR,
-                                                "PHP processing failed",
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    // PHP file but no PHP-FPM pool configured
-                                    debug!("PHP file detected but no PHP-FPM pool configured: {}", path);
-                                }
-                            } else {
-                                // Serve static file
-                                debug!("Serving static file: {:?}", file_path);
-
-                                match self.serve_static_file(&file_info, &static_handler, &req).await {
-                                    Ok(response) => {
-                                        let duration = start.elapsed().as_secs_f64();
-                                        record_request(method.as_str(), response.status().as_u16(), duration);
-                                        return Ok(response);
-                                    }
-                                    Err(e) => {
-                                        warn!("Error serving static file {:?}: {}", file_path, e);
-                                        // Fall through to normal routing
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            // File not found or directory listing disabled
-                            debug!("Static file not found or directory: {} - {}", path, e);
-                            // Fall through to normal routing
-                        }
-                    }
-                }
-                Err(e) => {
-                    // Path resolution failed (likely path traversal or invalid path)
-                    debug!("Path resolution failed for {}: {}", path, e);
-                    // Fall through to normal routing
-                }
-            }
-        }
-
-        // Check for WebSocket upgrade request
+        // Check for WebSocket upgrade request (BEFORE consuming req)
         if self.config.websocket.enabled && ws_handler::is_websocket_upgrade(&req) {
             debug!("Detected WebSocket upgrade request");
             info!("WebSocket upgrade detected for path: {}", path);
@@ -912,7 +807,7 @@ impl Handler {
             );
         }
 
-        // Check for gRPC request and store info for later use
+        // Check for gRPC request and store info for later use (BEFORE consuming req)
         let grpc_request_info = if self.config.grpc.enabled && grpc_detector::is_grpc_request(&req) {
             debug!("Detected gRPC request");
             if let Some(grpc_req) = grpc_detector::parse_grpc_request(&req) {
@@ -925,6 +820,23 @@ impl Handler {
         } else {
             None
         };
+
+        // Check for webserver route (static file or PHP-FPM) BEFORE proxy routing
+        // Try to find matching route to check for webserver configuration
+        if let Some(route) = self.find_route(&method, &host, path) {
+            // Check if this route has webserver configuration
+            let has_webserver_config = route.static_files
+                || route.php_fpm.is_some()
+                || route.root.is_some();
+
+            if has_webserver_config {
+                debug!("Route {} has webserver configuration, processing as webserver request", route.name);
+
+                // Handle as webserver request using route configuration
+                // NOTE: This consumes req, so we can't fall through to proxy
+                return self.handle_webserver_request(req, route, &method, &host, path, start).await;
+            }
+        }
 
         // Find matching route (with hostname router support)
         let upstream_name = self.find_route_async(&method, &host, path).await;
@@ -1443,6 +1355,185 @@ impl Handler {
 
         info!("WebSocket proxy completed");
         Ok(())
+    }
+
+    /// Handle webserver request (static files or PHP-FPM) using route configuration
+    async fn handle_webserver_request(
+        &self,
+        req: Request<Incoming>,
+        route: &RouteConfig,
+        method: &Method,
+        host: &str,
+        path: &str,
+        start: Instant,
+    ) -> Result<Response<ResponseBody>> {
+        // Get static file handler
+        let static_handler = self.static_file_handler.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Static file handler not configured"))?;
+
+        // Get document root from route or use default
+        let document_root = route.root.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No document root configured for route"))?;
+
+        debug!("Webserver request: path={}, root={}", path, document_root);
+
+        // Try to resolve the file using the document root
+        let mut resolved_path = None;
+        let file_path = std::path::Path::new(document_root).join(path.trim_start_matches('/'));
+
+        // Check if the path exists
+        if file_path.exists() && file_path.is_file() {
+            resolved_path = Some(file_path);
+        } else if file_path.is_dir() {
+            // Try index files
+            for index_file in &route.index {
+                let index_path = file_path.join(index_file);
+                if index_path.exists() && index_path.is_file() {
+                    resolved_path = Some(index_path);
+                    break;
+                }
+            }
+        }
+
+        // If not found, try try_files patterns
+        if resolved_path.is_none() && !route.try_files.is_empty() {
+            for pattern in &route.try_files {
+                let test_path = if pattern == "$uri" {
+                    // Try original path
+                    std::path::Path::new(document_root).join(path.trim_start_matches('/'))
+                } else if pattern == "$uri/" {
+                    // Try as directory with trailing slash
+                    let mut p = std::path::Path::new(document_root).join(path.trim_start_matches('/'));
+                    if p.is_dir() {
+                        // Try index files in this directory
+                        for index_file in &route.index {
+                            let index_path = p.join(index_file);
+                            if index_path.exists() && index_path.is_file() {
+                                resolved_path = Some(index_path);
+                                break;
+                            }
+                        }
+                    }
+                    continue;
+                } else if pattern.starts_with('=') {
+                    // Status code fallback (e.g., =404)
+                    if let Ok(code) = pattern[1..].parse::<u16>() {
+                        if let Ok(status) = StatusCode::from_u16(code) {
+                            let duration = start.elapsed().as_secs_f64();
+                            record_request(method.as_str(), status.as_u16(), duration);
+                            return self.error_response(status, &format!("File not found: {}", path));
+                        }
+                    }
+                    continue;
+                } else if pattern.starts_with('/') {
+                    // Absolute path fallback
+                    std::path::Path::new(document_root).join(pattern.trim_start_matches('/'))
+                } else {
+                    // Treat as relative path
+                    std::path::Path::new(document_root).join(pattern)
+                };
+
+                if test_path.exists() && test_path.is_file() {
+                    resolved_path = Some(test_path);
+                    break;
+                }
+            }
+        }
+
+        // If still not found, return 404
+        let final_path = resolved_path.ok_or_else(|| {
+            anyhow::anyhow!("File not found: {}", path)
+        })?;
+
+        debug!("Resolved path: {:?}", final_path);
+
+        // Get file info
+        let file_info = static_handler.get_file_info(&final_path)?;
+
+        // Check if this is a PHP file and PHP-FPM is configured
+        if file_info.is_php {
+            if let Some(php_config) = &route.php_fpm {
+                if php_config.enabled {
+                    if let Some(php_pool) = &self.php_fpm_pool {
+                        debug!("Processing PHP request: {:?}", final_path);
+
+                        // Split request to access parts
+                        let (parts, incoming_body) = req.into_parts();
+
+                        // Extract Content-Length header
+                        let content_length = parts.headers
+                            .get("content-length")
+                            .and_then(|h| h.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok());
+
+                        // Collect body for POST/PUT/PATCH requests
+                        let body = if matches!(method, &Method::POST | &Method::PUT | &Method::PATCH) {
+                            match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                                Ok(collected) => {
+                                    debug!("Collected {} bytes for PHP request", collected.len());
+                                    collected
+                                }
+                                Err(e) => {
+                                    warn!("Failed to collect request body: {}", e);
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
+                                    return self.error_response(
+                                        StatusCode::BAD_REQUEST,
+                                        "Invalid request body",
+                                    );
+                                }
+                            }
+                        } else {
+                            // For GET, HEAD, etc., use empty body
+                            CollectedBody::empty()
+                        };
+
+                        // Reconstruct request with empty body
+                        let req_empty = Request::from_parts(parts, Empty::<Bytes>::new());
+
+                        match self.serve_php_file(&file_info, php_pool, &req_empty, host, path, body).await {
+                            Ok(response) => {
+                                let duration = start.elapsed().as_secs_f64();
+                                record_request(method.as_str(), response.status().as_u16(), duration);
+                                return Ok(response);
+                            }
+                            Err(e) => {
+                                error!("PHP-FPM processing failed for {:?}: {}", final_path, e);
+                                let duration = start.elapsed().as_secs_f64();
+                                record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                                return self.error_response(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "PHP processing failed",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            // If PHP-FPM not configured, treat as static file (will likely fail with wrong MIME type)
+            warn!("PHP file detected but PHP-FPM not configured for route: {}", path);
+        }
+
+        // Serve as static file
+        debug!("Serving static file: {:?}", final_path);
+
+        // Reconstruct request for static file serving
+        match self.serve_static_file(&file_info, static_handler, &req).await {
+            Ok(response) => {
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), response.status().as_u16(), duration);
+                Ok(response)
+            }
+            Err(e) => {
+                error!("Static file serving failed for {:?}: {}", final_path, e);
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                self.error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to serve file",
+                )
+            }
+        }
     }
 
     /// Serve a static file
