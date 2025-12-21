@@ -54,6 +54,7 @@ pub mod mime;
 pub mod config;
 pub mod security;
 pub mod resource_limits;
+pub mod observability;
 
 pub use static_files::*;
 pub use php_fpm::*;
@@ -61,3 +62,4 @@ pub use mime::*;
 pub use config::*;
 pub use security::*;
 pub use resource_limits::*;
+pub use observability::*;
