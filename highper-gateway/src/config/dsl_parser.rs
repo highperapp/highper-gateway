@@ -266,7 +266,7 @@ fn parse_route(pair: pest::iterators::Pair<Rule>) -> Result<Route> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::path => {
-                path = Some(inner.as_str().to_string());
+                path = Some(inner.as_str().trim().to_string());
             }
             Rule::simple_proxy => {
                 let backends = parse_simple_proxy(inner)?;
@@ -402,6 +402,21 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             }
             Rule::graphql_directive => {
                 Ok(Some(parse_graphql_directive(inner)?))
+            }
+            Rule::php_fpm_directive => {
+                Ok(Some(parse_php_fpm_directive(inner)?))
+            }
+            Rule::static_files_directive => {
+                Ok(Some(Directive::StaticFiles))
+            }
+            Rule::root_directive => {
+                Ok(Some(parse_root_directive(inner)?))
+            }
+            Rule::index_directive => {
+                Ok(Some(parse_index_directive(inner)?))
+            }
+            Rule::try_files_directive => {
+                Ok(Some(parse_try_files_directive(inner)?))
             }
             _ => Ok(None),
         };
@@ -1094,6 +1109,105 @@ fn parse_graphql_stitching(pair: pest::iterators::Pair<Rule>, config: &mut crate
     Ok(())
 }
 
+fn parse_php_fpm_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    use crate::config::dsl_ast::PhpFpmConfig;
+
+    let mut config = PhpFpmConfig::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::php_fpm_option = inner.as_rule() {
+            let text = inner.as_str();
+            if text == "enabled" {
+                config.enabled = true;
+            } else if text.starts_with("socket=") {
+                // Parse socket from child quoted_string
+                for opt_inner in inner.into_inner() {
+                    if let Rule::quoted_string = opt_inner.as_rule() {
+                        config.socket = Some(opt_inner.as_str().trim_matches('"').to_string());
+                    }
+                }
+            } else if text.starts_with("pool_size=") {
+                // Parse pool_size from child number
+                for opt_inner in inner.into_inner() {
+                    if let Rule::number = opt_inner.as_rule() {
+                        config.pool_size = Some(opt_inner.as_str().parse()?);
+                    }
+                }
+            } else if text.starts_with("connect_timeout=") {
+                // Parse duration
+                for opt_inner in inner.into_inner() {
+                    if let Rule::duration = opt_inner.as_rule() {
+                        config.connect_timeout = Some(parse_duration(opt_inner.as_str())?);
+                    }
+                }
+            } else if text.starts_with("read_timeout=") {
+                for opt_inner in inner.into_inner() {
+                    if let Rule::duration = opt_inner.as_rule() {
+                        config.read_timeout = Some(parse_duration(opt_inner.as_str())?);
+                    }
+                }
+            } else if text.starts_with("write_timeout=") {
+                for opt_inner in inner.into_inner() {
+                    if let Rule::duration = opt_inner.as_rule() {
+                        config.write_timeout = Some(parse_duration(opt_inner.as_str())?);
+                    }
+                }
+            } else if text.starts_with("keepalive=") {
+                for opt_inner in inner.into_inner() {
+                    if let Rule::duration = opt_inner.as_rule() {
+                        config.keepalive_timeout = Some(parse_duration(opt_inner.as_str())?);
+                    }
+                }
+            } else if text.starts_with("script_extensions") {
+                // Parse file extensions - clear default first
+                config.script_extensions.clear();
+                for ext_inner in inner.into_inner() {
+                    if let Rule::file_extension = ext_inner.as_rule() {
+                        config.script_extensions.push(ext_inner.as_str().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Directive::PhpFpm(config))
+}
+
+fn parse_root_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    for inner in pair.into_inner() {
+        if let Rule::quoted_string = inner.as_rule() {
+            let root = inner.as_str().trim_matches('"');
+            return Ok(Directive::Root(root.to_string()));
+        }
+    }
+    Err(anyhow!("Invalid root directive"))
+}
+
+fn parse_index_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut filenames = Vec::new();
+    for inner in pair.into_inner() {
+        if let Rule::filename = inner.as_rule() {
+            filenames.push(inner.as_str().to_string());
+        }
+    }
+    Ok(Directive::Index(filenames))
+}
+
+fn parse_try_files_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut patterns = Vec::new();
+    for inner in pair.into_inner() {
+        if let Rule::try_files_pattern = inner.as_rule() {
+            let text = inner.as_str();
+            if text.starts_with('"') && text.ends_with('"') {
+                patterns.push(text.trim_matches('"').to_string());
+            } else {
+                patterns.push(text.to_string());
+            }
+        }
+    }
+    Ok(Directive::TryFiles(patterns))
+}
+
 fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
 
@@ -1581,5 +1695,150 @@ api.example.com {
         } else {
             panic!("Expected RateLimit directive");
         }
+    }
+
+    #[test]
+    fn test_parse_php_fpm() {
+        let input = r#"
+php.example.com {
+    proxy backend:9000
+    php_fpm enabled socket="/var/run/php/php8.2-fpm.sock" pool_size=50 connect_timeout=5s read_timeout=60s write_timeout=60s keepalive=90s script_extensions .php .phtml
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        // Find the PhpFpm directive
+        let mut found_php = false;
+        for directive in &config.sites[0].directives {
+            if let Directive::PhpFpm(php_config) = directive {
+                found_php = true;
+                eprintln!("PHP Config: enabled={}, socket={:?}, pool_size={:?}, extensions={:?}",
+                         php_config.enabled, php_config.socket, php_config.pool_size, php_config.script_extensions);
+                assert_eq!(php_config.enabled, true);
+                assert_eq!(php_config.socket, Some("/var/run/php/php8.2-fpm.sock".to_string()));
+                assert_eq!(php_config.pool_size, Some(50));
+                assert_eq!(php_config.connect_timeout, Some(Duration::from_secs(5)));
+                assert_eq!(php_config.read_timeout, Some(Duration::from_secs(60)));
+                assert_eq!(php_config.write_timeout, Some(Duration::from_secs(60)));
+                assert_eq!(php_config.keepalive_timeout, Some(Duration::from_secs(90)));
+                assert_eq!(php_config.script_extensions, vec![".php", ".phtml"]);
+            }
+        }
+
+        assert!(found_php, "Expected PhpFpm directive");
+    }
+
+    #[test]
+    fn test_parse_static_files() {
+        let input = r#"
+static.example.com {
+    root "/var/www/html"
+    index index.html index.htm
+    static_files
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        let mut found_root = false;
+        let mut found_index = false;
+        let mut found_static = false;
+
+        for directive in &config.sites[0].directives {
+            match directive {
+                Directive::Root(path) => {
+                    found_root = true;
+                    assert_eq!(path, "/var/www/html");
+                }
+                Directive::Index(files) => {
+                    found_index = true;
+                    assert_eq!(files, &vec!["index.html", "index.htm"]);
+                }
+                Directive::StaticFiles => {
+                    found_static = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(found_root, "Expected Root directive");
+        assert!(found_index, "Expected Index directive");
+        assert!(found_static, "Expected StaticFiles directive");
+    }
+
+    #[test]
+    fn test_parse_try_files() {
+        let input = r#"
+example.com {
+    proxy backend:8080
+    try_files $uri $uri/ "/index.php"
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        let mut found_try = false;
+        for directive in &config.sites[0].directives {
+            if let Directive::TryFiles(patterns) = directive {
+                found_try = true;
+                assert_eq!(patterns, &vec!["$uri", "$uri/", "/index.php"]);
+            }
+        }
+
+        assert!(found_try, "Expected TryFiles directive");
+    }
+
+    #[test]
+    fn test_parse_complete_php_site() {
+        let input = r#"
+http://php.loadtest.local:8454 {
+    root "/var/www/html"
+    index index.php index.html
+
+    /static/* {
+        static_files
+        try_files $uri =404
+    }
+
+    /*.php {
+        php_fpm enabled
+        php_fpm socket="/var/run/php/php8.2-fpm.sock"
+        php_fpm pool_size=50
+        proxy localhost:9000
+    }
+
+    /* {
+        try_files $uri $uri/ /index.php
+    }
+}
+"#;
+        let config = parse_dsl(input).unwrap();
+
+        assert_eq!(config.sites.len(), 1);
+
+        // Check site address
+        if let SiteAddress::Http { scheme, domain, port, .. } = &config.sites[0].address {
+            assert_eq!(*scheme, Scheme::Http);
+            assert_eq!(domain, "php.loadtest.local");
+            assert_eq!(*port, Some(8454));
+        } else {
+            panic!("Expected HTTP site address");
+        }
+
+        // Check routes
+        assert_eq!(config.sites[0].routes.len(), 3);
+
+        // Verify static route
+        assert_eq!(config.sites[0].routes[0].path, "/static/*");
+
+        // Verify PHP route
+        assert_eq!(config.sites[0].routes[1].path, "/*.php");
+
+        // Verify default route
+        assert_eq!(config.sites[0].routes[2].path, "/*");
     }
 }

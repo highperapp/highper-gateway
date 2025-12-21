@@ -260,6 +260,21 @@ pub enum Directive {
 
     /// GraphQL configuration
     GraphQL(GraphQLConfig),
+
+    /// PHP-FPM configuration
+    PhpFpm(PhpFpmConfig),
+
+    /// Static file serving
+    StaticFiles,
+
+    /// Document root for static files
+    Root(String),
+
+    /// Index files
+    Index(Vec<String>),
+
+    /// Try files pattern
+    TryFiles(Vec<String>),
 }
 
 /// Backend server
@@ -607,6 +622,34 @@ pub struct GraphQLBackend {
     pub name: String,
     pub url: String,
     pub namespace: Option<String>,
+}
+
+/// PHP-FPM configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhpFpmConfig {
+    pub enabled: bool,
+    pub socket: Option<String>,
+    pub pool_size: Option<usize>,
+    pub connect_timeout: Option<Duration>,
+    pub read_timeout: Option<Duration>,
+    pub write_timeout: Option<Duration>,
+    pub keepalive_timeout: Option<Duration>,
+    pub script_extensions: Vec<String>,
+}
+
+impl Default for PhpFpmConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            socket: None,
+            pool_size: Some(50),
+            connect_timeout: Some(Duration::from_secs(5)),
+            read_timeout: Some(Duration::from_secs(60)),
+            write_timeout: Some(Duration::from_secs(60)),
+            keepalive_timeout: Some(Duration::from_secs(90)),
+            script_extensions: vec![".php".to_string()],
+        }
+    }
 }
 
 /// TLS protocol versions

@@ -129,6 +129,11 @@ directive = {
   | cache_directive
   | waf_directive
   | graphql_directive
+  | php_fpm_directive
+  | static_files_directive
+  | root_directive
+  | index_directive
+  | try_files_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -603,4 +608,50 @@ graphql_backend_block = {
 graphql_backend_option = {
     "url" ~ quoted_string ~ newline
   | "namespace" ~ identifier ~ newline
+}
+
+// PHP-FPM directives
+php_fpm_directive = {
+    "php_fpm" ~ php_fpm_option+ ~ newline
+}
+
+php_fpm_option = {
+    "enabled"
+  | "socket=" ~ quoted_string
+  | "pool_size=" ~ number
+  | "connect_timeout=" ~ duration
+  | "read_timeout=" ~ duration
+  | "write_timeout=" ~ duration
+  | "keepalive=" ~ duration
+  | "script_extensions" ~ file_extension+
+}
+
+file_extension = @{ "." ~ (ASCII_ALPHANUMERIC)+ }
+
+// Static file serving directives
+static_files_directive = {
+    "static_files" ~ newline
+}
+
+root_directive = {
+    "root" ~ quoted_string ~ newline
+}
+
+index_directive = {
+    "index" ~ filename+ ~ newline
+}
+
+filename = @{ (ASCII_ALPHANUMERIC | "." | "-" | "_")+ }
+
+try_files_directive = {
+    "try_files" ~ try_files_pattern+ ~ newline
+}
+
+try_files_pattern = {
+    "$uri/"
+  | "$uri"
+  | variable
+  | quoted_string
+  | "=" ~ number  // HTTP status code fallback
+  | path  // Unquoted path like /index.php
 }

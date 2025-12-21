@@ -97,6 +97,11 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     cache: None,
                     waf: None,
                     graphql: None,
+                    php_fpm: None,
+                    static_files: false,
+                    root: None,
+                    index: Vec::new(),
+                    try_files: Vec::new(),
                 };
 
                 // Process site-level directives
@@ -131,6 +136,11 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         cache: None,
                         waf: None,
                         graphql: None,
+                        php_fpm: None,
+                        static_files: false,
+                        root: None,
+                        index: Vec::new(),
+                        try_files: Vec::new(),
                     };
 
                     for directive in &site_route.directives {
@@ -145,15 +155,32 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         );
                     }
 
-                    if !sub_upstream.servers.is_empty() {
-                        upstreams.push(sub_upstream);
+                    // Add sub-route if it has servers or static file configuration
+                    let sub_has_static_config = sub_route.static_files
+                        || sub_route.root.is_some()
+                        || !sub_route.index.is_empty()
+                        || !sub_route.try_files.is_empty()
+                        || sub_route.php_fpm.is_some();
+
+                    if !sub_upstream.servers.is_empty() || sub_has_static_config {
+                        if !sub_upstream.servers.is_empty() {
+                            upstreams.push(sub_upstream);
+                        }
                         routes.push(sub_route);
                     }
                 }
 
-                // Add site-level upstream and route if it has servers
-                if !upstream.servers.is_empty() {
-                    upstreams.push(upstream);
+                // Add site-level upstream and route if it has servers or static file configuration
+                let has_static_config = route.static_files
+                    || route.root.is_some()
+                    || !route.index.is_empty()
+                    || !route.try_files.is_empty()
+                    || route.php_fpm.is_some();
+
+                if !upstream.servers.is_empty() || has_static_config {
+                    if !upstream.servers.is_empty() {
+                        upstreams.push(upstream);
+                    }
                     routes.push(route);
                 }
             }
@@ -183,6 +210,11 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     cache: None,
                     waf: None,
                     graphql: None,
+                    php_fpm: None,
+                    static_files: false,
+                    root: None,
+                    index: Vec::new(),
+                    try_files: Vec::new(),
                 };
 
                 // Process TCP site directives
@@ -376,6 +408,45 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         yaml.push_str(&format!("          namespace: \"{}\"\n", ns));
                     }
                 }
+            }
+        }
+
+        if let Some(ref php_fpm) = route.php_fpm {
+            yaml.push_str("    php_fpm:\n");
+            yaml.push_str(&format!("      enabled: {}\n", php_fpm.enabled));
+            yaml.push_str(&format!("      socket: \"{}\"\n", php_fpm.socket));
+            yaml.push_str(&format!("      pool_size: {}\n", php_fpm.pool_size));
+            yaml.push_str(&format!("      connect_timeout_secs: {}\n", php_fpm.connect_timeout_secs));
+            yaml.push_str(&format!("      read_timeout_secs: {}\n", php_fpm.read_timeout_secs));
+            yaml.push_str(&format!("      write_timeout_secs: {}\n", php_fpm.write_timeout_secs));
+            yaml.push_str(&format!("      keepalive_timeout_secs: {}\n", php_fpm.keepalive_timeout_secs));
+            if !php_fpm.script_extensions.is_empty() {
+                yaml.push_str("      script_extensions:\n");
+                for ext in &php_fpm.script_extensions {
+                    yaml.push_str(&format!("        - \"{}\"\n", ext));
+                }
+            }
+        }
+
+        if route.static_files {
+            yaml.push_str("    static_files: true\n");
+        }
+
+        if let Some(ref root) = route.root {
+            yaml.push_str(&format!("    root: \"{}\"\n", root));
+        }
+
+        if !route.index.is_empty() {
+            yaml.push_str("    index:\n");
+            for idx in &route.index {
+                yaml.push_str(&format!("      - \"{}\"\n", idx));
+            }
+        }
+
+        if !route.try_files.is_empty() {
+            yaml.push_str("    try_files:\n");
+            for pattern in &route.try_files {
+                yaml.push_str(&format!("      - \"{}\"\n", pattern));
             }
         }
     }
@@ -642,6 +713,40 @@ fn process_directive(
             });
         }
 
+        Directive::PhpFpm(php_config) => {
+            // Convert DSL PhpFpmConfig to PhpFpmYaml
+            route.php_fpm = Some(PhpFpmYaml {
+                enabled: php_config.enabled,
+                socket: php_config.socket.clone().unwrap_or_else(|| "/var/run/php/php-fpm.sock".to_string()),
+                pool_size: php_config.pool_size.unwrap_or(50),
+                connect_timeout_secs: php_config.connect_timeout.map(|d| d.as_secs()).unwrap_or(5),
+                read_timeout_secs: php_config.read_timeout.map(|d| d.as_secs()).unwrap_or(60),
+                write_timeout_secs: php_config.write_timeout.map(|d| d.as_secs()).unwrap_or(60),
+                keepalive_timeout_secs: php_config.keepalive_timeout.map(|d| d.as_secs()).unwrap_or(90),
+                script_extensions: if php_config.script_extensions.is_empty() {
+                    vec![".php".to_string()]
+                } else {
+                    php_config.script_extensions.clone()
+                },
+            });
+        }
+
+        Directive::StaticFiles => {
+            route.static_files = true;
+        }
+
+        Directive::Root(path) => {
+            route.root = Some(path.clone());
+        }
+
+        Directive::Index(files) => {
+            route.index = files.clone();
+        }
+
+        Directive::TryFiles(patterns) => {
+            route.try_files = patterns.clone();
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -731,6 +836,11 @@ struct RouteYaml {
     cache: Option<CacheYaml>,
     waf: Option<WafYaml>,
     graphql: Option<GraphQLYaml>,
+    php_fpm: Option<PhpFpmYaml>,
+    static_files: bool,
+    root: Option<String>,
+    index: Vec<String>,
+    try_files: Vec<String>,
 }
 
 struct CertYaml {
@@ -811,6 +921,18 @@ struct GraphQLBackendYaml {
     name: String,
     url: String,
     namespace: Option<String>,
+}
+
+#[derive(Clone)]
+struct PhpFpmYaml {
+    enabled: bool,
+    socket: String,
+    pool_size: usize,
+    connect_timeout_secs: u64,
+    read_timeout_secs: u64,
+    write_timeout_secs: u64,
+    keepalive_timeout_secs: u64,
+    script_extensions: Vec<String>,
 }
 
 #[cfg(test)]
@@ -1040,5 +1162,112 @@ mod tests {
             assert!(yaml.contains(&format!("algorithm: {}", expected)),
                 "Expected {} for {:?}", expected, algo);
         }
+    }
+
+    #[test]
+    fn test_generate_yaml_with_php_fpm() {
+        use crate::config::dsl_ast::{PhpFpmConfig, Route};
+        use std::time::Duration;
+
+        let dsl_config = dsl_ast::Config {
+            global: GlobalConfig::default(),
+            sites: vec![Site {
+                address: SiteAddress::Http {
+                    scheme: Scheme::Http,
+                    domain: "php.example.com".to_string(),
+                    port: Some(8080),
+                    base_path: None,
+                },
+                routes: vec![
+                    Route {
+                        path: "/*.php".to_string(),
+                        directives: vec![
+                            Directive::PhpFpm(PhpFpmConfig {
+                                enabled: true,
+                                socket: Some("/var/run/php/php8.2-fpm.sock".to_string()),
+                                pool_size: Some(50),
+                                connect_timeout: Some(Duration::from_secs(5)),
+                                read_timeout: Some(Duration::from_secs(60)),
+                                write_timeout: Some(Duration::from_secs(60)),
+                                keepalive_timeout: Some(Duration::from_secs(90)),
+                                script_extensions: vec![".php".to_string(), ".phtml".to_string()],
+                            }),
+                            Directive::Proxy(vec![Backend::new("localhost").with_port(9000)]),
+                        ],
+                    },
+                ],
+                directives: vec![
+                    Directive::Root("/var/www/html".to_string()),
+                    Directive::Index(vec!["index.php".to_string(), "index.html".to_string()]),
+                    Directive::StaticFiles,
+                ],
+            }],
+        };
+
+        let yaml = generate_yaml_from_dsl(&dsl_config).unwrap();
+
+        // Verify PHP-FPM configuration
+        assert!(yaml.contains("php_fpm:"), "Missing php_fpm section");
+        assert!(yaml.contains("enabled: true"), "Missing enabled flag");
+        assert!(yaml.contains("socket: \"/var/run/php/php8.2-fpm.sock\""), "Missing socket path");
+        assert!(yaml.contains("pool_size: 50"), "Missing pool_size");
+        assert!(yaml.contains("connect_timeout_secs: 5"), "Missing connect_timeout");
+        assert!(yaml.contains("read_timeout_secs: 60"), "Missing read_timeout");
+        assert!(yaml.contains("write_timeout_secs: 60"), "Missing write_timeout");
+        assert!(yaml.contains("keepalive_timeout_secs: 90"), "Missing keepalive_timeout");
+        assert!(yaml.contains("\".php\""), "Missing .php extension");
+        assert!(yaml.contains("\".phtml\""), "Missing .phtml extension");
+
+        // Verify static file configuration
+        assert!(yaml.contains("root: \"/var/www/html\""), "Missing root directive");
+        assert!(yaml.contains("index:"), "Missing index section");
+        assert!(yaml.contains("\"index.php\""), "Missing index.php");
+        assert!(yaml.contains("\"index.html\""), "Missing index.html");
+        assert!(yaml.contains("static_files: true"), "Missing static_files flag");
+
+        // Verify route path
+        assert!(yaml.contains("/*.php"), "Missing PHP route path");
+    }
+
+    #[test]
+    fn test_generate_yaml_with_try_files() {
+        use crate::config::dsl_ast::Route;
+
+        let dsl_config = dsl_ast::Config {
+            global: GlobalConfig::default(),
+            sites: vec![Site {
+                address: SiteAddress::Http {
+                    scheme: Scheme::Http,
+                    domain: "static.example.com".to_string(),
+                    port: Some(80),
+                    base_path: None,
+                },
+                routes: vec![
+                    Route {
+                        path: "/*".to_string(),
+                        directives: vec![
+                            Directive::TryFiles(vec![
+                                "$uri".to_string(),
+                                "$uri/".to_string(),
+                                "/index.html".to_string(),
+                            ]),
+                        ],
+                    },
+                ],
+                directives: vec![
+                    Directive::Root("/var/www/static".to_string()),
+                    Directive::StaticFiles,
+                ],
+            }],
+        };
+
+        let yaml = generate_yaml_from_dsl(&dsl_config).unwrap();
+
+        assert!(yaml.contains("try_files:"), "Missing try_files section");
+        assert!(yaml.contains("\"$uri\""), "Missing $uri pattern");
+        assert!(yaml.contains("\"$uri/\""), "Missing $uri/ pattern");
+        assert!(yaml.contains("\"/index.html\""), "Missing fallback file");
+        assert!(yaml.contains("root: \"/var/www/static\""), "Missing root directive");
+        assert!(yaml.contains("static_files: true"), "Missing static_files flag");
     }
 }
