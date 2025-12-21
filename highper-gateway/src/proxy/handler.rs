@@ -15,6 +15,7 @@ use crate::grpc::detector as grpc_detector;
 use crate::grpc::handler as grpc_handler;
 use crate::webserver::StaticFileHandler;
 use crate::webserver::PhpFpmPool;
+use crate::webserver::security::{PathValidator, validate_php_script, sanitize_fastcgi_param};
 use crate::Result;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Incoming;
@@ -1377,9 +1378,26 @@ impl Handler {
 
         debug!("Webserver request: path={}, root={}", path, document_root);
 
-        // Try to resolve the file using the document root
+        // Initialize path validator for security checks
+        let path_validator = PathValidator::new(document_root);
+
+        // Validate request path for security issues (path traversal, null bytes, etc.)
+        let file_path = match path_validator.validate_path(path) {
+            Ok(validated_path) => validated_path,
+            Err(e) => {
+                warn!("Path validation failed for {}: {}", path, e);
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), StatusCode::FORBIDDEN.as_u16(), duration);
+                return self.webserver_error_response(
+                    StatusCode::FORBIDDEN,
+                    "Access denied",
+                    route,
+                );
+            }
+        };
+
+        // Try to resolve the file using the validated path
         let mut resolved_path = None;
-        let file_path = std::path::Path::new(document_root).join(path.trim_start_matches('/'));
 
         // Check if the path exists
         if file_path.exists() && file_path.is_file() {
@@ -1454,11 +1472,47 @@ impl Handler {
 
         debug!("Resolved path: {:?}", final_path);
 
+        // Validate file is allowed to be served (check for sensitive files, dangerous extensions, hidden files)
+        if let Err(e) = path_validator.is_file_allowed(&final_path) {
+            warn!("File access denied for {:?}: {}", final_path, e);
+            let duration = start.elapsed().as_secs_f64();
+            record_request(method.as_str(), StatusCode::FORBIDDEN.as_u16(), duration);
+            return self.webserver_error_response(
+                StatusCode::FORBIDDEN,
+                "Access denied",
+                route,
+            );
+        }
+
         // Get file info
         let file_info = static_handler.get_file_info(&final_path)?;
 
+        // Validate file size
+        if let Err(e) = path_validator.validate_file_size(file_info.metadata.len()) {
+            warn!("File too large for {:?}: {}", final_path, e);
+            let duration = start.elapsed().as_secs_f64();
+            record_request(method.as_str(), StatusCode::PAYLOAD_TOO_LARGE.as_u16(), duration);
+            return self.webserver_error_response(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "File too large",
+                route,
+            );
+        }
+
         // Check if this is a PHP file and PHP-FPM is configured
         if file_info.is_php {
+            // Validate PHP script before processing
+            if let Err(e) = validate_php_script(&final_path) {
+                warn!("PHP script validation failed for {:?}: {}", final_path, e);
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), StatusCode::FORBIDDEN.as_u16(), duration);
+                return self.webserver_error_response(
+                    StatusCode::FORBIDDEN,
+                    "Invalid PHP script",
+                    route,
+                );
+            }
+
             if let Some(php_config) = &route.php_fpm {
                 if php_config.enabled {
                     if let Some(php_pool) = &self.php_fpm_pool {
@@ -1478,6 +1532,19 @@ impl Handler {
                             match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
                                 Ok(collected) => {
                                     debug!("Collected {} bytes for PHP request", collected.len());
+
+                                    // Validate request body size
+                                    if let Err(e) = path_validator.validate_request_body_size(collected.len()) {
+                                        warn!("Request body too large: {}", e);
+                                        let duration = start.elapsed().as_secs_f64();
+                                        record_request(method.as_str(), StatusCode::PAYLOAD_TOO_LARGE.as_u16(), duration);
+                                        return self.webserver_error_response(
+                                            StatusCode::PAYLOAD_TOO_LARGE,
+                                            "Request body too large",
+                                            route,
+                                        );
+                                    }
+
                                     collected
                                 }
                                 Err(e) => {
@@ -1678,39 +1745,39 @@ impl Handler {
         let mut params = vec![
             ("REQUEST_METHOD".to_string(), req.method().as_str().to_string()),
             ("SCRIPT_FILENAME".to_string(), script_filename.to_string()),
-            ("REQUEST_URI".to_string(), req.uri().path().to_string()),
-            ("DOCUMENT_URI".to_string(), path.to_string()),
+            ("REQUEST_URI".to_string(), sanitize_fastcgi_param(req.uri().path())),
+            ("DOCUMENT_URI".to_string(), sanitize_fastcgi_param(path)),
             ("SERVER_PROTOCOL".to_string(), format!("{:?}", req.version())),
             ("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string()),
             ("SERVER_SOFTWARE".to_string(), "highper-gateway".to_string()),
             ("REMOTE_ADDR".to_string(), "127.0.0.1".to_string()),
-            ("SERVER_NAME".to_string(), host.to_string()),
+            ("SERVER_NAME".to_string(), sanitize_fastcgi_param(host)),
             ("SERVER_PORT".to_string(), "80".to_string()),
         ];
 
         // Add query string if present
         if let Some(query) = req.uri().query() {
-            params.push(("QUERY_STRING".to_string(), query.to_string()));
+            params.push(("QUERY_STRING".to_string(), sanitize_fastcgi_param(query)));
         }
 
         // Add content length and type for POST/PUT
         if let Some(content_type) = req.headers().get("content-type") {
             if let Ok(ct) = content_type.to_str() {
-                params.push(("CONTENT_TYPE".to_string(), ct.to_string()));
+                params.push(("CONTENT_TYPE".to_string(), sanitize_fastcgi_param(ct)));
             }
         }
 
         if let Some(content_length) = req.headers().get("content-length") {
             if let Ok(cl) = content_length.to_str() {
-                params.push(("CONTENT_LENGTH".to_string(), cl.to_string()));
+                params.push(("CONTENT_LENGTH".to_string(), sanitize_fastcgi_param(cl)));
             }
         }
 
-        // Add HTTP headers as CGI variables
+        // Add HTTP headers as CGI variables (sanitize to prevent injection)
         for (name, value) in req.headers() {
             if let Ok(value_str) = value.to_str() {
                 let header_name = format!("HTTP_{}", name.as_str().to_uppercase().replace('-', "_"));
-                params.push((header_name, value_str.to_string()));
+                params.push((header_name, sanitize_fastcgi_param(value_str)));
             }
         }
 

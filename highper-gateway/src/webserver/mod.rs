@@ -52,8 +52,10 @@ pub mod static_files;
 pub mod php_fpm;
 pub mod mime;
 pub mod config;
+pub mod security;
 
 pub use static_files::*;
 pub use php_fpm::*;
 pub use mime::*;
 pub use config::*;
+pub use security::*;
