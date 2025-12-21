@@ -1586,13 +1586,52 @@ impl Handler {
             }
         }
 
+        // Check Range header for partial content requests
+        let range = req.headers().get("range")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| self.parse_range_header(s, file_size));
+
         // Open file async (non-blocking)
         let file = tokio::fs::File::open(&file_info.path).await?;
 
         // Get MIME type
         let mime_type = static_handler.get_mime_type(&file_info.path);
 
-        // Build response
+        // Handle range request
+        if let Some((start, end)) = range {
+            debug!("Range request: bytes {}-{}/{}", start, end, file_size);
+
+            // Seek to start position
+            use tokio::io::{AsyncReadExt, AsyncSeekExt};
+            let mut file = file;
+            file.seek(std::io::SeekFrom::Start(start)).await?;
+
+            // Read the requested range
+            let length = end - start + 1;
+            let mut buffer = vec![0u8; length as usize];
+            file.read_exact(&mut buffer).await?;
+
+            // Build 206 Partial Content response
+            let mut response = Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header("content-type", mime_type)
+                .header("content-length", length.to_string())
+                .header("content-range", format!("bytes {}-{}/{}", start, end, file_size))
+                .header("accept-ranges", "bytes")
+                .header("etag", &etag);
+
+            // Add Last-Modified header
+            if let Ok(modified_time) = metadata.modified() {
+                response = response.header("last-modified", httpdate::fmt_http_date(modified_time));
+            }
+
+            // Add cache-control
+            response = response.header("cache-control", "public, max-age=3600");
+
+            return Ok(response.body(ResponseBody::buffered(Bytes::from(buffer)))?);
+        }
+
+        // Build response for full file
         let mut response = Response::builder()
             .status(StatusCode::OK)
             .header("content-type", mime_type)
@@ -1791,6 +1830,68 @@ impl Handler {
 
         // Fall back to default plain text error
         self.error_response(status, message)
+    }
+
+    /// Parse Range header and return (start, end) byte positions
+    /// Supports formats like: "bytes=0-1023", "bytes=1024-", "bytes=-500"
+    /// Returns None if range is invalid or not satisfiable
+    fn parse_range_header(&self, range_str: &str, file_size: u64) -> Option<(u64, u64)> {
+        // Must start with "bytes="
+        if !range_str.starts_with("bytes=") {
+            return None;
+        }
+
+        let range_spec = &range_str[6..]; // Skip "bytes="
+
+        // Split on comma (we only support single range, not multipart)
+        let range_part = range_spec.split(',').next()?;
+
+        // Parse start-end format
+        if let Some((start_str, end_str)) = range_part.split_once('-') {
+            match (start_str.trim(), end_str.trim()) {
+                // "bytes=100-200" - explicit start and end
+                (start, end) if !start.is_empty() && !end.is_empty() => {
+                    let start: u64 = start.parse().ok()?;
+                    let end: u64 = end.parse().ok()?;
+
+                    // Validate range
+                    if start > end || start >= file_size {
+                        return None;
+                    }
+
+                    // Clamp end to file size
+                    let end = std::cmp::min(end, file_size - 1);
+                    Some((start, end))
+                }
+
+                // "bytes=100-" - start to end of file
+                (start, "") if !start.is_empty() => {
+                    let start: u64 = start.parse().ok()?;
+
+                    if start >= file_size {
+                        return None;
+                    }
+
+                    Some((start, file_size - 1))
+                }
+
+                // "bytes=-500" - last N bytes
+                ("", end) if !end.is_empty() => {
+                    let suffix_len: u64 = end.parse().ok()?;
+
+                    if suffix_len == 0 || suffix_len > file_size {
+                        return None;
+                    }
+
+                    let start = file_size - suffix_len;
+                    Some((start, file_size - 1))
+                }
+
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     /// Track metrics in ProxyState
