@@ -20,8 +20,10 @@ http://localhost:8080 {
     # Enable directory listing for directories without index files
     directory_listing on
 
-    # Resource limits for production hardening
-    limits max_file_size=200MB max_request_body=20MB max_path_depth=32 max_connections_per_ip=150 max_requests_per_second=200
+    # Resource limits (coordinated with PHP settings)
+    # PHP default: post_max_size=8M, upload_max_filesize=2M, max_execution_time=30s
+    # Gateway adds 25% buffer for graceful PHP error handling
+    limits max_request_body=10MB max_upload_size=3MB max_file_size=100MB max_path_depth=32 max_connections_per_ip=150 max_requests_per_second=200
 
     # Static files in /static directory
     /static/* {
@@ -30,8 +32,9 @@ http://localhost:8080 {
     }
 
     # PHP files via FastCGI
+    # Timeouts: read_timeout should be >= PHP max_execution_time (30s default) + buffer
     /*.php {
-        php_fpm enabled socket="/var/run/php/php-fpm.sock" pool_size=50 read_timeout=60s
+        php_fpm enabled socket="/var/run/php/php-fpm.sock" pool_size=50 read_timeout=60s connect_timeout=5s write_timeout=60s
         proxy localhost:9000
     }
 

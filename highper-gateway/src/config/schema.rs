@@ -684,21 +684,52 @@ pub struct RouteConfig {
 }
 
 /// Resource limits for route
+///
+/// These limits work in coordination with PHP's own settings:
+///
+/// **PHP POST Data** (`post_max_size`):
+/// - Gateway: `max_request_body` should be >= PHP's `post_max_size`
+/// - PHP: Set in php.ini (e.g., `post_max_size = 8M`)
+///
+/// **PHP File Uploads** (`upload_max_filesize`):
+/// - Gateway: `max_upload_size` should be >= PHP's `upload_max_filesize`
+/// - PHP: Set in php.ini (e.g., `upload_max_filesize = 2M`)
+/// - Note: `upload_max_filesize` must be <= `post_max_size`
+///
+/// **PHP Execution Time** (`max_execution_time`):
+/// - Gateway: PhpFpmConfig's `read_timeout_secs` should be >= PHP's `max_execution_time`
+/// - PHP: Set in php.ini (e.g., `max_execution_time = 30`)
+///
+/// **Recommended Settings**:
+/// - Gateway limits should be slightly higher than PHP limits
+/// - This ensures PHP enforces limits first with proper error messages
+/// - Gateway acts as a safety net against misconfiguration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ResourceLimits {
     /// Maximum static file size in bytes (default: 100 MB)
+    /// Used for serving static files directly
     pub max_file_size: Option<u64>,
 
-    /// Maximum request body size in bytes (default: 10 MB)
+    /// Maximum request body size for POST/PUT requests in bytes (default: 10 MB)
+    /// Should be >= PHP's post_max_size
+    /// Applies to all POST data including multipart form uploads
     pub max_request_body: Option<usize>,
 
+    /// Maximum upload file size in bytes (default: same as max_request_body)
+    /// Should be >= PHP's upload_max_filesize
+    /// Specific limit for file uploads in multipart/form-data
+    pub max_upload_size: Option<usize>,
+
     /// Maximum path depth (default: 32)
+    /// Prevents deep directory traversal attacks
     pub max_path_depth: Option<usize>,
 
     /// Maximum concurrent connections per IP (default: 100)
+    /// Rate limiting at connection level
     pub max_connections_per_ip: Option<usize>,
 
     /// Maximum requests per second per IP (default: 100)
+    /// Rate limiting at request level
     pub max_requests_per_second: Option<u32>,
 }
 

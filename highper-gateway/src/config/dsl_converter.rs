@@ -478,6 +478,9 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             if let Some(max_request_body) = limits.max_request_body {
                 yaml.push_str(&format!("      max_request_body: {}\n", max_request_body));
             }
+            if let Some(max_upload_size) = limits.max_upload_size {
+                yaml.push_str(&format!("      max_upload_size: {}\n", max_upload_size));
+            }
             if let Some(max_path_depth) = limits.max_path_depth {
                 yaml.push_str(&format!("      max_path_depth: {}\n", max_path_depth));
             }
@@ -799,6 +802,7 @@ fn process_directive(
             route.limits = Some(ResourceLimits {
                 max_file_size: limits_config.max_file_size,
                 max_request_body: limits_config.max_request_body,
+                max_upload_size: limits_config.max_upload_size,
                 max_path_depth: limits_config.max_path_depth,
                 max_connections_per_ip: limits_config.max_connections_per_ip,
                 max_requests_per_second: limits_config.max_requests_per_second,

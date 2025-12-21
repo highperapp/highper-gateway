@@ -1257,6 +1257,7 @@ fn parse_limits_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive
     let mut limits = LimitsConfig {
         max_file_size: None,
         max_request_body: None,
+        max_upload_size: None,
         max_path_depth: None,
         max_connections_per_ip: None,
         max_requests_per_second: None,
@@ -1272,6 +1273,9 @@ fn parse_limits_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive
             } else if param_text.starts_with("max_request_body=") {
                 let value = &param_text[17..]; // Skip "max_request_body="
                 limits.max_request_body = Some(parse_byte_size(value)? as usize);
+            } else if param_text.starts_with("max_upload_size=") {
+                let value = &param_text[16..]; // Skip "max_upload_size="
+                limits.max_upload_size = Some(parse_byte_size(value)? as usize);
             } else if param_text.starts_with("max_path_depth=") {
                 let value = &param_text[15..]; // Skip "max_path_depth="
                 limits.max_path_depth = Some(value.parse::<usize>()?);

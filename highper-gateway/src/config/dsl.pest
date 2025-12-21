@@ -674,6 +674,7 @@ limits_directive = {
 limit_param = {
     "max_file_size=" ~ byte_size
   | "max_request_body=" ~ byte_size
+  | "max_upload_size=" ~ byte_size
   | "max_path_depth=" ~ number
   | "max_connections_per_ip=" ~ number
   | "max_requests_per_second=" ~ number

@@ -291,6 +291,7 @@ pub enum Directive {
 pub struct LimitsConfig {
     pub max_file_size: Option<u64>,
     pub max_request_body: Option<usize>,
+    pub max_upload_size: Option<usize>,
     pub max_path_depth: Option<usize>,
     pub max_connections_per_ip: Option<usize>,
     pub max_requests_per_second: Option<u32>,
