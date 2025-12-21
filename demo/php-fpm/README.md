@@ -210,6 +210,75 @@ ab -n 10000 -c 100 http://localhost:8080/static/test.html
 ab -n 1000 -c 50 http://localhost:8080/index.php
 ```
 
+### 7. Custom Error Pages
+
+Test custom error page functionality:
+
+```bash
+# Test 404 error page
+curl http://localhost:8080/nonexistent-file
+
+# Should return beautiful styled 404.html page
+
+# Test 500 error page (if PHP-FPM misconfigured)
+# Will show custom 500.html page
+```
+
+### 8. Range Requests (206 Partial Content)
+
+Test range request support for video/audio streaming:
+
+```bash
+# Request first 1KB of a file
+curl -H "Range: bytes=0-1023" http://localhost:8080/static/test.html
+
+# Request from offset to end
+curl -H "Range: bytes=1024-" http://localhost:8080/static/test.html
+
+# Request last 500 bytes
+curl -H "Range: bytes=-500" http://localhost:8080/static/test.html
+
+# Should return 206 Partial Content with Content-Range header
+```
+
+### 9. Conditional Requests (Caching)
+
+Test ETag and If-Modified-Since headers:
+
+```bash
+# Get ETag
+ETAG=$(curl -I http://localhost:8080/static/test.html | grep -i etag | cut -d' ' -f2)
+
+# Use ETag for conditional request
+curl -H "If-None-Match: $ETAG" http://localhost:8080/static/test.html
+# Should return 304 Not Modified
+
+# Use If-Modified-Since
+curl -H "If-Modified-Since: $(date -R)" http://localhost:8080/static/test.html
+# Should return 304 Not Modified if file hasn't changed
+```
+
+### 10. Directory Listing
+
+Test automatic directory indexing:
+
+```bash
+# Access directory without index file
+# (Create a test directory without index.php/index.html)
+mkdir -p demo/php-fpm/testdir
+touch demo/php-fpm/testdir/file1.txt
+touch demo/php-fpm/testdir/file2.html
+
+# Visit in browser or curl
+curl http://localhost:8080/testdir/
+
+# Should return beautiful HTML directory listing with:
+# - File and directory icons
+# - File sizes in human-readable format
+# - Last modified timestamps
+# - Parent directory link
+```
+
 ---
 
 ## 🔧 Configuration Explained
@@ -221,6 +290,13 @@ http://localhost:8080 {
 
     # Try these files when accessing a directory
     index index.php index.html
+
+    # Custom error pages (NEW!)
+    error_page 404 "/404.html"
+    error_page 500 "/500.html"
+
+    # Enable directory listing for directories without index files (NEW!)
+    directory_listing on
 
     # Static files in /static/* are served directly
     /static/* {
@@ -245,12 +321,20 @@ http://localhost:8080 {
 **Key Points**:
 - `root`: Base directory for file resolution
 - `index`: Files to try when accessing a directory
+- `error_page`: Custom error pages for specific status codes (NEW!)
+- `directory_listing`: Enable automatic directory indexing (NEW!)
 - `static_files`: Enable static file serving (no PHP)
 - `try_files`: Nginx-style fallback patterns
 - `php_fpm`: FastCGI configuration
   - `socket`: Unix socket or TCP address
   - `pool_size`: Connection pool size
   - `read_timeout`: Timeout for PHP execution
+
+**Enhancement Features** (automatically enabled):
+- **Conditional Requests**: ETag and If-Modified-Since headers for efficient caching
+- **Range Requests**: 206 Partial Content support for video/audio streaming
+- **Custom Error Pages**: Beautiful HTML error pages instead of plain text
+- **Directory Listing**: Automatic HTML index generation for directories
 
 ---
 
