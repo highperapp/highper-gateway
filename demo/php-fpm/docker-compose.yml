@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # PHP-FPM service
+  php-fpm:
+    image: php:8.2-fpm
+    container_name: demo-php-fpm
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - demo-network
+    # Expose PHP-FPM on Unix socket (mounted volume)
+    # Or use TCP port 9000
+    ports:
+      - "9000:9000"
+    environment:
+      - PHP_FPM_LISTEN=9000
+    command: php-fpm -F -R
+
+  # Highper Gateway (when containerized)
+  # gateway:
+  #   build: ../../
+  #   container_name: demo-gateway
+  #   volumes:
+  #     - ./demo.dsl:/etc/highper-gateway/config.dsl
+  #     - ./:/var/www/html
+  #   ports:
+  #     - "8080:8080"
+  #     - "9090:9090"  # Metrics
+  #   networks:
+  #     - demo-network
+  #   depends_on:
+  #     - php-fpm
+  #   command: highper-gateway --config /etc/highper-gateway/config.dsl
+
+networks:
+  demo-network:
+    driver: bridge

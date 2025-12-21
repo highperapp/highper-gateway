@@ -66,6 +66,12 @@ See [Security Features Guide](docs/SECURITY_FEATURES.md) for complete documentat
 - Real-time dashboard
 
 ### Advanced Features
+- **PHP-FPM & Static Files** - Full web server capabilities (NEW!)
+  - FastCGI/PHP-FPM integration with connection pooling
+  - High-performance static file serving (zero-copy sendfile, kTLS)
+  - Nginx-style try_files patterns
+  - WordPress, Laravel, and custom PHP applications
+  - See [PHP-FPM Quick Start](PHP_FPM_QUICK_START.md)
 - Hot configuration reload (zero downtime)
 - WASM plugin system
 - GraphQL gateway with schema stitching
@@ -141,6 +147,46 @@ http://0.0.0.0:8080 {
     }
 }
 ```
+
+### PHP-FPM Example (DSL)
+
+Serve WordPress, Laravel, or any PHP application:
+
+```
+https://blog.example.com {
+    root "/var/www/wordpress"
+    index index.php index.html
+
+    # Serve static assets directly
+    /wp-content/* {
+        static_files
+        try_files $uri =404
+    }
+
+    # PHP files via FastCGI
+    /*.php {
+        php_fpm enabled socket="/var/run/php/php8.2-fpm.sock" pool_size=100
+        proxy localhost:9000
+    }
+
+    # Pretty permalinks (WordPress/Laravel style)
+    /* {
+        try_files $uri $uri/ /index.php
+    }
+
+    tls admin@example.com
+}
+```
+
+**Features**:
+- Zero-copy static file serving with kTLS
+- Connection pooling to PHP-FPM
+- Nginx-compatible try_files patterns
+- Automatic TLS with Let's Encrypt
+
+Try it now: `cd demo/php-fpm && cargo run -- --config demo.dsl`
+
+See [PHP-FPM Quick Start Guide](PHP_FPM_QUICK_START.md) for complete documentation.
 
 ## Deployment
 
