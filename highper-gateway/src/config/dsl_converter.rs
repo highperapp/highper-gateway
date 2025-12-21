@@ -102,6 +102,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     root: None,
                     index: Vec::new(),
                     try_files: Vec::new(),
+                    error_pages: std::collections::HashMap::new(),
                 };
 
                 // Process site-level directives
@@ -141,6 +142,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                         root: None,
                         index: Vec::new(),
                         try_files: Vec::new(),
+                        error_pages: std::collections::HashMap::new(),
                     };
 
                     for directive in &site_route.directives {
@@ -215,6 +217,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     root: None,
                     index: Vec::new(),
                     try_files: Vec::new(),
+                    error_pages: std::collections::HashMap::new(),
                 };
 
                 // Process TCP site directives
@@ -447,6 +450,13 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str("    try_files:\n");
             for pattern in &route.try_files {
                 yaml.push_str(&format!("      - \"{}\"\n", pattern));
+            }
+        }
+
+        if !route.error_pages.is_empty() {
+            yaml.push_str("    error_pages:\n");
+            for (status_code, file_path) in &route.error_pages {
+                yaml.push_str(&format!("      {}: \"{}\"\n", status_code, file_path));
             }
         }
     }
@@ -747,6 +757,10 @@ fn process_directive(
             route.try_files = patterns.clone();
         }
 
+        Directive::ErrorPage(status_code, file_path) => {
+            route.error_pages.insert(*status_code, file_path.clone());
+        }
+
         // New advanced directives - stub implementations for validation
         Directive::TlsProtocols(_versions) => {
             // TLS protocol versions - would be applied at server TLS config level
@@ -841,6 +855,7 @@ struct RouteYaml {
     root: Option<String>,
     index: Vec<String>,
     try_files: Vec<String>,
+    error_pages: std::collections::HashMap<u16, String>,
 }
 
 struct CertYaml {

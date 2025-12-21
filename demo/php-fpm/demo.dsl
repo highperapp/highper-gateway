@@ -13,6 +13,10 @@ http://localhost:8080 {
     root "demo/php-fpm"
     index index.php index.html
 
+    # Custom error pages
+    error_page 404 "/404.html"
+    error_page 500 "/500.html"
+
     # Static files in /static directory
     /static/* {
         static_files

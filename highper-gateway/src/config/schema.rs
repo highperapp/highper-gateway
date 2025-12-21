@@ -669,6 +669,10 @@ pub struct RouteConfig {
     /// Try files pattern (Nginx-style: $uri, $uri/, /index.php, =404)
     #[serde(default)]
     pub try_files: Vec<String>,
+
+    /// Custom error pages (status code -> file path)
+    #[serde(default)]
+    pub error_pages: std::collections::HashMap<u16, String>,
 }
 
 /// Route matching rules

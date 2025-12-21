@@ -1421,7 +1421,7 @@ impl Handler {
                         if let Ok(status) = StatusCode::from_u16(code) {
                             let duration = start.elapsed().as_secs_f64();
                             record_request(method.as_str(), status.as_u16(), duration);
-                            return self.error_response(status, &format!("File not found: {}", path));
+                            return self.webserver_error_response(status, &format!("File not found: {}", path), route);
                         }
                     }
                     continue;
@@ -1477,9 +1477,10 @@ impl Handler {
                                     warn!("Failed to collect request body: {}", e);
                                     let duration = start.elapsed().as_secs_f64();
                                     record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
-                                    return self.error_response(
+                                    return self.webserver_error_response(
                                         StatusCode::BAD_REQUEST,
                                         "Invalid request body",
+                                        route,
                                     );
                                 }
                             }
@@ -1501,9 +1502,10 @@ impl Handler {
                                 error!("PHP-FPM processing failed for {:?}: {}", final_path, e);
                                 let duration = start.elapsed().as_secs_f64();
                                 record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
-                                return self.error_response(
+                                return self.webserver_error_response(
                                     StatusCode::INTERNAL_SERVER_ERROR,
                                     "PHP processing failed",
+                                    route,
                                 );
                             }
                         }
@@ -1528,9 +1530,10 @@ impl Handler {
                 error!("Static file serving failed for {:?}: {}", final_path, e);
                 let duration = start.elapsed().as_secs_f64();
                 record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
-                self.error_response(
+                self.webserver_error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Failed to serve file",
+                    route,
                 )
             }
         }
@@ -1748,6 +1751,46 @@ impl Handler {
             .status(status)
             .header("content-type", "text/plain")
             .body(ResponseBody::buffered(Bytes::from(message.to_string())))?)
+    }
+
+    /// Create an error response with custom error page support (for webserver routes)
+    fn webserver_error_response(
+        &self,
+        status: StatusCode,
+        message: &str,
+        route: &RouteConfig,
+    ) -> Result<Response<ResponseBody>> {
+        // Check if there's a custom error page for this status code
+        if let Some(error_page_path) = route.error_pages.get(&status.as_u16()) {
+            // Get document root
+            if let Some(root) = &route.root {
+                let error_file_path = std::path::Path::new(root).join(error_page_path.trim_start_matches('/'));
+
+                // Try to read the custom error page
+                if let Ok(contents) = std::fs::read(&error_file_path) {
+                    debug!("Serving custom error page: {:?} for status {}", error_file_path, status);
+
+                    // Detect content type
+                    let content_type = if error_page_path.ends_with(".html") || error_page_path.ends_with(".htm") {
+                        "text/html; charset=utf-8"
+                    } else if error_page_path.ends_with(".json") {
+                        "application/json"
+                    } else {
+                        "text/plain"
+                    };
+
+                    return Ok(Response::builder()
+                        .status(status)
+                        .header("content-type", content_type)
+                        .body(ResponseBody::buffered(Bytes::from(contents)))?);
+                } else {
+                    warn!("Custom error page not found: {:?}", error_file_path);
+                }
+            }
+        }
+
+        // Fall back to default plain text error
+        self.error_response(status, message)
     }
 
     /// Track metrics in ProxyState

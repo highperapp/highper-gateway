@@ -418,6 +418,9 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
             Rule::try_files_directive => {
                 Ok(Some(parse_try_files_directive(inner)?))
             }
+            Rule::error_page_directive => {
+                Ok(Some(parse_error_page_directive(inner)?))
+            }
             _ => Ok(None),
         };
     }
@@ -1206,6 +1209,28 @@ fn parse_try_files_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direct
         }
     }
     Ok(Directive::TryFiles(patterns))
+}
+
+fn parse_error_page_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
+    let mut status_code: Option<u16> = None;
+    let mut file_path: Option<String> = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::number => {
+                status_code = Some(inner.as_str().parse()?);
+            }
+            Rule::quoted_string => {
+                file_path = Some(inner.as_str().trim_matches('"').to_string());
+            }
+            _ => {}
+        }
+    }
+
+    match (status_code, file_path) {
+        (Some(code), Some(path)) => Ok(Directive::ErrorPage(code, path)),
+        _ => Err(anyhow!("Invalid error_page directive: missing status code or file path")),
+    }
 }
 
 fn parse_duration(s: &str) -> Result<Duration> {

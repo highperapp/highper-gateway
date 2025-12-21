@@ -134,6 +134,7 @@ directive = {
   | root_directive
   | index_directive
   | try_files_directive
+  | error_page_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -654,4 +655,8 @@ try_files_pattern = {
   | quoted_string
   | "=" ~ number  // HTTP status code fallback
   | path  // Unquoted path like /index.php
+}
+
+error_page_directive = {
+    "error_page" ~ number ~ quoted_string ~ newline
 }

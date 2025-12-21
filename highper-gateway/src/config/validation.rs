@@ -683,6 +683,7 @@ mod tests {
                 root: None,
                 index: vec![],
                 try_files: vec![],
+                error_pages: std::collections::HashMap::new(),
             }],
             observability: ObservabilityConfig::default(),
             admin: None,

@@ -275,6 +275,9 @@ pub enum Directive {
 
     /// Try files pattern
     TryFiles(Vec<String>),
+
+    /// Custom error page (status code, file path)
+    ErrorPage(u16, String),
 }
 
 /// Backend server
