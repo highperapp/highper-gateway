@@ -34,7 +34,61 @@ pub struct Server {
 impl Server {
     /// Create a new server
     pub fn new(config: Arc<Config>) -> Self {
-        let handler = Arc::new(Handler::new(config.clone()));
+        let mut handler = Handler::new(config.clone());
+
+        // Check if any route has webserver configuration
+        let has_static_files = config.routes.iter().any(|r| r.static_files || r.root.is_some());
+        let has_php_fpm = config.routes.iter().any(|r| r.php_fpm.is_some());
+
+        // Initialize static file handler if needed
+        if has_static_files {
+            use crate::webserver::{StaticFileHandler, WebServerConfig};
+            use std::path::PathBuf;
+
+            // Get document root from first route that has one, or use default
+            let default_root = config.routes.iter()
+                .find_map(|r| r.root.as_ref())
+                .cloned()
+                .unwrap_or_else(|| "/var/www/html".to_string());
+
+            // Create webserver config
+            let webserver_config = WebServerConfig::default();
+
+            info!("Static file handler initialized with root: {}", default_root);
+            let static_handler = StaticFileHandler::new(PathBuf::from(default_root), webserver_config);
+            handler = handler.with_static_file_handler(Arc::new(static_handler));
+        }
+
+        // Initialize PHP-FPM pool if needed
+        if has_php_fpm {
+            use crate::webserver::{PhpFpmPool, PhpFpmConfig as WebserverPhpFpmConfig};
+
+            // Use the first PHP-FPM configuration from routes
+            if let Some(route_php_config) = config.routes.iter()
+                .find_map(|r| r.php_fpm.as_ref())
+                .filter(|php| php.enabled)
+            {
+                // Convert schema PhpFpmConfig to webserver PhpFpmConfig
+                let webserver_php_config = WebserverPhpFpmConfig {
+                    socket: route_php_config.socket.clone(),
+                    pool_size: route_php_config.pool_size,
+                    connect_timeout: route_php_config.connect_timeout_secs,
+                    read_timeout: route_php_config.read_timeout_secs,
+                    write_timeout: route_php_config.write_timeout_secs,
+                    keepalive_timeout: route_php_config.keepalive_timeout_secs,
+                    script_extensions: route_php_config.script_extensions.clone(),
+                    script_filename_override: None,
+                    fastcgi_params: std::collections::HashMap::new(),
+                };
+
+                info!("PHP-FPM pool initialized: socket={}, pool_size={}",
+                    webserver_php_config.socket, webserver_php_config.pool_size);
+                let php_pool = PhpFpmPool::new(webserver_php_config);
+                handler = handler.with_php_fpm_pool(Arc::new(php_pool));
+            }
+        }
+
+        let handler = Arc::new(handler);
 
         // Initialize TLS if configured
         let tls_acceptor = if let Some(tls_config) = &config.tls {
