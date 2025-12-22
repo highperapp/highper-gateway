@@ -130,6 +130,21 @@ enum Commands {
         #[arg(short, long)]
         diff: bool,
     },
+
+    /// Print final configuration with environment variable overrides
+    PrintConfig {
+        /// Path to configuration file
+        #[arg(short, long, default_value = "config/config.yaml")]
+        config: PathBuf,
+
+        /// Output format (yaml, json, toml)
+        #[arg(short, long, default_value = "yaml")]
+        format: String,
+
+        /// Show environment variable overrides separately
+        #[arg(short, long)]
+        show_overrides: bool,
+    },
 }
 
 #[tokio::main]
@@ -186,6 +201,10 @@ async fn main() -> Result<()> {
 
         Some(Commands::Migrate { input, output, validate, diff }) => {
             migrate_command(input, output, validate, diff).await
+        }
+
+        Some(Commands::PrintConfig { config, format, show_overrides }) => {
+            print_config_command(config, format, show_overrides).await
         }
     }
 }
@@ -505,6 +524,79 @@ async fn migrate_command(
     println!("💡 Usage:");
     println!("   highper-gateway start --config {}", output_path.display());
     println!();
+
+    Ok(())
+}
+
+/// Print final configuration with environment variable overrides
+async fn print_config_command(config_path: PathBuf, format: String, show_overrides: bool) -> Result<()> {
+    println!("📄 Loading configuration: {}", config_path.display());
+    println!();
+
+    // Load configuration
+    let config = load_config(&config_path)
+        .context("Failed to load configuration")?;
+
+    // Show environment variable overrides if requested
+    if show_overrides {
+        println!("🔧 Environment Variable Overrides:");
+        println!();
+
+        let env_vars = vec![
+            ("HIGHPER_MAX_FILE_SIZE", std::env::var("HIGHPER_MAX_FILE_SIZE").ok()),
+            ("HIGHPER_MAX_REQUEST_BODY", std::env::var("HIGHPER_MAX_REQUEST_BODY").ok()),
+            ("HIGHPER_MAX_UPLOAD_SIZE", std::env::var("HIGHPER_MAX_UPLOAD_SIZE").ok()),
+            ("HIGHPER_MAX_PATH_DEPTH", std::env::var("HIGHPER_MAX_PATH_DEPTH").ok()),
+            ("HIGHPER_MAX_CONNECTIONS_PER_IP", std::env::var("HIGHPER_MAX_CONNECTIONS_PER_IP").ok()),
+            ("HIGHPER_MAX_REQUESTS_PER_SECOND", std::env::var("HIGHPER_MAX_REQUESTS_PER_SECOND").ok()),
+            ("HIGHPER_LOG_LEVEL", std::env::var("HIGHPER_LOG_LEVEL").ok()),
+            ("HIGHPER_METRICS_PORT", std::env::var("HIGHPER_METRICS_PORT").ok()),
+        ];
+
+        let mut has_overrides = false;
+        for (name, value) in env_vars {
+            if let Some(val) = value {
+                println!("  ✓ {} = {}", name, val);
+                has_overrides = true;
+            }
+        }
+
+        if !has_overrides {
+            println!("  (No environment variable overrides detected)");
+        }
+
+        println!();
+        println!("───────────────────────────────────────────────────");
+        println!();
+    }
+
+    // Print configuration in requested format
+    match format.as_str() {
+        "yaml" => {
+            println!("📋 Configuration (YAML format):");
+            println!();
+            let yaml = serde_yaml::to_string(&config)
+                .context("Failed to serialize config to YAML")?;
+            println!("{}", yaml);
+        }
+        "json" => {
+            println!("📋 Configuration (JSON format):");
+            println!();
+            let json = serde_json::to_string_pretty(&config)
+                .context("Failed to serialize config to JSON")?;
+            println!("{}", json);
+        }
+        "toml" => {
+            println!("📋 Configuration (TOML format):");
+            println!();
+            let toml = toml::to_string_pretty(&config)
+                .context("Failed to serialize config to TOML")?;
+            println!("{}", toml);
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unknown format: {}. Use yaml, json, or toml", format));
+        }
+    }
 
     Ok(())
 }

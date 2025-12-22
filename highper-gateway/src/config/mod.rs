@@ -9,6 +9,9 @@ mod reloader;
 // Enhanced validation with detailed error reporting
 pub mod validation;
 
+// Environment variable configuration overrides (12-factor compliance)
+pub mod env_override;
+
 // DSL support (Caddy-like configuration)
 // Note: Not glob-exported to avoid conflicts with schema::Config
 pub mod dsl_ast;
