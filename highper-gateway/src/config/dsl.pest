@@ -100,6 +100,7 @@ directive = {
   | health_directive
   | tls_directive
   | tls_protocols_directive
+  | tls_client_auth_directive
   | cors_directive
   | websocket_directive
   | websocket_config_directive
@@ -137,6 +138,12 @@ directive = {
   | error_page_directive
   | directory_listing_directive
   | limits_directive
+  | security_headers_directive
+  | auth_directive
+  | retry_directive
+  | discovery_directive
+  | geo_routing_directive
+  | firewall_directive
 }
 
 // Proxy directive: proxy backend1 backend2 ...
@@ -682,4 +689,355 @@ limit_param = {
 
 byte_size = @{
     number ~ ("KB" | "MB" | "GB" | "B")?
+}
+
+// ============================================================================
+// NEW DIRECTIVES - Extended for full feature support
+// ============================================================================
+
+// Security Headers: security_headers { ... } or security_headers enabled
+security_headers_directive = {
+    "security_headers" ~ (security_headers_block | security_headers_inline) ~ newline*
+}
+
+security_headers_inline = {
+    "enabled" ~ newline
+}
+
+security_headers_block = {
+    "{" ~ newline* ~
+    (security_headers_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+security_headers_option = {
+    "enabled"
+  | "x_frame_options" ~ quoted_string
+  | "x_content_type_options" ~ quoted_string
+  | "x_xss_protection" ~ quoted_string
+  | "strict_transport_security" ~ quoted_string
+  | "hsts" ~ quoted_string  // Alias for strict_transport_security
+  | "content_security_policy" ~ quoted_string
+  | "csp" ~ quoted_string  // Alias for content_security_policy
+  | "referrer_policy" ~ quoted_string
+  | "permissions_policy" ~ quoted_string
+  | "custom" ~ header_name ~ quoted_string
+}
+
+// TLS Client Authentication (mTLS): tls_client_auth { ... }
+tls_client_auth_directive = {
+    "tls_client_auth" ~ tls_client_auth_block ~ newline*
+}
+
+tls_client_auth_block = {
+    "{" ~ newline* ~
+    (tls_client_auth_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+tls_client_auth_option = {
+    "enabled"
+  | "required"
+  | "optional"
+  | "ca_cert" ~ quoted_string
+  | "ca_file" ~ quoted_string  // Alias for ca_cert
+  | "verify_depth" ~ number
+  | "verify_client" ~ ("on" | "off" | "optional")
+  | "crl_file" ~ quoted_string
+}
+
+// Authentication: auth { type jwt ... } or auth { type oauth2 ... }
+auth_directive = {
+    "auth" ~ auth_block ~ newline*
+}
+
+auth_block = {
+    "{" ~ newline* ~
+    (auth_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+auth_option = {
+    "type" ~ auth_type
+  | "enabled"
+  | jwt_auth_option
+  | oauth2_auth_option
+  | basic_auth_option
+  | api_key_auth_option
+}
+
+auth_type = { "jwt" | "oauth2" | "basic" | "api_key" }
+
+// JWT authentication options
+jwt_auth_option = {
+    "secret" ~ (quoted_string | env_var)
+  | "algorithm" ~ jwt_algorithm
+  | "header" ~ quoted_string
+  | "prefix" ~ quoted_string
+  | "claims_required" ~ identifier+
+  | "claims_validation" ~ ("enabled" | "required")
+  | "validate_exp" ~ bool_value
+  | "validate_nbf" ~ bool_value
+  | "issuer" ~ quoted_string
+  | "audience" ~ quoted_string
+}
+
+jwt_algorithm = { "HS256" | "HS384" | "HS512" | "RS256" | "RS384" | "RS512" | "ES256" | "ES384" | "ES512" }
+
+// OAuth2 authentication options
+oauth2_auth_option = {
+    "provider" ~ oauth2_provider
+  | "client_id" ~ (quoted_string | env_var)
+  | "client_secret" ~ (quoted_string | env_var)
+  | "scopes" ~ quoted_string_array
+  | "callback_url" ~ quoted_string
+  | "authorize_url" ~ quoted_string
+  | "token_url" ~ quoted_string
+  | "userinfo_url" ~ quoted_string
+}
+
+oauth2_provider = { "google" | "github" | "facebook" | "microsoft" | "okta" | "auth0" | "custom" }
+
+// Basic authentication options
+basic_auth_option = {
+    "realm" ~ quoted_string
+  | "htpasswd_file" ~ quoted_string
+  | "users" ~ basic_auth_users_block
+}
+
+basic_auth_users_block = {
+    "{" ~ newline* ~
+    (basic_auth_user ~ newline)* ~
+    "}" ~ newline*
+}
+
+basic_auth_user = {
+    identifier ~ ":" ~ quoted_string  // username:password_hash
+}
+
+// API Key authentication options
+api_key_auth_option = {
+    "header" ~ quoted_string
+  | "query_param" ~ quoted_string
+  | "keys" ~ quoted_string_array
+  | "keys_file" ~ quoted_string
+}
+
+// Retry Policy: retry { attempts 3 backoff exponential ... }
+retry_directive = {
+    "retry" ~ retry_block ~ newline*
+}
+
+retry_block = {
+    "{" ~ newline* ~
+    (retry_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+retry_option = {
+    "enabled"
+  | "attempts" ~ number
+  | "backoff" ~ backoff_strategy
+  | "initial_delay" ~ duration
+  | "max_delay" ~ duration
+  | "multiplier" ~ float_number
+  | "jitter" ~ ("enabled" | "disabled")
+  | "retry_on" ~ retry_condition+
+}
+
+backoff_strategy = { "exponential" | "linear" | "constant" | "fibonacci" }
+
+retry_condition = {
+    "5xx"
+  | "connection_error"
+  | "timeout"
+  | "status_code" ~ number
+}
+
+// Service Discovery: discovery { provider consul ... }
+discovery_directive = {
+    "discovery" ~ discovery_block ~ newline*
+}
+
+discovery_block = {
+    "{" ~ newline* ~
+    (discovery_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+discovery_option = {
+    "provider" ~ discovery_provider
+  | "address" ~ quoted_string
+  | "service_name" ~ quoted_string
+  | "refresh_interval" ~ duration
+  | "health_check" ~ ("enabled" | "disabled")
+  | "tags" ~ quoted_string_array
+  | consul_discovery_option
+  | etcd_discovery_option
+  | kubernetes_discovery_option
+  | dns_discovery_option
+}
+
+discovery_provider = { "consul" | "etcd" | "kubernetes" | "dns" | "static" }
+
+// Consul-specific options
+consul_discovery_option = {
+    "datacenter" ~ quoted_string
+  | "token" ~ (quoted_string | env_var)
+  | "namespace" ~ quoted_string
+  | "passing_only" ~ bool_value
+}
+
+// Etcd-specific options
+etcd_discovery_option = {
+    "prefix" ~ quoted_string
+  | "username" ~ quoted_string
+  | "password" ~ (quoted_string | env_var)
+}
+
+// Kubernetes-specific options
+kubernetes_discovery_option = {
+    "namespace" ~ quoted_string
+  | "label_selector" ~ quoted_string
+  | "field_selector" ~ quoted_string
+  | "port_name" ~ quoted_string
+}
+
+// DNS-specific options
+dns_discovery_option = {
+    "resolver" ~ quoted_string
+  | "record_type" ~ dns_record_type
+  | "port" ~ number
+}
+
+dns_record_type = { "A" | "AAAA" | "SRV" }
+
+// Geographic Routing: geo_routing { ... }
+geo_routing_directive = {
+    "geo_routing" ~ geo_routing_block ~ newline*
+}
+
+geo_routing_block = {
+    "{" ~ newline* ~
+    (geo_routing_option ~ newline)* ~
+    (geo_region_block ~ newline*)* ~
+    (geo_default_block ~ newline?)? ~
+    "}" ~ newline*
+}
+
+geo_routing_option = {
+    "enabled"
+  | "database" ~ quoted_string
+  | "database_type" ~ geo_database_type
+  | "fallback" ~ ("closest" | "random" | "round_robin")
+}
+
+geo_database_type = { "maxmind" | "ip2location" | "dbip" | "geoip2" }
+
+// Geographic region definition
+geo_region_block = {
+    "region" ~ identifier ~ "{" ~ newline* ~
+    (geo_region_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+geo_region_option = {
+    "countries" ~ country_code_array
+  | "continents" ~ continent_code_array
+  | "cities" ~ quoted_string_array
+  | "ip_ranges" ~ cidr_array
+  | "proxy" ~ backend+
+  | "weight" ~ number
+}
+
+geo_default_block = {
+    "default" ~ ("proxy" ~ backend+ | "{" ~ newline* ~ (geo_region_option ~ newline)* ~ "}" ~ newline*)
+}
+
+// Firewall / IP ACL: firewall { ... }
+firewall_directive = {
+    "firewall" ~ firewall_block ~ newline*
+}
+
+firewall_block = {
+    "{" ~ newline* ~
+    (firewall_option ~ newline)* ~
+    "}" ~ newline*
+}
+
+firewall_option = {
+    "enabled"
+  | "mode" ~ firewall_mode
+  | "allowlist" ~ (cidr_array | firewall_list_block)
+  | "blocklist" ~ (cidr_array | firewall_list_block)
+  | "whitelist" ~ (cidr_array | firewall_list_block)  // Alias for allowlist
+  | "blacklist" ~ (cidr_array | firewall_list_block)  // Alias for blocklist
+  | "allow" ~ cidr_array
+  | "deny" ~ cidr_array
+  | "max_connections_per_ip" ~ number
+  | "rate_limit" ~ number ~ ("per_second" | "per_minute")
+  | "geo_block" ~ country_code_array
+  | "geo_allow" ~ country_code_array
+}
+
+firewall_mode = { "allow" | "deny" }
+
+firewall_list_block = {
+    "[" ~ newline* ~
+    (cidr_value ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+// ============================================================================
+// HELPER TYPES
+// ============================================================================
+
+// Environment variable: env("VAR_NAME")
+env_var = { "env(" ~ quoted_string ~ ")" }
+
+// Boolean values
+bool_value = { "true" | "false" | "on" | "off" | "yes" | "no" }
+
+// Float number: 1.5, 2.0, etc.
+float_number = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+
+// Array of quoted strings: ["item1", "item2"]
+quoted_string_array = {
+    "[" ~ newline* ~
+    (quoted_string ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+// Array of country codes: [US, CA, MX]
+country_code_array = {
+    "[" ~ newline* ~
+    (country_code ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+country_code = @{ ASCII_ALPHA{2} }  // ISO 3166-1 alpha-2
+
+// Array of continent codes: [NA, EU, AS]
+continent_code_array = {
+    "[" ~ newline* ~
+    (continent_code ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+continent_code = @{ ASCII_ALPHA{2} }  // NA, EU, AS, AF, OC, SA, AN
+
+// Array of CIDR blocks: ["10.0.0.0/8", "192.168.0.0/16"]
+cidr_array = {
+    "[" ~ newline* ~
+    (cidr_value ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+cidr_value = @{
+    (quoted_string | cidr_notation)
+}
+
+// CIDR notation: 10.0.0.0/8
+cidr_notation = @{
+    ip_address ~ "/" ~ ASCII_DIGIT{1,2}
 }

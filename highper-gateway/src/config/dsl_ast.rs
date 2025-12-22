@@ -284,6 +284,27 @@ pub enum Directive {
 
     /// Resource limits configuration
     Limits(LimitsConfig),
+
+    /// Security headers configuration
+    SecurityHeaders(SecurityHeadersConfig),
+
+    /// TLS client authentication (mTLS)
+    TlsClientAuth(TlsClientAuthConfig),
+
+    /// Authentication configuration
+    Auth(AuthConfig),
+
+    /// Retry policy configuration
+    Retry(RetryConfig),
+
+    /// Service discovery configuration
+    Discovery(DiscoveryConfig),
+
+    /// Geographic routing configuration
+    GeoRouting(GeoRoutingConfig),
+
+    /// Firewall/IP ACL configuration
+    Firewall(FirewallConfig),
 }
 
 /// Resource limits configuration
@@ -810,6 +831,456 @@ impl Default for QuicConfig {
         Self {
             ack_delay: Some(Duration::from_millis(25)),
             max_idle_timeout: Some(Duration::from_secs(30)),
+        }
+    }
+}
+
+/// Security Headers configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecurityHeadersConfig {
+    pub enabled: bool,
+    pub x_frame_options: Option<String>,
+    pub x_content_type_options: Option<String>,
+    pub x_xss_protection: Option<String>,
+    pub strict_transport_security: Option<String>,
+    pub content_security_policy: Option<String>,
+    pub referrer_policy: Option<String>,
+    pub permissions_policy: Option<String>,
+    pub custom_headers: Vec<(String, String)>,
+}
+
+impl Default for SecurityHeadersConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            x_frame_options: Some("DENY".to_string()),
+            x_content_type_options: Some("nosniff".to_string()),
+            x_xss_protection: Some("1; mode=block".to_string()),
+            strict_transport_security: Some("max-age=31536000".to_string()),
+            content_security_policy: Some("default-src 'self'".to_string()),
+            referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
+            permissions_policy: None,
+            custom_headers: Vec::new(),
+        }
+    }
+}
+
+/// TLS Client Authentication (mTLS) configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TlsClientAuthConfig {
+    pub enabled: bool,
+    pub required: bool,
+    pub ca_cert_file: Option<String>,
+    pub verify_depth: Option<u8>,
+    pub crl_file: Option<String>,
+}
+
+impl Default for TlsClientAuthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            required: false,
+            ca_cert_file: None,
+            verify_depth: Some(3),
+            crl_file: None,
+        }
+    }
+}
+
+/// Authentication configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthConfig {
+    pub auth_type: AuthType,
+    pub enabled: bool,
+    pub jwt: Option<JwtAuthConfig>,
+    pub oauth2: Option<OAuth2AuthConfig>,
+    pub basic: Option<BasicAuthConfig>,
+    pub api_key: Option<ApiKeyAuthConfig>,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            auth_type: AuthType::Jwt,
+            enabled: false,
+            jwt: None,
+            oauth2: None,
+            basic: None,
+            api_key: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthType {
+    Jwt,
+    OAuth2,
+    Basic,
+    ApiKey,
+}
+
+impl std::fmt::Display for AuthType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthType::Jwt => write!(f, "jwt"),
+            AuthType::OAuth2 => write!(f, "oauth2"),
+            AuthType::Basic => write!(f, "basic"),
+            AuthType::ApiKey => write!(f, "api_key"),
+        }
+    }
+}
+
+/// JWT Authentication configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JwtAuthConfig {
+    pub secret: String,
+    pub algorithm: JwtAlgorithm,
+    pub header: String,
+    pub prefix: String,
+    pub claims_required: Vec<String>,
+    pub validate_exp: bool,
+    pub validate_nbf: bool,
+    pub issuer: Option<String>,
+    pub audience: Option<String>,
+}
+
+impl Default for JwtAuthConfig {
+    fn default() -> Self {
+        Self {
+            secret: String::new(),
+            algorithm: JwtAlgorithm::HS256,
+            header: "Authorization".to_string(),
+            prefix: "Bearer ".to_string(),
+            claims_required: vec!["sub".to_string(), "exp".to_string()],
+            validate_exp: true,
+            validate_nbf: true,
+            issuer: None,
+            audience: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JwtAlgorithm {
+    HS256,
+    HS384,
+    HS512,
+    RS256,
+    RS384,
+    RS512,
+    ES256,
+    ES384,
+    ES512,
+}
+
+impl std::fmt::Display for JwtAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JwtAlgorithm::HS256 => write!(f, "HS256"),
+            JwtAlgorithm::HS384 => write!(f, "HS384"),
+            JwtAlgorithm::HS512 => write!(f, "HS512"),
+            JwtAlgorithm::RS256 => write!(f, "RS256"),
+            JwtAlgorithm::RS384 => write!(f, "RS384"),
+            JwtAlgorithm::RS512 => write!(f, "RS512"),
+            JwtAlgorithm::ES256 => write!(f, "ES256"),
+            JwtAlgorithm::ES384 => write!(f, "ES384"),
+            JwtAlgorithm::ES512 => write!(f, "ES512"),
+        }
+    }
+}
+
+/// OAuth2 Authentication configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuth2AuthConfig {
+    pub provider: OAuth2Provider,
+    pub client_id: String,
+    pub client_secret: String,
+    pub scopes: Vec<String>,
+    pub callback_url: String,
+    pub authorize_url: Option<String>,
+    pub token_url: Option<String>,
+    pub userinfo_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OAuth2Provider {
+    Google,
+    GitHub,
+    Facebook,
+    Microsoft,
+    Okta,
+    Auth0,
+    Custom,
+}
+
+impl std::fmt::Display for OAuth2Provider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OAuth2Provider::Google => write!(f, "google"),
+            OAuth2Provider::GitHub => write!(f, "github"),
+            OAuth2Provider::Facebook => write!(f, "facebook"),
+            OAuth2Provider::Microsoft => write!(f, "microsoft"),
+            OAuth2Provider::Okta => write!(f, "okta"),
+            OAuth2Provider::Auth0 => write!(f, "auth0"),
+            OAuth2Provider::Custom => write!(f, "custom"),
+        }
+    }
+}
+
+/// Basic Authentication configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasicAuthConfig {
+    pub realm: String,
+    pub htpasswd_file: Option<String>,
+    pub users: Vec<(String, String)>, // (username, password_hash)
+}
+
+/// API Key Authentication configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiKeyAuthConfig {
+    pub header: Option<String>,
+    pub query_param: Option<String>,
+    pub keys: Vec<String>,
+    pub keys_file: Option<String>,
+}
+
+/// Retry Policy configuration
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetryConfig {
+    pub enabled: bool,
+    pub attempts: u32,
+    pub backoff: BackoffStrategy,
+    pub initial_delay: Duration,
+    pub max_delay: Duration,
+    pub multiplier: f64,
+    pub jitter: bool,
+    pub retry_on: Vec<RetryCondition>,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            attempts: 3,
+            backoff: BackoffStrategy::Exponential,
+            initial_delay: Duration::from_millis(100),
+            max_delay: Duration::from_secs(5),
+            multiplier: 2.0,
+            jitter: true,
+            retry_on: vec![RetryCondition::Status5xx, RetryCondition::ConnectionError],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackoffStrategy {
+    Exponential,
+    Linear,
+    Constant,
+    Fibonacci,
+}
+
+impl std::fmt::Display for BackoffStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackoffStrategy::Exponential => write!(f, "exponential"),
+            BackoffStrategy::Linear => write!(f, "linear"),
+            BackoffStrategy::Constant => write!(f, "constant"),
+            BackoffStrategy::Fibonacci => write!(f, "fibonacci"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RetryCondition {
+    Status5xx,
+    ConnectionError,
+    Timeout,
+    StatusCode(u16),
+}
+
+/// Service Discovery configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveryConfig {
+    pub provider: DiscoveryProvider,
+    pub address: String,
+    pub service_name: String,
+    pub refresh_interval: Duration,
+    pub health_check_enabled: bool,
+    pub tags: Vec<String>,
+    pub consul: Option<ConsulDiscoveryConfig>,
+    pub etcd: Option<EtcdDiscoveryConfig>,
+    pub kubernetes: Option<KubernetesDiscoveryConfig>,
+    pub dns: Option<DnsDiscoveryConfig>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscoveryProvider {
+    Consul,
+    Etcd,
+    Kubernetes,
+    Dns,
+    Static,
+}
+
+impl std::fmt::Display for DiscoveryProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiscoveryProvider::Consul => write!(f, "consul"),
+            DiscoveryProvider::Etcd => write!(f, "etcd"),
+            DiscoveryProvider::Kubernetes => write!(f, "kubernetes"),
+            DiscoveryProvider::Dns => write!(f, "dns"),
+            DiscoveryProvider::Static => write!(f, "static"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsulDiscoveryConfig {
+    pub datacenter: Option<String>,
+    pub token: Option<String>,
+    pub namespace: Option<String>,
+    pub passing_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EtcdDiscoveryConfig {
+    pub prefix: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KubernetesDiscoveryConfig {
+    pub namespace: String,
+    pub label_selector: Option<String>,
+    pub field_selector: Option<String>,
+    pub port_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsDiscoveryConfig {
+    pub resolver: Option<String>,
+    pub record_type: DnsRecordType,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DnsRecordType {
+    A,
+    AAAA,
+    SRV,
+}
+
+impl std::fmt::Display for DnsRecordType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DnsRecordType::A => write!(f, "A"),
+            DnsRecordType::AAAA => write!(f, "AAAA"),
+            DnsRecordType::SRV => write!(f, "SRV"),
+        }
+    }
+}
+
+/// Geographic Routing configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoRoutingConfig {
+    pub enabled: bool,
+    pub database_path: Option<String>,
+    pub database_type: GeoDatabaseType,
+    pub fallback_strategy: GeoFallbackStrategy,
+    pub regions: Vec<GeoRegion>,
+    pub default_backends: Vec<Backend>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeoDatabaseType {
+    MaxMind,
+    Ip2Location,
+    DbIp,
+    GeoIp2,
+}
+
+impl std::fmt::Display for GeoDatabaseType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GeoDatabaseType::MaxMind => write!(f, "maxmind"),
+            GeoDatabaseType::Ip2Location => write!(f, "ip2location"),
+            GeoDatabaseType::DbIp => write!(f, "dbip"),
+            GeoDatabaseType::GeoIp2 => write!(f, "geoip2"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeoFallbackStrategy {
+    Closest,
+    Random,
+    RoundRobin,
+}
+
+impl std::fmt::Display for GeoFallbackStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GeoFallbackStrategy::Closest => write!(f, "closest"),
+            GeoFallbackStrategy::Random => write!(f, "random"),
+            GeoFallbackStrategy::RoundRobin => write!(f, "round_robin"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoRegion {
+    pub name: String,
+    pub countries: Vec<String>,
+    pub continents: Vec<String>,
+    pub cities: Vec<String>,
+    pub ip_ranges: Vec<String>,
+    pub backends: Vec<Backend>,
+    pub weight: Option<u32>,
+}
+
+/// Firewall / IP ACL configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirewallConfig {
+    pub enabled: bool,
+    pub mode: FirewallMode,
+    pub allowlist: Vec<String>,
+    pub blocklist: Vec<String>,
+    pub max_connections_per_ip: Option<u32>,
+    pub rate_limit_per_second: Option<u32>,
+    pub rate_limit_per_minute: Option<u32>,
+    pub geo_block: Vec<String>,
+    pub geo_allow: Vec<String>,
+}
+
+impl Default for FirewallConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: FirewallMode::Allow,
+            allowlist: Vec::new(),
+            blocklist: Vec::new(),
+            max_connections_per_ip: None,
+            rate_limit_per_second: None,
+            rate_limit_per_minute: None,
+            geo_block: Vec::new(),
+            geo_allow: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirewallMode {
+    Allow,
+    Deny,
+}
+
+impl std::fmt::Display for FirewallMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FirewallMode::Allow => write!(f, "allow"),
+            FirewallMode::Deny => write!(f, "deny"),
         }
     }
 }
