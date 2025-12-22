@@ -63,6 +63,14 @@ impl Metrics {
         describe_histogram!("route_request_duration_seconds", "Request latency per route");
         describe_counter!("route_requests_bytes_total", "Total request bytes per route");
         describe_counter!("route_responses_bytes_total", "Total response bytes per route");
+
+        // Protocol-specific metrics
+        crate::observability::tcp_metrics::describe_tcp_metrics();
+        crate::observability::tls_metrics::describe_tls_metrics();
+        crate::observability::quic_metrics::describe_quic_metrics();
+        crate::observability::grpc_metrics::describe_grpc_metrics();
+        crate::observability::graphql_metrics::describe_graphql_metrics();
+        crate::observability::cache_metrics::describe_cache_metrics();
     }
 
     /// Get the Prometheus metrics handle for rendering
