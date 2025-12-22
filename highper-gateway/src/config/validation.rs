@@ -685,6 +685,7 @@ mod tests {
                 try_files: vec![],
                 error_pages: std::collections::HashMap::new(),
                 directory_listing: false,
+                limits: None,
             }],
             observability: ObservabilityConfig::default(),
             admin: None,

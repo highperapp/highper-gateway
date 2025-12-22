@@ -1649,6 +1649,28 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_byte_size() {
+        // Test with suffix variants
+        assert_eq!(parse_byte_size("100B").unwrap(), 100);
+        assert_eq!(parse_byte_size("10KB").unwrap(), 10_240);
+        assert_eq!(parse_byte_size("5MB").unwrap(), 5_242_880);
+        assert_eq!(parse_byte_size("1GB").unwrap(), 1_073_741_824);
+
+        // Test without suffix (defaults to bytes)
+        assert_eq!(parse_byte_size("50").unwrap(), 50);
+        assert_eq!(parse_byte_size("1024").unwrap(), 1024);
+
+        // Test realistic values
+        assert_eq!(parse_byte_size("100MB").unwrap(), 104_857_600);
+        assert_eq!(parse_byte_size("3MB").unwrap(), 3_145_728);
+
+        // Test error cases
+        assert!(parse_byte_size("invalid").is_err());
+        assert!(parse_byte_size("").is_err());
+        assert!(parse_byte_size("MB").is_err());
+    }
+
+    #[test]
     fn test_parse_simple_proxy() {
         let input = "localhost:8080 proxy backend:3000\n";
         let config = parse_dsl(input).unwrap();
