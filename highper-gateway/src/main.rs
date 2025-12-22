@@ -636,17 +636,43 @@ fn init_logging(cli: &Cli) {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cli.log_level));
 
-    if cli.json_logs {
-        // JSON logging
+    // Check for JSON logs from env var or CLI flag
+    let json_logs = cli.json_logs ||
+        std::env::var("HIGHPER_JSON_LOGS")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+
+    if json_logs {
+        // Structured JSON logging for production (12-Factor XI)
+        // Output format compatible with ELK, Splunk, CloudWatch, etc.
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(tracing_subscriber::fmt::layer().json())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_current_span(true)
+                    .with_span_list(true)
+                    .with_target(true)
+                    .with_level(true)
+                    .with_thread_ids(true)
+                    .with_thread_names(true)
+            )
             .init();
+
+        eprintln!("📋 Structured JSON logging enabled");
+        eprintln!("   Compatible with: ELK Stack, Splunk, CloudWatch, Datadog");
+        eprintln!("   All logs include: timestamp, level, target, structured fields");
     } else {
         // Pretty logging for development
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(tracing_subscriber::fmt::layer().pretty())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .pretty()
+                    .with_target(true)
+                    .with_level(true)
+            )
             .init();
     }
 }

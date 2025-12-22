@@ -6,9 +6,11 @@ pub mod metrics;
 pub mod server;
 pub mod tracing;
 pub mod system;
+pub mod structured_logging;
 
 pub use dashboard::*;
 pub use logging::*;
 pub use metrics::*;
 pub use server::*;
 pub use system::*;
+pub use structured_logging::*;
