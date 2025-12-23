@@ -1,0 +1,108 @@
+# gRPC Gateway Configuration
+#
+# This configuration sets up a gRPC service gateway with:
+# - HTTP/2 multiplexing
+# - TLS termination (gRPC typically requires TLS)
+# - Streaming support
+# - Load balancing with health checking
+# - gRPC-specific optimizations
+#
+# Environment variables:
+# - GRPC_SERVICE_1: First gRPC service (e.g., grpc1.internal:50051)
+# - GRPC_SERVICE_2: Second gRPC service (e.g., grpc2.internal:50051)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind: []  # gRPC typically uses TLS only
+  tls_bind:
+    - "0.0.0.0:50051"
+  workers: auto
+  protocols:
+    - http2  # gRPC requires HTTP/2
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 10000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 60s  # gRPC can be long-running (streaming)
+    idle_timeout: 300s  # 5 minutes
+    connection_pool:
+      max_idle_per_host: 50
+      min_idle_per_host: 5
+      max_connection_lifetime: 1800s  # 30 minutes
+      idle_timeout: 300s
+      prewarm: true
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+  # Optional: Enable mTLS for service-to-service authentication
+  # mtls:
+  #   enabled: true
+  #   ca_cert: "${MTLS_CA_CERT}"
+  #   verify_client: true
+
+grpc:
+  enabled: true
+  max_message_size: 4194304  # 4 MB
+  timeout_seconds: 60
+  health_check_enabled: true
+
+upstreams:
+  - name: grpc-services
+    servers:
+      - address: "${GRPC_SERVICE_1}"
+        weight: 1
+      - address: "${GRPC_SERVICE_2}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections  # Best for long-lived gRPC streams
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      grpc_check:
+        service: "grpc.health.v1.Health"
+
+routes:
+  - path: "/"
+    upstream: grpc-services
+    protocols:
+      - grpc
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      grpc: debug
+      http: info
+      tls: info
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.1
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

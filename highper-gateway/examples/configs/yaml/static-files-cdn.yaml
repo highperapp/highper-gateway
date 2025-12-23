@@ -1,0 +1,122 @@
+# Static File Server / CDN Configuration
+#
+# This configuration sets up a high-performance static file server with:
+# - Aggressive caching (1 day default TTL)
+# - HTTP/3 support for best performance
+# - Compression
+# - Security headers
+# - ETag support
+#
+# Environment variables:
+# - ORIGIN_SERVER: Origin server for static files (e.g., storage.internal:8080)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: auto
+  protocols:
+    - http1
+    - http2
+    - http3  # Enable HTTP/3 for best performance
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 100000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 30s
+    idle_timeout: 60s
+    connection_pool:
+      max_idle_per_host: 100
+      min_idle_per_host: 0
+      max_connection_lifetime: null
+      idle_timeout: 60s
+      prewarm: false
+      metrics_enabled: true
+  shutdown_timeout: 10s
+  http3:
+    enabled: true
+    port: 8443
+    bind: "0.0.0.0"
+    enable_0rtt: false  # Disable for security
+    max_concurrent_streams: 100
+    initial_window_size: 10485760  # 10 MB
+    max_datagram_size: 1350
+    idle_timeout_secs: 30
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+
+upstreams:
+  - name: origin-server
+    servers:
+      - address: "${ORIGIN_SERVER}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 30s
+      timeout: 5s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+routes:
+  - path: "/"
+    upstream: origin-server
+    methods:
+      - GET
+      - HEAD
+    middlewares:
+      - cache
+      - compression
+      - security_headers
+
+# Aggressive caching for static files
+cache:
+  enabled: true
+  default_ttl: 86400s  # 1 day
+  max_size: 100000  # Store up to 100k entries
+  cleanup_interval: 300s  # Clean up every 5 minutes
+  cache_only_success: true
+  methods:
+    - GET
+    - HEAD
+  key_headers:
+    - Accept-Encoding  # Include encoding in cache key
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: warn  # Less verbose for static files
+    format: json
+    output: stdout
+    protocols:
+      http: warn
+      quic: info
+  tracing:
+    enabled: false  # Usually not needed for static files
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

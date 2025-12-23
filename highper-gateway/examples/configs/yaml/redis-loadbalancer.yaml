@@ -1,0 +1,86 @@
+# Redis Load Balancer Configuration
+#
+# This configuration sets up a high-throughput Redis load balancer with:
+# - Many short-lived connections
+# - Pipeline support
+# - Pub/Sub pattern support
+# - Fast response times
+#
+# Environment variables:
+# - REDIS_NODE_1: First Redis server (e.g., 192.168.1.30:6379)
+# - REDIS_NODE_2: Second Redis server (e.g., 192.168.1.31:6379)
+# - REDIS_NODE_3: Third Redis server (e.g., 192.168.1.32:6379)
+
+server:
+  bind:
+    - "0.0.0.0:6379"
+  workers: auto
+  protocols:
+    - http1  # Placeholder - Redis uses RESP protocol over TCP
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 50000  # Redis can handle many connections
+    max_requests_per_connection: 1000
+    connect_timeout: 2s
+    request_timeout: 5s  # Redis is fast
+    idle_timeout: 60s
+    connection_pool:
+      max_idle_per_host: 500
+      min_idle_per_host: 50
+      max_connection_lifetime: 1800s  # 30 minutes
+      idle_timeout: 60s
+      prewarm: true
+      metrics_enabled: true
+  shutdown_timeout: 10s
+
+upstreams:
+  - name: redis-cluster
+    servers:
+      - address: "${REDIS_NODE_1}"
+        weight: 1
+      - address: "${REDIS_NODE_2}"
+        weight: 1
+      - address: "${REDIS_NODE_3}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin  # Consistent hashing preferred for Redis
+      consistent_hashing:
+        enabled: true
+        hash_on: "client_ip"  # Or use Redis key for better distribution
+    health_check:
+      enabled: true
+      interval: 5s
+      timeout: 2s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      tcp_check: true
+
+routes:
+  - path: "/"
+    upstream: redis-cluster
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      tcp: info  # Less verbose for high-throughput
+      cache: debug  # If using cache features
+  tracing:
+    enabled: false
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

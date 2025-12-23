@@ -1,0 +1,108 @@
+# PHP-FPM Application Gateway Configuration
+#
+# This configuration sets up a gateway for PHP-FPM applications with:
+# - FastCGI protocol support
+# - File upload handling (large request bodies)
+# - Script execution timeouts
+# - Security headers for web applications
+#
+# Environment variables:
+# - PHP_FPM_HOST: PHP-FPM server (e.g., php-fpm:9000)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: auto
+  protocols:
+    - http1
+    - http2
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 10000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 90s  # PHP scripts can be slow
+    idle_timeout: 60s
+    connection_pool:
+      max_idle_per_host: 50
+      min_idle_per_host: 0
+      max_connection_lifetime: null
+      idle_timeout: 60s
+      prewarm: false
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+
+upstreams:
+  - name: php-fpm
+    servers:
+      - address: "${PHP_FPM_HOST}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      tcp_check: true  # PHP-FPM uses FastCGI protocol
+
+routes:
+  - path: "/"
+    upstream: php-fpm
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    middlewares:
+      - security_headers
+      - rate_limit
+
+# Rate limiting for form submissions
+rate_limit:
+  enabled: true
+  algorithm: token_bucket
+  capacity: 100
+  refill_rate: 10
+  window: 60s
+  key_type: ip
+  cleanup_interval: 60s
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      http: info
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.1
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

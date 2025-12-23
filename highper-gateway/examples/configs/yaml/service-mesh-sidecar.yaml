@@ -1,0 +1,121 @@
+# Service Mesh Sidecar Configuration
+#
+# This configuration sets up a sidecar proxy for service mesh deployments with:
+# - Mutual TLS (mTLS) for service-to-service authentication
+# - Distributed tracing integration
+# - Circuit breaking and retry logic
+# - Comprehensive observability
+#
+# Environment variables:
+# - LOCAL_SERVICE: Local service to proxy (e.g., localhost:8080)
+# - MTLS_CA_CERT: Path to CA certificate for mTLS
+# - MTLS_CLIENT_CERT: Path to client certificate
+# - MTLS_CLIENT_KEY: Path to client private key
+# - TLS_CERT_PATH: Path to server TLS certificate
+# - TLS_KEY_PATH: Path to server TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:15001"  # Sidecar ingress port
+  tls_bind:
+    - "0.0.0.0:15443"  # Sidecar TLS ingress port
+  workers: auto
+  protocols:
+    - http1
+    - http2
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 10000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 30s
+    idle_timeout: 90s
+    connection_pool:
+      max_idle_per_host: 100
+      min_idle_per_host: 10
+      max_connection_lifetime: 1800s
+      idle_timeout: 90s
+      prewarm: true
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+# mTLS configuration for service-to-service authentication
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+  mtls:
+    enabled: true
+    ca_cert: "${MTLS_CA_CERT}"
+    verify_client: true
+    client_cert: "${MTLS_CLIENT_CERT}"
+    client_key: "${MTLS_CLIENT_KEY}"
+
+upstreams:
+  # Local service
+  - name: local-service
+    servers:
+      - address: "${LOCAL_SERVICE}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 5s
+      timeout: 2s
+      unhealthy_threshold: 2
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+    # Circuit breaker to prevent cascading failures
+    circuit_breaker:
+      enabled: true
+      error_threshold: 5
+      success_threshold: 2
+      timeout: 30s
+      half_open_requests: 3
+    # Retry logic for transient failures
+    retry:
+      enabled: true
+      attempts: 3
+      timeout: 1s
+      backoff: "exponential"
+      retry_on:
+        - "5xx"
+        - "timeout"
+
+routes:
+  - path: "/"
+    upstream: local-service
+    middlewares:
+      - tracing
+      - metrics
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:15090"  # Sidecar metrics port
+    endpoint: "/metrics"
+    port: 15090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      http: info
+      tls: debug  # Detailed mTLS logging
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 1.0  # Sample all requests in service mesh
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:15000"  # Sidecar admin port
+  auth_enabled: false  # Local access only
+  cors_enabled: false
+  read_only: false

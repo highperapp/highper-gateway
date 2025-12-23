@@ -1,0 +1,143 @@
+# API Gateway with Advanced Rate Limiting
+#
+# This configuration sets up an API gateway with sophisticated rate limiting:
+# - Multiple rate limit tiers (per-IP, per-user, per-API-key)
+# - Token bucket algorithm for burst handling
+# - Different limits for different endpoints
+# - Rate limit headers in responses
+#
+# Environment variables:
+# - API_BACKEND: API backend server (e.g., api.internal:8080)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: auto
+  protocols:
+    - http1
+    - http2
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 100000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 30s
+    idle_timeout: 90s
+    connection_pool:
+      max_idle_per_host: 100
+      min_idle_per_host: 0
+      max_connection_lifetime: null
+      idle_timeout: 90s
+      prewarm: false
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+
+upstreams:
+  - name: api-backend
+    servers:
+      - address: "${API_BACKEND}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+routes:
+  # Public API endpoints with strict rate limiting
+  - path: "/api/v1/public"
+    upstream: api-backend
+    methods:
+      - GET
+      - POST
+    middlewares:
+      - rate_limit_public
+      - cors
+      - security_headers
+
+  # Authenticated API endpoints with relaxed rate limiting
+  - path: "/api/v1/auth"
+    upstream: api-backend
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    middlewares:
+      - rate_limit_authenticated
+      - cors
+      - security_headers
+
+  # Premium API endpoints with higher limits
+  - path: "/api/v1/premium"
+    upstream: api-backend
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    middlewares:
+      - rate_limit_premium
+      - cors
+      - security_headers
+
+# Default rate limit (can be overridden per-route)
+rate_limit:
+  enabled: true
+  algorithm: token_bucket
+  capacity: 100  # 100 requests
+  refill_rate: 10  # 10 per second
+  window: 60s
+  key_type: ip  # Rate limit by client IP
+  cleanup_interval: 60s
+
+# Additional rate limit configurations would be defined here:
+# - rate_limit_public: Very strict (e.g., 10 req/min)
+# - rate_limit_authenticated: Moderate (e.g., 100 req/min)
+# - rate_limit_premium: Relaxed (e.g., 1000 req/min)
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      http: info
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.1
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: true
+  cors_origins:
+    - "http://localhost:3000"
+  read_only: false

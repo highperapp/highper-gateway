@@ -1,0 +1,99 @@
+# PostgreSQL Load Balancer Configuration
+#
+# This configuration sets up a PostgreSQL load balancer with:
+# - Read/write splitting capability
+# - Long-lived connection pooling
+# - Health checking with PostgreSQL-specific validation
+# - Connection pre-warming
+#
+# Environment variables:
+# - PG_PRIMARY: Primary PostgreSQL server for writes (e.g., 192.168.1.20:5432)
+# - PG_REPLICA_1: Read replica 1 (e.g., 192.168.1.21:5432)
+# - PG_REPLICA_2: Read replica 2 (e.g., 192.168.1.22:5432)
+
+server:
+  bind:
+    - "0.0.0.0:5432"
+  workers: auto
+  protocols:
+    - http1  # Placeholder - PostgreSQL uses raw TCP
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 10000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 60s
+    idle_timeout: 600s  # 10 minutes - PostgreSQL prefers longer idle
+    connection_pool:
+      max_idle_per_host: 200
+      min_idle_per_host: 10
+      max_connection_lifetime: 3600s
+      idle_timeout: 600s
+      prewarm: true
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+upstreams:
+  # Primary server for write operations
+  - name: postgresql-primary
+    servers:
+      - address: "${PG_PRIMARY}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      tcp_check: true
+
+  # Read replicas for read operations
+  - name: postgresql-replicas
+    servers:
+      - address: "${PG_REPLICA_1}"
+        weight: 1
+      - address: "${PG_REPLICA_2}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      tcp_check: true
+
+routes:
+  # Route all traffic to primary by default
+  # For read/write splitting, configure at application level
+  - path: "/"
+    upstream: postgresql-primary
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      tcp: debug
+      tls: info
+  tracing:
+    enabled: false
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

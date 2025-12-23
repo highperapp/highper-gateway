@@ -1,0 +1,83 @@
+# MySQL Load Balancer Configuration
+#
+# This configuration sets up a high-performance MySQL load balancer with:
+# - Connection pooling and pre-warming
+# - Health checking
+# - Read/write request routing
+# - Connection reuse and lifecycle management
+#
+# Environment variables:
+# - MYSQL_BACKEND_1: First MySQL server (e.g., 192.168.1.10:3306)
+# - MYSQL_BACKEND_2: Second MySQL server (e.g., 192.168.1.11:3306)
+# - MYSQL_BACKEND_3: Third MySQL server (e.g., 192.168.1.12:3306)
+
+server:
+  bind:
+    - "0.0.0.0:3306"
+  workers: auto
+  protocols:
+    - http1  # Placeholder - MySQL uses raw TCP
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 10000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 60s
+    idle_timeout: 300s  # 5 minutes
+    connection_pool:
+      max_idle_per_host: 200
+      min_idle_per_host: 10  # Pre-warm 10 connections per backend
+      max_connection_lifetime: 3600s  # 1 hour
+      idle_timeout: 300s
+      prewarm: true
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+upstreams:
+  - name: mysql-cluster
+    servers:
+      - address: "${MYSQL_BACKEND_1}"
+        weight: 1
+      - address: "${MYSQL_BACKEND_2}"
+        weight: 1
+      - address: "${MYSQL_BACKEND_3}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections  # Best for database connections
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      tcp_check: true
+
+routes:
+  - path: "/"
+    upstream: mysql-cluster
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      tcp: debug  # Detailed TCP connection logging
+      tls: info
+  tracing:
+    enabled: false
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false

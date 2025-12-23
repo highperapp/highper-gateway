@@ -1,0 +1,242 @@
+# Multi-Protocol Gateway Configuration
+#
+# This configuration sets up a unified gateway supporting multiple protocols:
+# - HTTP/HTTPS REST APIs
+# - gRPC services
+# - WebSocket connections
+# - GraphQL APIs
+#
+# All on the same ports with protocol detection.
+#
+# Environment variables:
+# - HTTP_BACKEND: HTTP API backend (e.g., api.internal:8080)
+# - GRPC_BACKEND: gRPC service backend (e.g., grpc.internal:50051)
+# - WS_BACKEND: WebSocket backend (e.g., ws.internal:8080)
+# - GRAPHQL_BACKEND: GraphQL backend (e.g., graphql.internal:4000)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: auto
+  protocols:
+    - http1
+    - http2  # Required for gRPC
+    - http3  # Modern clients
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 100000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 60s  # Higher for gRPC/WebSocket
+    idle_timeout: 90s
+    connection_pool:
+      max_idle_per_host: 100
+      min_idle_per_host: 0
+      max_connection_lifetime: null
+      idle_timeout: 90s
+      prewarm: false
+      metrics_enabled: true
+  shutdown_timeout: 30s
+  http3:
+    enabled: true
+    port: 8443
+    bind: "0.0.0.0"
+    enable_0rtt: false
+    max_concurrent_streams: 100
+    initial_window_size: 10485760
+    max_datagram_size: 1350
+    idle_timeout_secs: 30
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+
+# Enable gRPC, WebSocket, and GraphQL
+grpc:
+  enabled: true
+  max_message_size: 4194304
+  timeout_seconds: 60
+  health_check_enabled: true
+
+websocket:
+  enabled: true
+  max_frame_size: 16777216
+  max_message_size: 67108864
+  ping_interval: 30s
+  ping_timeout: 10s
+
+graphql:
+  enabled: true
+  endpoint: "/graphql"
+  playground_enabled: false
+  introspection_enabled: false
+  query_depth_limit: 10
+  query_complexity_limit: 1000
+  enable_subscriptions: true
+  subscription_protocol: "graphql-ws"
+
+upstreams:
+  # HTTP REST API backend
+  - name: http-api
+    servers:
+      - address: "${HTTP_BACKEND}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+  # gRPC service backend
+  - name: grpc-service
+    servers:
+      - address: "${GRPC_BACKEND}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      grpc_check:
+        service: "grpc.health.v1.Health"
+
+  # WebSocket backend
+  - name: websocket
+    servers:
+      - address: "${WS_BACKEND}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections
+      sticky_sessions:
+        enabled: true
+        cookie_name: "ws_session"
+        ttl: 3600s
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+  # GraphQL backend
+  - name: graphql-api
+    servers:
+      - address: "${GRAPHQL_BACKEND}"
+        weight: 1
+    load_balancing:
+      algorithm: round_robin
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+routes:
+  # GraphQL endpoint
+  - path: "/graphql"
+    upstream: graphql-api
+    methods:
+      - GET
+      - POST
+    middlewares:
+      - cors
+      - rate_limit
+      - cache
+
+  # WebSocket endpoint
+  - path: "/ws"
+    upstream: websocket
+    protocols:
+      - websocket
+    middlewares:
+      - cors
+
+  # gRPC services (path-based routing)
+  - path: "/grpc"
+    upstream: grpc-service
+    protocols:
+      - grpc
+
+  # Default HTTP API
+  - path: "/"
+    upstream: http-api
+    middlewares:
+      - cors
+      - rate_limit
+      - cache
+
+cache:
+  enabled: true
+  default_ttl: 300s
+  max_size: 10000
+  cleanup_interval: 60s
+  cache_only_success: true
+  methods:
+    - GET
+    - HEAD
+  key_headers:
+    - Authorization
+
+rate_limit:
+  enabled: true
+  algorithm: token_bucket
+  capacity: 1000
+  refill_rate: 100
+  window: 60s
+  key_type: ip
+  cleanup_interval: 60s
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      http: info
+      grpc: debug
+      websocket: debug
+      graphql: debug
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.1
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: true
+  cors_origins:
+    - "http://localhost:3000"
+  read_only: false

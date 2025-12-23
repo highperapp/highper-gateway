@@ -1,0 +1,124 @@
+# WebSocket Gateway Configuration
+#
+# This configuration sets up a WebSocket gateway for real-time applications with:
+# - Long-lived bidirectional connections
+# - Ping/pong keepalive
+# - Large message support
+# - No request/idle timeouts
+# - Sticky sessions for connection persistence
+#
+# Environment variables:
+# - WS_BACKEND_1: First WebSocket server (e.g., ws1.internal:8080)
+# - WS_BACKEND_2: Second WebSocket server (e.g., ws2.internal:8080)
+# - TLS_CERT_PATH: Path to TLS certificate
+# - TLS_KEY_PATH: Path to TLS private key
+
+server:
+  bind:
+    - "0.0.0.0:8080"
+  tls_bind:
+    - "0.0.0.0:8443"
+  workers: auto
+  protocols:
+    - http1  # WebSocket upgrades from HTTP/1.1
+    - http2
+  performance:
+    read_buffer_size: 8192
+    write_buffer_size: 8192
+    max_connections: 100000
+    max_requests_per_connection: 1000
+    connect_timeout: 5s
+    request_timeout: 0  # No timeout for WebSocket
+    idle_timeout: 0  # No idle timeout for persistent connections
+    connection_pool:
+      max_idle_per_host: 100
+      min_idle_per_host: 0
+      max_connection_lifetime: null
+      idle_timeout: 0
+      prewarm: false
+      metrics_enabled: true
+  shutdown_timeout: 30s
+
+tls:
+  auto: false
+  certificates:
+    - cert: "${TLS_CERT_PATH}"
+      key: "${TLS_KEY_PATH}"
+  min_version: "1.2"
+
+websocket:
+  enabled: true
+  max_frame_size: 16777216  # 16 MB
+  max_message_size: 67108864  # 64 MB
+  ping_interval: 30s  # Send ping every 30 seconds
+  ping_timeout: 10s  # Expect pong within 10 seconds
+
+upstreams:
+  - name: websocket-backend
+    servers:
+      - address: "${WS_BACKEND_1}"
+        weight: 1
+      - address: "${WS_BACKEND_2}"
+        weight: 1
+    load_balancing:
+      algorithm: least_connections
+      # Enable sticky sessions for WebSocket
+      sticky_sessions:
+        enabled: true
+        cookie_name: "ws_session"
+        ttl: 3600s
+    health_check:
+      enabled: true
+      interval: 10s
+      timeout: 3s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_check:
+        path: "/health"
+        expected_status: 200
+
+routes:
+  - path: "/ws"
+    upstream: websocket-backend
+    protocols:
+      - websocket
+    middlewares:
+      - cors
+      - rate_limit
+
+# Rate limiting for connection attempts (not messages)
+rate_limit:
+  enabled: true
+  algorithm: token_bucket
+  capacity: 100  # 100 connection attempts
+  refill_rate: 10  # 10 per second
+  window: 60s
+  key_type: ip
+  cleanup_interval: 60s
+
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+    endpoint: "/metrics"
+    port: 9090
+  logging:
+    level: info
+    format: json
+    output: stdout
+    protocols:
+      websocket: debug
+      http: info
+  tracing:
+    enabled: true
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.01  # Sample 1% (WebSocket generates many events)
+
+admin:
+  enabled: true
+  bind: "127.0.0.1:9000"
+  auth_enabled: true
+  api_keys:
+    - "${ADMIN_API_KEY}"
+  cors_enabled: false
+  read_only: false
