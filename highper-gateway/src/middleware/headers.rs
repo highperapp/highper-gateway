@@ -24,6 +24,22 @@ pub struct SecurityHeadersConfig {
     pub referrer_policy: Option<String>,
     /// Add Permissions-Policy
     pub permissions_policy: Option<String>,
+    /// Add Cross-Origin-Embedder-Policy (COEP)
+    pub cross_origin_embedder_policy: Option<String>,
+    /// Add Cross-Origin-Opener-Policy (COOP)
+    pub cross_origin_opener_policy: Option<String>,
+    /// Add Cross-Origin-Resource-Policy (CORP)
+    pub cross_origin_resource_policy: Option<String>,
+    /// Add X-Download-Options
+    pub x_download_options: Option<String>,
+    /// Add X-Permitted-Cross-Domain-Policies
+    pub x_permitted_cross_domain_policies: Option<String>,
+    /// Remove Server header (hide server information)
+    pub remove_server_header: bool,
+    /// Custom Server header value (if not removed)
+    pub custom_server_header: Option<String>,
+    /// Remove X-Powered-By header (hide framework information)
+    pub remove_powered_by: bool,
 }
 
 impl Default for SecurityHeadersConfig {
@@ -36,25 +52,41 @@ impl Default for SecurityHeadersConfig {
             csp: None,
             referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
             permissions_policy: None,
+            cross_origin_embedder_policy: None,
+            cross_origin_opener_policy: None,
+            cross_origin_resource_policy: None,
+            x_download_options: Some("noopen".to_string()),
+            x_permitted_cross_domain_policies: Some("none".to_string()),
+            remove_server_header: false,
+            custom_server_header: None,
+            remove_powered_by: false,
         }
     }
 }
 
 impl SecurityHeadersConfig {
-    /// Create a strict security headers configuration
+    /// Create a strict security headers configuration (OWASP recommended)
     pub fn strict() -> Self {
         Self {
             x_content_type_options: true,
             x_frame_options: Some("DENY".to_string()),
             x_xss_protection: Some("1; mode=block".to_string()),
             hsts: Some("max-age=63072000; includeSubDomains; preload".to_string()),
-            csp: Some("default-src 'self'".to_string()),
+            csp: Some("default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'".to_string()),
             referrer_policy: Some("no-referrer".to_string()),
-            permissions_policy: Some("geolocation=(), microphone=(), camera=()".to_string()),
+            permissions_policy: Some("geolocation=(), microphone=(), camera=(), payment=(), usb=()".to_string()),
+            cross_origin_embedder_policy: Some("require-corp".to_string()),
+            cross_origin_opener_policy: Some("same-origin".to_string()),
+            cross_origin_resource_policy: Some("same-origin".to_string()),
+            x_download_options: Some("noopen".to_string()),
+            x_permitted_cross_domain_policies: Some("none".to_string()),
+            remove_server_header: true,
+            custom_server_header: None,
+            remove_powered_by: true,
         }
     }
 
-    /// Create a relaxed security headers configuration
+    /// Create a relaxed security headers configuration (for development)
     pub fn relaxed() -> Self {
         Self {
             x_content_type_options: true,
@@ -64,6 +96,35 @@ impl SecurityHeadersConfig {
             csp: None,
             referrer_policy: Some("origin-when-cross-origin".to_string()),
             permissions_policy: None,
+            cross_origin_embedder_policy: None,
+            cross_origin_opener_policy: None,
+            cross_origin_resource_policy: None,
+            x_download_options: None,
+            x_permitted_cross_domain_policies: None,
+            remove_server_header: false,
+            custom_server_header: Some("highper-gateway".to_string()),
+            remove_powered_by: false,
+        }
+    }
+
+    /// Create an API-optimized configuration (no frame/XSS protection needed)
+    pub fn api() -> Self {
+        Self {
+            x_content_type_options: true,
+            x_frame_options: None, // Not needed for API endpoints
+            x_xss_protection: None, // Not needed for API endpoints
+            hsts: Some("max-age=31536000; includeSubDomains".to_string()),
+            csp: None,
+            referrer_policy: Some("strict-origin-when-cross-origin".to_string()),
+            permissions_policy: None,
+            cross_origin_embedder_policy: None,
+            cross_origin_opener_policy: None,
+            cross_origin_resource_policy: Some("cross-origin".to_string()),
+            x_download_options: None,
+            x_permitted_cross_domain_policies: None,
+            remove_server_header: true,
+            custom_server_header: None,
+            remove_powered_by: true,
         }
     }
 }
@@ -92,6 +153,11 @@ impl SecurityHeadersMiddleware {
     /// Create with relaxed config
     pub fn relaxed() -> Self {
         Self::new(SecurityHeadersConfig::relaxed())
+    }
+
+    /// Create with API-optimized config
+    pub fn api() -> Self {
+        Self::new(SecurityHeadersConfig::api())
     }
 }
 
@@ -146,8 +212,44 @@ impl Middleware for SecurityHeadersMiddleware {
                 headers.insert("permissions-policy", value.parse().unwrap());
             }
 
-            // Add X-Powered-By header (optional branding)
-            headers.insert("x-powered-by", "highper-gateway/0.1.0".parse().unwrap());
+            // Cross-Origin-Embedder-Policy (COEP)
+            if let Some(value) = &config.cross_origin_embedder_policy {
+                headers.insert("cross-origin-embedder-policy", value.parse().unwrap());
+            }
+
+            // Cross-Origin-Opener-Policy (COOP)
+            if let Some(value) = &config.cross_origin_opener_policy {
+                headers.insert("cross-origin-opener-policy", value.parse().unwrap());
+            }
+
+            // Cross-Origin-Resource-Policy (CORP)
+            if let Some(value) = &config.cross_origin_resource_policy {
+                headers.insert("cross-origin-resource-policy", value.parse().unwrap());
+            }
+
+            // X-Download-Options
+            if let Some(value) = &config.x_download_options {
+                headers.insert("x-download-options", value.parse().unwrap());
+            }
+
+            // X-Permitted-Cross-Domain-Policies
+            if let Some(value) = &config.x_permitted_cross_domain_policies {
+                headers.insert("x-permitted-cross-domain-policies", value.parse().unwrap());
+            }
+
+            // Server header handling
+            if config.remove_server_header {
+                headers.remove(header::SERVER);
+            } else if let Some(value) = &config.custom_server_header {
+                headers.insert(header::SERVER, value.parse().unwrap());
+            }
+
+            // X-Powered-By header handling
+            if config.remove_powered_by {
+                headers.remove("x-powered-by");
+            } else {
+                headers.insert("x-powered-by", "highper-gateway/0.1.0".parse().unwrap());
+            }
 
             Ok(response)
         })

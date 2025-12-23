@@ -12,6 +12,9 @@ pub mod validation;
 // Environment variable configuration overrides (12-factor compliance)
 pub mod env_override;
 
+// Smart defaults by protocol
+pub mod defaults;
+
 // DSL support (Caddy-like configuration)
 // Note: Not glob-exported to avoid conflicts with schema::Config
 pub mod dsl_ast;
@@ -24,3 +27,4 @@ pub use loader::*;
 pub use validator::*;
 pub use watcher::*;
 pub use reloader::*;
+pub use defaults::ProtocolDefaults;

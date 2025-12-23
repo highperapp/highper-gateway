@@ -10,6 +10,7 @@ pub mod health;
 pub mod retry;
 pub mod circuit_breaker;
 pub mod connection_pool;
+pub mod database_pool;
 
 pub use server::*;
 pub use client::*;
@@ -18,3 +19,6 @@ pub use loadbalancer::*;
 pub use geographic::{GeoLoadBalancer, GeoServer};
 pub use pool_metrics::{ConnectionPoolMetrics, GlobalPoolMetrics, HostPoolMetrics};
 pub use connection_pool::{ConnectionPoolManager, PoolConfig, PoolStats};
+pub use database_pool::{
+    DatabaseConnectionPoolManager, DatabasePoolConfig, DatabasePoolStats, DatabaseProtocol
+};
