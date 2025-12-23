@@ -120,20 +120,8 @@ pub fn update_cache_size(size_bytes: usize, entry_count: usize, max_size_bytes: 
     gauge!("cache_memory_pressure").set(pressure);
 
     if pressure > 0.9 {
-        log::warn!(
-            "High cache memory pressure: {:.1}% ({} / {} bytes)",
-            pressure * 100.0,
-            size_bytes,
-            max_size_bytes
-        );
     }
 
-    log::trace!(
-        "Cache size: {} bytes, {} entries, {:.1}% full",
-        size_bytes,
-        entry_count,
-        pressure * 100.0
-    );
 }
 
 /// Record cache hit
@@ -147,7 +135,6 @@ pub fn record_hit(route: &str) {
 
     // Update hit ratio (simplified - in production, use a sliding window)
     // This is a placeholder implementation
-    log::trace!("Cache hit: route={}", route);
 }
 
 /// Record cache miss
@@ -159,7 +146,6 @@ pub fn record_miss(route: &str) {
 
     counter!("cache_gets_total").increment(1);
 
-    log::trace!("Cache miss: route={}", route);
 }
 
 /// Record cache set operation
@@ -173,13 +159,6 @@ pub fn record_set(route: &str, key_size: usize, value_size: usize, ttl: Duration
     histogram!("cache_value_size_bytes").record(value_size as f64);
     histogram!("cache_ttl_distribution_seconds").record(ttl.as_secs_f64());
 
-    log::trace!(
-        "Cache set: route={}, key_size={}, value_size={}, ttl={:.0}s",
-        route,
-        key_size,
-        value_size,
-        ttl.as_secs_f64()
-    );
 }
 
 /// Record cache eviction
@@ -197,7 +176,6 @@ pub fn record_eviction(route: &str, reason: &str) {
         _ => {}
     }
 
-    log::debug!("Cache eviction: route={}, reason={}", route, reason);
 }
 
 /// Record cache delete operation
@@ -207,7 +185,6 @@ pub fn record_delete(route: &str) {
         "route" => route.to_string(),
     ).increment(1);
 
-    log::trace!("Cache delete: route={}", route);
 }
 
 /// Record cache cleanup operation
@@ -215,11 +192,6 @@ pub fn record_cleanup(duration: Duration, items_removed: usize) {
     counter!("cache_cleanups_total").increment(1);
     histogram!("cache_cleanup_duration_seconds").record(duration.as_secs_f64());
 
-    log::debug!(
-        "Cache cleanup: duration={:.3}s, items_removed={}",
-        duration.as_secs_f64(),
-        items_removed
-    );
 }
 
 /// Calculate and update cache hit ratio
@@ -228,12 +200,6 @@ pub fn update_hit_ratio(hits: u64, total_requests: u64) {
         let ratio = (hits as f64) / (total_requests as f64);
         gauge!("cache_hit_ratio").set(ratio);
 
-        log::debug!(
-            "Cache hit ratio: {:.2}% ({} / {})",
-            ratio * 100.0,
-            hits,
-            total_requests
-        );
     }
 }
 
@@ -241,7 +207,6 @@ pub fn update_hit_ratio(hits: u64, total_requests: u64) {
 pub fn update_average_ttl(average_ttl: Duration) {
     gauge!("cache_ttl_average_seconds").set(average_ttl.as_secs_f64());
 
-    log::trace!("Cache average TTL: {:.0}s", average_ttl.as_secs_f64());
 }
 
 #[cfg(test)]

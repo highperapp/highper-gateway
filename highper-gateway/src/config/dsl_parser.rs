@@ -51,6 +51,9 @@ fn parse_global_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair
                     }
                 }
             }
+            Rule::logging_directive => {
+                global.logging_config = Some(parse_logging_directive(inner)?);
+            }
             Rule::admin_directive => {
                 for admin_pair in inner.into_inner() {
                     if let Rule::admin_address = admin_pair.as_rule() {
@@ -79,12 +82,93 @@ fn parse_global_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair
 
 fn parse_log_level(s: &str) -> Result<LogLevel> {
     match s {
+        "trace" => Ok(LogLevel::Trace),
         "debug" => Ok(LogLevel::Debug),
         "info" => Ok(LogLevel::Info),
         "warn" => Ok(LogLevel::Warn),
         "error" => Ok(LogLevel::Error),
         _ => Err(anyhow!("Invalid log level: {}", s)),
     }
+}
+
+fn parse_logging_directive(pair: pest::iterators::Pair<Rule>) -> Result<LoggingConfigDsl> {
+    let mut config = LoggingConfigDsl {
+        format: None,
+        level: None,
+        output: None,
+        protocols: None,
+    };
+
+    for inner in pair.into_inner() {
+        if let Rule::logging_option = inner.as_rule() {
+            for option in inner.into_inner() {
+                match option.as_rule() {
+                    Rule::log_format => {
+                        config.format = Some(parse_log_format(option.as_str())?);
+                    }
+                    Rule::log_level => {
+                        config.level = Some(parse_log_level(option.as_str())?);
+                    }
+                    Rule::log_output => {
+                        config.output = Some(option.as_str().to_string());
+                    }
+                    Rule::protocol_log_levels => {
+                        config.protocols = Some(parse_protocol_log_levels(option)?);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn parse_log_format(s: &str) -> Result<LogFormat> {
+    match s {
+        "json" => Ok(LogFormat::Json),
+        "pretty" => Ok(LogFormat::Pretty),
+        _ => Err(anyhow!("Invalid log format: {}", s)),
+    }
+}
+
+fn parse_protocol_log_levels(pair: pest::iterators::Pair<Rule>) -> Result<ProtocolLogLevelsDsl> {
+    let mut protocols = ProtocolLogLevelsDsl::default();
+
+    for inner in pair.into_inner() {
+        if let Rule::protocol_log_level = inner.as_rule() {
+            let mut protocol_name = None;
+            let mut log_level = None;
+
+            for item in inner.into_inner() {
+                match item.as_rule() {
+                    Rule::protocol_name => {
+                        protocol_name = Some(item.as_str());
+                    }
+                    Rule::log_level => {
+                        log_level = Some(parse_log_level(item.as_str())?);
+                    }
+                    _ => {}
+                }
+            }
+
+            if let (Some(name), Some(level)) = (protocol_name, log_level) {
+                match name {
+                    "tcp" => protocols.tcp = Some(level),
+                    "tls" => protocols.tls = Some(level),
+                    "quic" => protocols.quic = Some(level),
+                    "grpc" => protocols.grpc = Some(level),
+                    "graphql" => protocols.graphql = Some(level),
+                    "http" => protocols.http = Some(level),
+                    "websocket" => protocols.websocket = Some(level),
+                    "cache" => protocols.cache = Some(level),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(protocols)
 }
 
 fn parse_metrics_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair<Rule>) -> Result<()> {

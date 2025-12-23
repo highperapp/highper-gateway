@@ -23,7 +23,10 @@ impl Default for Config {
 /// Global configuration (applies to all sites)
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlobalConfig {
+    /// Simple log level (for backward compatibility with "log debug" directive)
     pub log_level: Option<LogLevel>,
+    /// Full logging configuration (when using "logging { ... }" directive)
+    pub logging_config: Option<LoggingConfigDsl>,
     pub admin_address: Option<String>,
     pub metrics_enabled: bool,
     pub metrics_prometheus: bool,
@@ -36,6 +39,7 @@ impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
             log_level: Some(LogLevel::Info),
+            logging_config: None,
             admin_address: None,
             metrics_enabled: true,
             metrics_prometheus: true,
@@ -48,6 +52,7 @@ impl Default for GlobalConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
+    Trace,
     Debug,
     Info,
     Warn,
@@ -57,12 +62,50 @@ pub enum LogLevel {
 impl std::fmt::Display for LogLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            LogLevel::Trace => write!(f, "trace"),
             LogLevel::Debug => write!(f, "debug"),
             LogLevel::Info => write!(f, "info"),
             LogLevel::Warn => write!(f, "warn"),
             LogLevel::Error => write!(f, "error"),
         }
     }
+}
+
+/// Enhanced logging configuration from DSL
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoggingConfigDsl {
+    pub format: Option<LogFormat>,
+    pub level: Option<LogLevel>,
+    pub output: Option<String>,
+    pub protocols: Option<ProtocolLogLevelsDsl>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogFormat {
+    Json,
+    Pretty,
+}
+
+impl std::fmt::Display for LogFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogFormat::Json => write!(f, "json"),
+            LogFormat::Pretty => write!(f, "pretty"),
+        }
+    }
+}
+
+/// Protocol-specific log levels from DSL
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ProtocolLogLevelsDsl {
+    pub tcp: Option<LogLevel>,
+    pub tls: Option<LogLevel>,
+    pub quic: Option<LogLevel>,
+    pub grpc: Option<LogLevel>,
+    pub graphql: Option<LogLevel>,
+    pub http: Option<LogLevel>,
+    pub websocket: Option<LogLevel>,
+    pub cache: Option<LogLevel>,
 }
 
 /// Site definition (domain/address + routes/directives)

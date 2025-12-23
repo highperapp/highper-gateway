@@ -149,14 +149,6 @@ pub fn record_query(
         "operation" => operation.to_string(),
     ).record(depth as f64);
 
-    log::debug!(
-        "GraphQL query: operation={}, type={}, complexity={}, depth={}, duration={:.3}s",
-        operation,
-        operation_type,
-        complexity,
-        depth,
-        duration_secs
-    );
 }
 
 /// Record query complexity exceeded
@@ -168,12 +160,6 @@ pub fn record_complexity_exceeded(operation_name: Option<&str>, complexity: u32,
         "operation" => operation.to_string(),
     ).increment(1);
 
-    log::warn!(
-        "GraphQL query complexity exceeded: operation={}, complexity={}, limit={}",
-        operation,
-        complexity,
-        limit
-    );
 }
 
 /// Record query depth exceeded
@@ -185,12 +171,6 @@ pub fn record_depth_exceeded(operation_name: Option<&str>, depth: u32, limit: u3
         "operation" => operation.to_string(),
     ).increment(1);
 
-    log::warn!(
-        "GraphQL query depth exceeded: operation={}, depth={}, limit={}",
-        operation,
-        depth,
-        limit
-    );
 }
 
 /// Record resolver execution
@@ -219,17 +199,7 @@ pub fn record_resolver(
             "field" => field.clone(),
         ).increment(1);
 
-        log::warn!(
-            "GraphQL resolver error: field={}, duration={:.3}s",
-            field,
-            duration_secs
-        );
     } else {
-        log::trace!(
-            "GraphQL resolver: field={}, duration={:.3}s",
-            field,
-            duration_secs
-        );
     }
 }
 
@@ -239,11 +209,6 @@ pub fn record_batch(batch_size: usize, duration: Duration) {
     histogram!("graphql_batch_size").record(batch_size as f64);
     histogram!("graphql_batch_duration_seconds").record(duration.as_secs_f64());
 
-    log::debug!(
-        "GraphQL batch: size={}, duration={:.3}s",
-        batch_size,
-        duration.as_secs_f64()
-    );
 }
 
 /// Record GraphQL error
@@ -272,11 +237,6 @@ pub fn record_error(error_type: &str, operation_name: Option<&str>) {
         _ => {}
     }
 
-    log::warn!(
-        "GraphQL error: type={}, operation={}",
-        error_type,
-        operation
-    );
 }
 
 /// Record cache hit/miss
@@ -289,14 +249,12 @@ pub fn record_cache_result(operation_name: Option<&str>, hit: bool) {
             "operation" => operation.to_string(),
         ).increment(1);
 
-        log::debug!("GraphQL cache hit: operation={}", operation);
     } else {
         counter!(
             "graphql_cache_misses_total",
             "operation" => operation.to_string(),
         ).increment(1);
 
-        log::debug!("GraphQL cache miss: operation={}", operation);
     }
 }
 
@@ -309,14 +267,12 @@ pub fn record_fields_selected(operation_name: Option<&str>, count: usize) {
         "operation" => operation.to_string(),
     ).increment(count as u64);
 
-    log::trace!("GraphQL fields selected: operation={}, count={}", operation, count);
 }
 
 /// Record introspection query
 pub fn record_introspection() {
     counter!("graphql_introspection_queries_total").increment(1);
 
-    log::debug!("GraphQL introspection query");
 }
 
 /// Record subscription lifecycle
@@ -329,7 +285,6 @@ pub fn record_subscription_open(operation_name: Option<&str>) {
         "operation" => operation.to_string(),
     ).increment(1);
 
-    log::info!("GraphQL subscription opened: operation={}", operation);
 }
 
 /// Record subscription close
@@ -338,7 +293,6 @@ pub fn record_subscription_close(operation_name: Option<&str>) {
 
     gauge!("graphql_subscriptions_active").decrement(1.0);
 
-    log::info!("GraphQL subscription closed: operation={}", operation);
 }
 
 #[cfg(test)]

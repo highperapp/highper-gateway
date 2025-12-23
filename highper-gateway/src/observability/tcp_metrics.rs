@@ -119,7 +119,6 @@ pub fn record_connection_open(backend: &str, remote_addr: &str) {
         "backend" => backend.to_string(),
     ).increment(1);
 
-    log::debug!("TCP connection opened: backend={}, client={}", backend, remote_addr);
 }
 
 /// Record a TCP connection close
@@ -150,14 +149,6 @@ pub fn record_connection_close(
         counter!("tcp_bytes_received_total").increment(bytes_received);
     }
 
-    log::debug!(
-        "TCP connection closed: backend={}, client={}, duration={:.3}s, sent={}, received={}",
-        backend,
-        remote_addr,
-        duration_secs,
-        bytes_sent,
-        bytes_received
-    );
 }
 
 /// Record a TCP connection error
@@ -182,7 +173,6 @@ pub fn record_connection_error(backend: &str, error_type: &str) {
         _ => {}
     }
 
-    log::warn!("TCP connection error: backend={}, error={}", backend, error_type);
 }
 
 /// Record connection pool stats
@@ -197,7 +187,6 @@ pub fn record_pool_wait(duration: Duration) {
     let duration_secs = duration.as_secs_f64();
     histogram!("tcp_pool_wait_duration_seconds").record(duration_secs);
 
-    log::debug!("TCP pool wait: duration={:.3}s", duration_secs);
 }
 
 /// Record pool exhaustion event
@@ -207,7 +196,6 @@ pub fn record_pool_exhausted(backend: &str) {
         "backend" => backend.to_string(),
     ).increment(1);
 
-    log::warn!("TCP pool exhausted: backend={}", backend);
 }
 
 /// Record pool connection created
@@ -217,7 +205,6 @@ pub fn record_pool_connection_created(backend: &str) {
         "backend" => backend.to_string(),
     ).increment(1);
 
-    log::debug!("TCP pool connection created: backend={}", backend);
 }
 
 /// Record pool connection reused
@@ -227,7 +214,6 @@ pub fn record_pool_connection_reused(backend: &str) {
         "backend" => backend.to_string(),
     ).increment(1);
 
-    log::trace!("TCP pool connection reused: backend={}", backend);
 }
 
 /// Get current active TCP connections (for monitoring)

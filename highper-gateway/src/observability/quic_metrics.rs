@@ -165,9 +165,7 @@ pub fn record_connection_open(server_name: &str, zero_rtt: bool) {
 
     if zero_rtt {
         counter!("quic_zero_rtt_attempts_total", "server_name" => server_name.to_string()).increment(1);
-        log::debug!("QUIC connection opened with 0-RTT: server_name={}", server_name);
     } else {
-        log::debug!("QUIC connection opened: server_name={}", server_name);
     }
 }
 
@@ -176,21 +174,14 @@ pub fn record_connection_close(server_name: &str, duration: Duration) {
     gauge!("quic_connections_active").decrement(1.0);
     counter!("quic_connections_closed_total", "server_name" => server_name.to_string()).increment(1);
 
-    log::debug!(
-        "QUIC connection closed: server_name={}, duration={:.3}s",
-        server_name,
-        duration.as_secs_f64()
-    );
 }
 
 /// Record 0-RTT result
 pub fn record_zero_rtt_result(server_name: &str, success: bool) {
     if success {
         counter!("quic_zero_rtt_success_total", "server_name" => server_name.to_string()).increment(1);
-        log::info!("0-RTT accepted: server_name={}", server_name);
     } else {
         counter!("quic_zero_rtt_rejected_total", "server_name" => server_name.to_string()).increment(1);
-        log::warn!("0-RTT rejected: server_name={}", server_name);
     }
 }
 
@@ -207,11 +198,6 @@ pub fn record_packet_stats(server_name: &str, sent: u64, received: u64, lost: u6
 
         if loss_ratio > 0.05 {
             // More than 5% loss
-            log::warn!(
-                "High packet loss detected: server_name={}, loss_ratio={:.2}%",
-                server_name,
-                loss_ratio * 100.0
-            );
         }
     }
 }
@@ -224,7 +210,6 @@ pub fn record_rtt(server_name: &str, rtt: Duration, min_rtt: Duration, smoothed_
     gauge!("quic_rtt_min_seconds", "server_name" => server_name.to_string()).set(min_rtt.as_secs_f64());
     gauge!("quic_rtt_smoothed_seconds", "server_name" => server_name.to_string()).set(smoothed_rtt.as_secs_f64());
 
-    log::trace!("RTT measurement: server_name={}, rtt={:.3}ms", server_name, rtt_secs * 1000.0);
 }
 
 /// Record stream creation
@@ -237,7 +222,6 @@ pub fn record_stream_open(server_name: &str, stream_type: &str) {
         "type" => stream_type.to_string(),
     ).increment(1);
 
-    log::trace!("QUIC stream opened: server_name={}, type={}", server_name, stream_type);
 }
 
 /// Record stream close
@@ -245,7 +229,6 @@ pub fn record_stream_close(server_name: &str) {
     gauge!("quic_streams_active", "server_name" => server_name.to_string()).decrement(1.0);
     counter!("quic_streams_closed_total", "server_name" => server_name.to_string()).increment(1);
 
-    log::trace!("QUIC stream closed: server_name={}", server_name);
 }
 
 /// Record connection migration
@@ -254,10 +237,8 @@ pub fn record_migration(server_name: &str, success: bool) {
 
     if success {
         counter!("quic_migration_success_total", "server_name" => server_name.to_string()).increment(1);
-        log::info!("QUIC connection migrated: server_name={}", server_name);
     } else {
         counter!("quic_migration_failure_total", "server_name" => server_name.to_string()).increment(1);
-        log::warn!("QUIC connection migration failed: server_name={}", server_name);
     }
 }
 
@@ -266,11 +247,6 @@ pub fn record_congestion_event(server_name: &str, congestion_window: u64) {
     counter!("quic_congestion_events_total", "server_name" => server_name.to_string()).increment(1);
     gauge!("quic_congestion_window_bytes", "server_name" => server_name.to_string()).set(congestion_window as f64);
 
-    log::debug!(
-        "Congestion event: server_name={}, window={}",
-        server_name,
-        congestion_window
-    );
 }
 
 /// Record QUIC error
@@ -291,7 +267,6 @@ pub fn record_quic_error(server_name: &str, error_type: &str) {
         _ => {}
     }
 
-    log::error!("QUIC error: server_name={}, error={}", server_name, error_type);
 }
 
 /// Record HTTP/3 request
@@ -309,13 +284,6 @@ pub fn record_http3_request(server_name: &str, method: &str, status: u16, durati
         "method" => method.to_string(),
     ).record(duration.as_secs_f64());
 
-    log::debug!(
-        "HTTP/3 request: server_name={}, method={}, status={}, duration={:.3}s",
-        server_name,
-        method,
-        status,
-        duration.as_secs_f64()
-    );
 }
 
 #[cfg(test)]

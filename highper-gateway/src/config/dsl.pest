@@ -25,14 +25,48 @@ config = {
 // Global directives (apply to all sites)
 global_directive = {
     log_directive
+  | logging_directive
   | admin_directive
   | metrics_directive
   | buffer_pool_directive
   | backpressure_directive
 }
 
+// Simple log directive (backward compatibility)
 log_directive = { "log" ~ log_level ~ newline }
-log_level = { "debug" | "info" | "warn" | "error" }
+
+// Enhanced logging directive with full configuration
+logging_directive = {
+    "logging" ~ "{" ~ newline* ~
+    (newline* ~ logging_option)* ~ newline* ~
+    "}" ~ newline*
+}
+
+logging_option = {
+    ("format" ~ log_format ~ newline)
+  | ("level" ~ log_level ~ newline)
+  | ("output" ~ log_output ~ newline)
+  | protocol_log_levels
+}
+
+log_level = { "trace" | "debug" | "info" | "warn" | "error" }
+log_format = { "json" | "pretty" }
+log_output = @{ (!newline ~ ANY)+ }
+
+// Protocol-specific log levels
+protocol_log_levels = {
+    "protocols" ~ "{" ~ newline* ~
+    (newline* ~ protocol_log_level)* ~ newline* ~
+    "}" ~ newline*
+}
+
+protocol_log_level = {
+    protocol_name ~ log_level ~ newline
+}
+
+protocol_name = {
+    "tcp" | "tls" | "quic" | "grpc" | "graphql" | "http" | "websocket" | "cache"
+}
 
 admin_directive = { "admin" ~ admin_address ~ newline }
 admin_address = @{ (domain ~ port?) | (":" ~ port) }

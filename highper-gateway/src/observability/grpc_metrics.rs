@@ -125,21 +125,7 @@ pub fn record_request(
             "code" => status_code.to_string(),
         ).increment(1);
 
-        log::warn!(
-            "gRPC error: service={}, method={}, status={}, duration={:.3}s",
-            service,
-            method,
-            status_code,
-            duration_secs
-        );
     } else {
-        log::debug!(
-            "gRPC request: service={}, method={}, status={}, duration={:.3}s",
-            service,
-            method,
-            status_code,
-            duration_secs
-        );
     }
 }
 
@@ -154,12 +140,6 @@ pub fn record_stream_open(service: &str, method: &str, stream_type: &str) {
         "type" => stream_type.to_string(),
     ).increment(1);
 
-    log::debug!(
-        "gRPC stream opened: service={}, method={}, type={}",
-        service,
-        method,
-        stream_type
-    );
 }
 
 /// Record gRPC stream close
@@ -185,13 +165,6 @@ pub fn record_stream_close(
         "type" => stream_type.to_string(),
     ).record(duration.as_secs_f64());
 
-    log::debug!(
-        "gRPC stream closed: service={}, method={}, type={}, duration={:.3}s",
-        service,
-        method,
-        stream_type,
-        duration.as_secs_f64()
-    );
 }
 
 /// Record gRPC message sent
@@ -209,12 +182,6 @@ pub fn record_message_sent(service: &str, method: &str, size_bytes: usize) {
         "direction" => "sent".to_string(),
     ).record(size_bytes as f64);
 
-    log::trace!(
-        "gRPC message sent: service={}, method={}, size={}",
-        service,
-        method,
-        size_bytes
-    );
 }
 
 /// Record gRPC message received
@@ -232,12 +199,6 @@ pub fn record_message_received(service: &str, method: &str, size_bytes: usize) {
         "direction" => "received".to_string(),
     ).record(size_bytes as f64);
 
-    log::trace!(
-        "gRPC message received: service={}, method={}, size={}",
-        service,
-        method,
-        size_bytes
-    );
 }
 
 /// Record gRPC method call
@@ -264,12 +225,6 @@ pub fn record_compression_used(service: &str, method: &str, algorithm: &str) {
         "algorithm" => algorithm.to_string(),
     ).increment(1);
 
-    log::trace!(
-        "gRPC compression: service={}, method={}, algorithm={}",
-        service,
-        method,
-        algorithm
-    );
 }
 
 /// Record deadline exceeded
@@ -280,7 +235,6 @@ pub fn record_deadline_exceeded(service: &str, method: &str) {
         "method" => method.to_string(),
     ).increment(1);
 
-    log::warn!("gRPC deadline exceeded: service={}, method={}", service, method);
 }
 
 #[cfg(test)]

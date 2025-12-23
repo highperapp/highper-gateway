@@ -157,24 +157,12 @@ pub fn record_handshake(
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::info!(
-            "TLS handshake succeeded: server_name={}, protocol={}, cipher={}, duration={:.3}s",
-            server_name,
-            protocol_version,
-            cipher_suite,
-            duration_secs
-        );
     } else {
         counter!(
             "tls_handshakes_failure_total",
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::warn!(
-            "TLS handshake failed: server_name={}, duration={:.3}s",
-            server_name,
-            duration_secs
-        );
     }
 
     // Record duration
@@ -195,11 +183,6 @@ pub fn update_certificate_expiry(server_name: &str, seconds_until_expiry: i64) {
     // Track certificates expiring soon (within 30 days)
     if seconds_until_expiry > 0 && seconds_until_expiry < (30 * 24 * 60 * 60) {
         gauge!("tls_certificates_expiring_soon").increment(1.0);
-        log::warn!(
-            "Certificate expiring soon: server_name={}, days_remaining={}",
-            server_name,
-            seconds_until_expiry / (24 * 60 * 60)
-        );
     }
 }
 
@@ -217,9 +200,7 @@ pub fn record_certificate_reload(server_name: &str, success: bool) {
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::error!("Certificate reload failed: server_name={}", server_name);
     } else {
-        log::info!("Certificate reloaded: server_name={}", server_name);
     }
 }
 
@@ -243,7 +224,6 @@ pub fn record_client_cert_validation(
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::info!("Client certificate validated: server_name={}", server_name);
     } else {
         counter!(
             "tls_client_cert_failure_total",
@@ -251,11 +231,6 @@ pub fn record_client_cert_validation(
             "reason" => failure_reason.unwrap_or("unknown").to_string(),
         ).increment(1);
 
-        log::warn!(
-            "Client certificate validation failed: server_name={}, reason={}",
-            server_name,
-            failure_reason.unwrap_or("unknown")
-        );
     }
 }
 
@@ -290,7 +265,6 @@ pub fn record_tls_error(server_name: &str, error_type: &str) {
         _ => {}
     }
 
-    log::error!("TLS error: server_name={}, error={}", server_name, error_type);
 }
 
 /// Record TLS session resumption
@@ -307,14 +281,12 @@ pub fn record_session_resumption(server_name: &str, success: bool) {
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::debug!("TLS session resumed: server_name={}", server_name);
     } else {
         counter!(
             "tls_session_resumption_failure_total",
             "server_name" => server_name.to_string(),
         ).increment(1);
 
-        log::debug!("TLS session resumption failed: server_name={}", server_name);
     }
 }
 
@@ -326,7 +298,6 @@ pub fn record_alpn_negotiated(server_name: &str, protocol: &str) {
         "protocol" => protocol.to_string(),
     ).increment(1);
 
-    log::debug!("ALPN negotiated: server_name={}, protocol={}", server_name, protocol);
 }
 
 /// Record SNI request
@@ -336,7 +307,6 @@ pub fn record_sni(server_name: &str) {
         "server_name" => server_name.to_string(),
     ).increment(1);
 
-    log::trace!("SNI request: server_name={}", server_name);
 }
 
 #[cfg(test)]

@@ -841,7 +841,7 @@ fn default_metrics_port() -> u16 {
 /// Logging configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LoggingConfig {
-    /// Log level
+    /// Global log level (default for all components)
     #[serde(default = "default_log_level")]
     pub level: String,
 
@@ -852,6 +852,10 @@ pub struct LoggingConfig {
     /// Output destination
     #[serde(default = "default_log_output")]
     pub output: String,
+
+    /// Per-protocol log levels (optional, overrides global level)
+    #[serde(default)]
+    pub protocols: Option<ProtocolLogLevels>,
 }
 
 impl Default for LoggingConfig {
@@ -860,8 +864,45 @@ impl Default for LoggingConfig {
             level: default_log_level(),
             format: default_log_format(),
             output: default_log_output(),
+            protocols: None,
         }
     }
+}
+
+/// Protocol-specific log levels
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct ProtocolLogLevels {
+    /// TCP connection logging level
+    #[serde(default)]
+    pub tcp: Option<String>,
+
+    /// TLS handshake logging level
+    #[serde(default)]
+    pub tls: Option<String>,
+
+    /// QUIC connection logging level
+    #[serde(default)]
+    pub quic: Option<String>,
+
+    /// gRPC logging level
+    #[serde(default)]
+    pub grpc: Option<String>,
+
+    /// GraphQL logging level
+    #[serde(default)]
+    pub graphql: Option<String>,
+
+    /// HTTP/1.1 and HTTP/2 logging level
+    #[serde(default)]
+    pub http: Option<String>,
+
+    /// WebSocket logging level
+    #[serde(default)]
+    pub websocket: Option<String>,
+
+    /// Cache operations logging level
+    #[serde(default)]
+    pub cache: Option<String>,
 }
 
 fn default_log_level() -> String {

@@ -524,11 +524,60 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
     // Generate observability section
     yaml.push_str("\nobservability:\n");
     yaml.push_str("  logging:\n");
-    if let Some(ref level) = dsl_config.global.log_level {
+
+    // Use enhanced logging config if available, otherwise fallback to simple log_level
+    if let Some(ref logging_config) = dsl_config.global.logging_config {
+        // Level
+        if let Some(ref level) = logging_config.level {
+            yaml.push_str(&format!("    level: \"{}\"\n", level));
+        } else {
+            yaml.push_str("    level: \"info\"\n");
+        }
+
+        // Format
+        if let Some(ref format) = logging_config.format {
+            yaml.push_str(&format!("    format: \"{}\"\n", format));
+        }
+
+        // Output
+        if let Some(ref output) = logging_config.output {
+            yaml.push_str(&format!("    output: \"{}\"\n", output));
+        }
+
+        // Protocol-specific log levels
+        if let Some(ref protocols) = logging_config.protocols {
+            yaml.push_str("    protocols:\n");
+            if let Some(ref level) = protocols.tcp {
+                yaml.push_str(&format!("      tcp: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.tls {
+                yaml.push_str(&format!("      tls: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.quic {
+                yaml.push_str(&format!("      quic: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.grpc {
+                yaml.push_str(&format!("      grpc: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.graphql {
+                yaml.push_str(&format!("      graphql: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.http {
+                yaml.push_str(&format!("      http: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.websocket {
+                yaml.push_str(&format!("      websocket: \"{}\"\n", level));
+            }
+            if let Some(ref level) = protocols.cache {
+                yaml.push_str(&format!("      cache: \"{}\"\n", level));
+            }
+        }
+    } else if let Some(ref level) = dsl_config.global.log_level {
         yaml.push_str(&format!("    level: \"{}\"\n", level));
     } else {
         yaml.push_str("    level: \"info\"\n");
     }
+
     yaml.push_str("  metrics:\n");
     yaml.push_str(&format!("    enabled: {}\n", dsl_config.global.metrics_enabled));
 
@@ -860,6 +909,41 @@ fn process_directive(
 
         Directive::QuicConfig(_config) => {
             // QUIC transport configuration
+        }
+
+        Directive::SecurityHeaders(_config) => {
+            // Security headers configuration
+            // TODO: Add to YAML schema when implementing security headers middleware
+        }
+
+        Directive::TlsClientAuth(_config) => {
+            // TLS client authentication (mTLS) configuration
+            // TODO: Add to YAML schema for per-route mTLS settings
+        }
+
+        Directive::Auth(_config) => {
+            // Authentication configuration (JWT, OAuth2, Basic, API Key)
+            // TODO: Add to YAML schema when implementing auth middleware
+        }
+
+        Directive::Retry(_config) => {
+            // Retry policy configuration
+            // TODO: Add to upstream configuration in YAML schema
+        }
+
+        Directive::Discovery(_config) => {
+            // Service discovery configuration
+            // TODO: Add to upstream configuration for dynamic backend discovery
+        }
+
+        Directive::GeoRouting(_config) => {
+            // Geographic routing configuration
+            // TODO: Add to load balancing configuration in YAML schema
+        }
+
+        Directive::Firewall(_config) => {
+            // TCP firewall configuration
+            // TODO: Add to global security configuration in YAML schema
         }
     }
 }

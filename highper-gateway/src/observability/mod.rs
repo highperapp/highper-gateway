@@ -16,6 +16,11 @@ pub mod grpc_metrics;
 pub mod graphql_metrics;
 pub mod cache_metrics;
 
+// Protocol-specific loggers
+pub mod tcp_logger;
+pub mod tls_logger;
+pub mod quic_logger;
+
 pub use dashboard::*;
 pub use logging::*;
 pub use metrics::*;
@@ -28,3 +33,6 @@ pub use quic_metrics::*;
 pub use grpc_metrics::*;
 pub use graphql_metrics::*;
 pub use cache_metrics::*;
+pub use tcp_logger::*;
+pub use tls_logger::*;
+pub use quic_logger::*;
