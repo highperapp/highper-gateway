@@ -11,6 +11,9 @@ pub mod mtls;
 pub mod rate_limit;
 pub mod request_size_limit;
 pub mod streaming_validator;
+pub mod request_validation;
+pub mod security_audit;
+pub mod ddos_protection;
 
 // WAF module with adapter pattern
 pub mod waf;
