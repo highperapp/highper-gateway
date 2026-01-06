@@ -33,6 +33,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -109,6 +110,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -179,6 +181,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -266,6 +269,7 @@ impl ProtocolDefaults {
             admin: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -318,6 +322,14 @@ impl ProtocolDefaults {
                 max_message_size: 4 * 1024 * 1024, // 4 MB
                 timeout_seconds: 60,
                 health_check_enabled: true,
+                health_check_interval: 10, // 10 seconds
+                health_check_service: None,
+                reflection_enabled: false,
+                load_balancing: crate::grpc::GrpcLoadBalancing {
+                    policy: crate::grpc::GrpcLoadBalancingPolicy::RoundRobin,
+                    enable_affinity: false,
+                    affinity_key: None,
+                },
             },
             observability: ObservabilityConfig {
                 logging: LoggingConfig {
@@ -341,6 +353,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -372,10 +385,14 @@ impl ProtocolDefaults {
             },
             websocket: crate::websocket::WebSocketConfig {
                 enabled: true,
-                max_frame_size: 16777216, // 16 MB
                 max_message_size: 67108864, // 64 MB
-                ping_interval: Some(Duration::from_secs(30)),
-                ping_timeout: Some(Duration::from_secs(10)),
+                ping_interval: 30, // 30 seconds
+                timeout: 300, // 5 minutes
+                sticky_sessions: true,
+                session_cookie_name: "ws_session".to_string(),
+                session_timeout: 3600, // 1 hour
+                track_connections: true,
+                idle_timeout: 0, // No idle timeout for WebSocket
             },
             observability: ObservabilityConfig {
                 logging: LoggingConfig {
@@ -399,6 +416,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -412,14 +430,13 @@ impl ProtocolDefaults {
     pub fn graphql() -> Config {
         let mut config = Self::http_api();
         config.graphql = Some(crate::gateway::graphql::GraphQLConfig {
-            enabled: true,
-            endpoint: "/graphql".to_string(),
-            playground_enabled: false, // Disable in production
+            enable_stitching: false,
+            enable_cache: true,
+            cache_ttl: Duration::from_secs(60),
+            enable_batching: true,
+            max_batch_size: 10,
             introspection_enabled: false, // Disable in production
-            query_depth_limit: Some(10),
-            query_complexity_limit: Some(1000),
-            enable_subscriptions: true,
-            subscription_protocol: "graphql-ws".to_string(),
+            backends: vec![],
         });
         config.observability.logging.protocols = Some(ProtocolLogLevels {
             graphql: Some("debug".to_string()),
@@ -496,6 +513,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -548,6 +566,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 
@@ -639,6 +658,7 @@ impl ProtocolDefaults {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 }

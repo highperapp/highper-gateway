@@ -1,0 +1,150 @@
+=========================================
+Batch Testing All 15 Scenarios
+Started: Fri Jan  2 10:21:05 UTC 2026
+=========================================
+
+=========================================
+Testing Scenario 04: Rate Limiting
+Script: test-scenario-04-rate-limit.sh
+=========================================
+⏱️  TIMEOUT (300s)
+  Test completed successfully
+
+=========================================
+Testing Scenario 05: HTTP/3 QUIC
+Script: test-scenario-05-http3.sh
+=========================================
+❌ FAILED (exit code: 1)
+  Test did not complete
+  Last 5 lines:
+     Container backend-http-3  Error response from daemon: Conflict. The container name "/backend-http-3" is already in use by container "0a04db887e05e037eea64bbb68b6d0e321dd014a0a2f0210ce7b4c266a38568a". You have to remove (or rename) that container to be able to reuse that name.
+     Container backend-http-2  Error response from daemon: Conflict. The container name "/backend-http-2" is already in use by container "3ea3ff95f9bad3ba967e1e387a2234c2d0f3de51a22cc2d89318f9acab6449a5". You have to remove (or rename) that container to be able to reuse that name.
+    Error response from daemon: Conflict. The container name "/backend-http-3" is already in use by container "0a04db887e05e037eea64bbb68b6d0e321dd014a0a2f0210ce7b4c266a38568a". You have to remove (or rename) that container to be able to reuse that name.
+    Cleaning up...
+    Cleanup complete
+
+=========================================
+Testing Scenario 06: WebSocket
+Script: test-scenario-06-websocket.sh
+=========================================
+❌ FAILED (exit code: 125)
+  Test did not complete
+  Last 5 lines:
+    Cleaning up...
+    ws-backend-1
+    ws-backend-2
+    ws-backend-3
+    Cleanup complete
+
+=========================================
+Testing Scenario 07: gRPC Gateway
+Script: test-scenario-07-grpc.sh
+=========================================
+⏱️  TIMEOUT (300s)
+  Test completed successfully
+
+=========================================
+Testing Scenario 08: Database LB
+Script: test-scenario-08-database.sh
+=========================================
+✅ PASSED
+  Test completed successfully
+
+=========================================
+Testing Scenario 09: WAF + mTLS
+Script: test-scenario-09-waf.sh
+=========================================
+❌ FAILED (exit code: 35)
+  Test did not complete
+  Last 5 lines:
+    =========================================
+    Test 1: Valid Client Certificate
+    =========================================
+    Cleaning up...
+    Cleanup complete
+
+=========================================
+Testing Scenario 10: Multi-Protocol
+Script: test-scenario-10-multi.sh
+=========================================
+❌ FAILED (exit code: 1)
+  Test did not complete
+  Last 5 lines:
+    Cleaning up...
+    ws-backend-1
+    ws-backend-2
+    redis-1
+    Cleanup complete
+
+=========================================
+Testing Scenario 11: CDN Caching
+Script: test-scenario-11-cache.sh
+=========================================
+❌ FAILED (exit code: 1)
+  Test did not complete
+  Last 5 lines:
+    =========================================
+    Testing cached route (1000 req/s for 5s)...
+    2026/01/04 12:35:56 gob: bad data: undefined type CommonType = struct { Name string; Id int; }
+    Cleaning up...
+    Cleanup complete
+
+=========================================
+Testing Scenario 12: Service Discovery
+Script: test-scenario-12-discovery.sh
+=========================================
+❌ FAILED (exit code: 1)
+  Test did not complete
+  Last 5 lines:
+    Test 1: Discovered Services
+    =========================================
+    Cleaning up...
+    consul-server
+    Cleanup complete
+
+=========================================
+Testing Scenario 13: GraphQL Gateway
+Script: test-scenario-13-graphql.sh
+=========================================
+❌ FAILED (exit code: 56)
+  Test did not complete
+  Last 5 lines:
+    =========================================
+    Cleaning up...
+    graphql-server-1
+    graphql-server-2
+    Cleanup complete
+
+=========================================
+Testing Scenario 14: PHP-FPM
+Script: test-scenario-14-php.sh
+=========================================
+❌ FAILED (exit code: 125)
+  Test did not complete
+  Last 5 lines:
+    
+    Run 'docker run --help' for more information
+    Cleaning up...
+    php-fpm-backend
+    Cleanup complete
+
+=========================================
+Testing Scenario 15: Geographic LB
+Script: test-scenario-15-geo.sh
+=========================================
+❌ FAILED (exit code: 56)
+  Test did not complete
+  Last 5 lines:
+    geo-us-east-1
+    geo-us-west-1
+    geo-eu-1
+    geo-asia-1
+    Cleanup complete
+
+=========================================
+Batch Testing Complete!
+Completed: Sun Jan  4 12:41:02 UTC 2026
+=========================================
+
+Full results in: test-results-20260102/
+Summary: test-results-20260102/test-summary.txt

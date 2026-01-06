@@ -1566,7 +1566,7 @@ impl Handler {
                         // Reconstruct request with empty body
                         let req_empty = Request::from_parts(parts, Empty::<Bytes>::new());
 
-                        match self.serve_php_file(&file_info, php_pool, &req_empty, host, path, body).await {
+                        match self.serve_php_file(&file_info, php_pool, &req_empty, host, path, body, document_root).await {
                             Ok(response) => {
                                 let duration = start.elapsed().as_secs_f64();
                                 record_request(method.as_str(), response.status().as_u16(), duration);
@@ -1733,20 +1733,54 @@ impl Handler {
         host: &str,
         path: &str,
         body: CollectedBody,
+        host_document_root: &str,
     ) -> Result<Response<ResponseBody>> {
         // Get connection from pool
         let mut conn = php_pool.get_connection()
             .map_err(|e| anyhow::anyhow!("Failed to get PHP-FPM connection: {}", e))?;
 
-        // Build FastCGI parameters
-        let script_filename = file_info.path.to_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid script path"))?;
+        // Build SCRIPT_FILENAME with path translation if needed
+        let script_filename = if let Some(container_root) = php_pool.document_root() {
+            // Translate path: remove host root, prepend container root
+            let file_path_str = file_info.path.to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid script path"))?;
+
+            debug!("Path translation: file_path={}, host_root={}, container_root={}",
+                file_path_str, host_document_root, container_root);
+
+            // Get relative path from host root
+            let relative_path = std::path::Path::new(file_path_str)
+                .strip_prefix(host_document_root)
+                .map_err(|e| {
+                    error!("Failed to strip prefix '{}' from '{}': {}", host_document_root, file_path_str, e);
+                    anyhow::anyhow!("Script path not under document root")
+                })?;
+
+            // Join with container root
+            let container_path = std::path::Path::new(container_root).join(relative_path);
+            let result = container_path.to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid container path"))?
+                .to_string();
+
+            debug!("Translated path: {} -> {}", file_path_str, result);
+            result
+        } else {
+            // No translation, use host path as-is
+            file_info.path.to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid script path"))?
+                .to_string()
+        };
+
+        // Use container document root if configured, otherwise host root
+        let document_root_param = php_pool.document_root()
+            .unwrap_or(host_document_root);
 
         let mut params = vec![
             ("REQUEST_METHOD".to_string(), req.method().as_str().to_string()),
             ("SCRIPT_FILENAME".to_string(), script_filename.to_string()),
             ("REQUEST_URI".to_string(), sanitize_fastcgi_param(req.uri().path())),
             ("DOCUMENT_URI".to_string(), sanitize_fastcgi_param(path)),
+            ("DOCUMENT_ROOT".to_string(), document_root_param.to_string()),
             ("SERVER_PROTOCOL".to_string(), format!("{:?}", req.version())),
             ("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string()),
             ("SERVER_SOFTWARE".to_string(), "highper-gateway".to_string()),
@@ -2191,6 +2225,7 @@ impl Default for Handler {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }))
     }
 }

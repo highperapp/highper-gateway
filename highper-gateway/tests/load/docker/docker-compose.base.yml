@@ -1,0 +1,267 @@
+version: '3.8'
+
+# Base Docker Compose configuration for Highper Gateway load testing
+# This provides common services used across all 15 test scenarios
+# Use scenario-specific overlays to extend this base configuration
+
+networks:
+  loadtest:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+  postgres-data:
+  gateway-logs:
+  backend-logs:
+
+services:
+  # ========================================
+  # Highper Gateway (Main Subject Under Test)
+  # ========================================
+  gateway:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    container_name: highper-gateway
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.10
+    ports:
+      # HTTP/HTTPS
+      - "8080:8080"
+      - "8443:8443"
+      # HTTP/3 (QUIC)
+      - "8443:8443/udp"
+      # WebSocket
+      - "8081:8081"
+      # gRPC
+      - "50051:50051"
+      # TCP Proxy
+      - "9000:9000"
+      # Admin/Metrics
+      - "9090:9090"
+    volumes:
+      - ./configs/gateway.toml:/etc/highper-gateway/config.toml:ro
+      - gateway-logs:/var/log/highper-gateway
+      - ./certs:/etc/highper-gateway/certs:ro
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+      - HIGHPER_CONFIG=/etc/highper-gateway/config.toml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    mem_limit: 4g
+    cpus: 2
+
+  # ========================================
+  # Backend Services (Upstream Targets)
+  # Using ultra-fast Rust HTTP backends for minimal overhead
+  # ========================================
+
+  # HTTP Backend 1
+  backend-http-1:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-1
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.20
+    ports:
+      - "8001:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # HTTP Backend 2
+  backend-http-2:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-2
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.21
+    ports:
+      - "8002:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-2
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # HTTP Backend 3
+  backend-http-3:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-3
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.22
+    ports:
+      - "8003:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-3
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Node.js API Backend
+  backend-api:
+    image: node:18-alpine
+    container_name: backend-api
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.30
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    volumes:
+      - ./backends/node-api:/app:ro
+    command: ["node", "server.js"]
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ========================================
+  # Supporting Services
+  # ========================================
+
+  # Redis (for caching, rate limiting)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.40
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # PostgreSQL (for database load balancing scenarios)
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.50
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./configs/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_DB=loadtest
+      - POSTGRES_USER=loadtest
+      - POSTGRES_PASSWORD=loadtest123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadtest"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Consul (for service discovery)
+  consul:
+    image: hashicorp/consul:1.17
+    container_name: consul
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.60
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    command: agent -server -ui -bootstrap-expect=1 -client=0.0.0.0
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ========================================
+  # Monitoring & Metrics
+  # ========================================
+
+  # Prometheus (metrics collection)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.70
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=24h'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Grafana (metrics visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.71
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./configs/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3

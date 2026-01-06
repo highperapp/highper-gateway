@@ -53,6 +53,10 @@ pub struct Config {
     /// GraphQL gateway configuration
     #[serde(default)]
     pub graphql: Option<crate::gateway::graphql::GraphQLConfig>,
+
+    /// Web server configuration (static files and PHP-FPM)
+    #[serde(default)]
+    pub webserver: Option<crate::webserver::WebServerConfig>,
 }
 
 /// Server configuration
@@ -1556,6 +1560,11 @@ pub struct PhpFpmConfig {
     /// Script file extensions to process (.php, .phtml, etc.)
     #[serde(default = "default_php_fpm_script_extensions")]
     pub script_extensions: Vec<String>,
+
+    /// Document root path inside PHP-FPM container (for path translation)
+    /// If set, translates host paths to container paths in SCRIPT_FILENAME
+    #[serde(default)]
+    pub document_root: Option<String>,
 }
 
 fn default_php_fpm_pool_size() -> usize {

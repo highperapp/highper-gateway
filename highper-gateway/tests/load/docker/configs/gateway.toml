@@ -1,0 +1,368 @@
+# Highper Gateway Configuration for Load Testing
+# This configuration supports all 15 test scenarios
+# Uses environment variables for dynamic IP/port configuration
+
+[server]
+host = "0.0.0.0"
+port = 8080
+https_port = 8443
+admin_port = 9090
+workers = 4
+max_connections = 100000
+keepalive_timeout = 75
+request_timeout = 60
+graceful_shutdown_timeout = 30
+
+[tls]
+enabled = true
+cert_path = "/etc/highper-gateway/certs/server.crt"
+key_path = "/etc/highper-gateway/certs/server.key"
+alpn_protocols = ["h2", "http/1.1"]
+min_version = "1.2"
+max_version = "1.3"
+
+[http3]
+enabled = true
+port = 8443
+max_idle_timeout = 30000
+max_concurrent_streams = 1000
+enable_0rtt = true
+
+[tcp]
+enabled = true
+port = 9000
+buffer_size = 65536
+nodelay = true
+
+[websocket]
+enabled = true
+port = 8081
+max_message_size = 67108864
+ping_interval = 30
+timeout = 300
+sticky_sessions = true
+session_cookie_name = "ws_session"
+session_timeout = 3600
+track_connections = true
+
+[grpc]
+enabled = true
+port = 50051
+max_concurrent_streams = 1000
+keepalive_interval = 10
+keepalive_timeout = 20
+health_check_interval = 5
+load_balancing = "round_robin"
+
+[graphql]
+max_query_depth = 10
+max_query_complexity = 1000
+introspection_enabled = true
+playground_enabled = false
+
+# ========================================
+# Upstreams for Different Scenarios
+# Environment variables: BACKEND_HTTP_1, BACKEND_HTTP_2, etc.
+# ========================================
+
+# HTTP Load Balancer Upstreams
+[[upstream]]
+name = "http-backends"
+protocol = "http"
+load_balancing = "round_robin"
+health_check_interval = 5
+health_check_timeout = 3
+health_check_path = "/health"
+
+[[upstream.servers]]
+host = "${BACKEND_HTTP_1_HOST:-172.20.0.20}"
+port = "${BACKEND_HTTP_1_PORT:-8000}"
+weight = 1
+
+[[upstream.servers]]
+host = "${BACKEND_HTTP_2_HOST:-172.20.0.21}"
+port = "${BACKEND_HTTP_2_PORT:-8000}"
+weight = 1
+
+[[upstream.servers]]
+host = "${BACKEND_HTTP_3_HOST:-172.20.0.22}"
+port = "${BACKEND_HTTP_3_PORT:-8000}"
+weight = 1
+
+# HTTPS/TLS Upstreams
+[[upstream]]
+name = "https-backends"
+protocol = "https"
+load_balancing = "round_robin"
+health_check_interval = 5
+
+[[upstream.servers]]
+host = "${BACKEND_HTTPS_1_HOST:-172.20.0.20}"
+port = "${BACKEND_HTTPS_1_PORT:-443}"
+weight = 1
+
+[[upstream.servers]]
+host = "${BACKEND_HTTPS_2_HOST:-172.20.0.21}"
+port = "${BACKEND_HTTPS_2_PORT:-443}"
+weight = 1
+
+# API Gateway Upstreams
+[[upstream]]
+name = "api-backends"
+protocol = "http"
+load_balancing = "least_connections"
+health_check_interval = 5
+health_check_path = "/health"
+
+[[upstream.servers]]
+host = "${BACKEND_API_HOST:-172.20.0.30}"
+port = "${BACKEND_API_PORT:-3000}"
+weight = 1
+
+# TCP Proxy Upstreams (for database, etc.)
+[[upstream]]
+name = "tcp-backends"
+protocol = "tcp"
+load_balancing = "ip_hash"
+
+[[upstream.servers]]
+host = "${BACKEND_TCP_HOST:-172.20.0.50}"
+port = "${BACKEND_TCP_PORT:-5432}"
+weight = 1
+
+# WebSocket Upstreams
+[[upstream]]
+name = "websocket-backends"
+protocol = "websocket"
+load_balancing = "round_robin"
+
+[[upstream.servers]]
+host = "${BACKEND_WS_HOST:-172.20.0.30}"
+port = "${BACKEND_WS_PORT:-3000}"
+weight = 1
+
+# gRPC Upstreams
+[[upstream]]
+name = "grpc-backends"
+protocol = "grpc"
+load_balancing = "round_robin"
+health_check_interval = 5
+
+[[upstream.servers]]
+host = "${BACKEND_GRPC_HOST:-172.20.0.31}"
+port = "${BACKEND_GRPC_PORT:-50051}"
+weight = 1
+
+# ========================================
+# Routes for Different Scenarios
+# ========================================
+
+# Scenario 02: HTTP Load Balancer (all standard HTTP methods)
+[[route]]
+path = "/api/*"
+upstream = "http-backends"
+methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+# Scenario 04: API Gateway with CORS (full REST support)
+[[route]]
+path = "/v1/*"
+upstream = "api-backends"
+methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+cors_enabled = true
+cors_allow_origins = ["*"]
+cors_allow_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+cors_allow_headers = ["Content-Type", "Authorization", "X-Requested-With", "X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP"]
+cors_expose_headers = ["X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP"]
+rate_limit_requests = 1000
+rate_limit_window = 60
+
+# Scenario 06: WebSocket
+[[route]]
+path = "/ws"
+upstream = "websocket-backends"
+protocol = "websocket"
+
+# Scenario 07: gRPC Gateway
+[[route]]
+path = "/grpc/*"
+upstream = "grpc-backends"
+protocol = "grpc"
+
+# Scenario 13: GraphQL Gateway
+[[route]]
+path = "/graphql"
+upstream = "api-backends"
+methods = ["POST", "GET", "OPTIONS"]
+graphql_enabled = true
+
+# Scenario 14: Static + PHP-FPM
+[[route]]
+path = "/static/*"
+upstream = "http-backends"
+methods = ["GET", "HEAD"]
+
+[[route]]
+path = "*.php"
+upstream = "php-backends"
+protocol = "fastcgi"
+
+# ========================================
+# Middleware Configuration
+# ========================================
+
+[middleware]
+
+[middleware.compression]
+enabled = true
+level = 6
+min_size = 1024
+# Note: gRPC uses its own compression (gzip/deflate) at protocol level
+# Do NOT compress application/grpc - it would break the binary protocol
+types = [
+    "text/html",
+    "text/css",
+    "text/plain",
+    "text/javascript",
+    "application/json",
+    "application/javascript",
+    "application/xml",
+    "application/msgpack",  # Binary serialization for APIs
+]
+
+[middleware.rate_limiting]
+enabled = true
+requests_per_second = 10000
+burst_size = 20000
+storage = "redis"
+redis_url = "redis://${REDIS_HOST:-172.20.0.40}:${REDIS_PORT:-6379}"
+
+[middleware.caching]
+enabled = true
+default_ttl = 300
+max_size = 1073741824
+storage = "redis"
+redis_url = "redis://${REDIS_HOST:-172.20.0.40}:${REDIS_PORT:-6379}"
+cache_methods = ["GET", "HEAD"]
+
+[middleware.cors]
+enabled = true
+allow_origins = ["*"]
+allow_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+# Support for multi-tier proxy setups (TCP LB -> HTTP LB -> HTTP Server)
+allow_headers = [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "X-Forwarded-For",      # Client IP chain through proxies
+    "X-Forwarded-Proto",    # Original protocol (http/https)
+    "X-Forwarded-Host",     # Original host header
+    "X-Real-IP",            # Immediate client IP
+]
+expose_headers = [
+    "Content-Length",
+    "X-Request-ID",
+    "X-Forwarded-For",
+    "X-Forwarded-Proto",
+    "X-Forwarded-Host",
+    "X-Real-IP",
+]
+allow_credentials = false
+max_age = 3600
+
+[middleware.request_validation]
+enabled = true
+sql_injection_detection = true
+xss_detection = true
+path_traversal_detection = true
+max_body_size = 10485760
+max_header_size = 8192
+max_url_length = 2048
+
+[middleware.security_audit]
+enabled = true
+log_all_requests = false
+log_failed_requests = true
+log_suspicious_activity = true
+retention_days = 90
+
+[middleware.ddos_protection]
+enabled = true
+max_connections_per_ip = 1000
+max_requests_per_second = 1000
+burst_size = 2000
+ban_duration = 300
+ban_threshold = 50
+
+# ========================================
+# Service Discovery
+# ========================================
+
+[discovery]
+enabled = false
+provider = "consul"
+consul_address = "http://${CONSUL_HOST:-172.20.0.60}:${CONSUL_PORT:-8500}"
+health_check_interval = 10
+auto_register = true
+
+# ========================================
+# Circuit Breaker
+# ========================================
+
+[circuit_breaker]
+enabled = true
+failure_threshold = 5
+success_threshold = 2
+timeout = 60
+half_open_max_requests = 3
+
+# ========================================
+# Retry Policy
+# ========================================
+
+[retry]
+enabled = true
+max_attempts = 3
+initial_backoff = 100
+max_backoff = 5000
+backoff_multiplier = 2.0
+jitter = true
+retryable_status_codes = [500, 502, 503, 504]
+
+# ========================================
+# Metrics & Monitoring
+# ========================================
+
+[metrics]
+enabled = true
+prometheus_enabled = true
+prometheus_port = 9090
+export_interval = 15
+
+[logging]
+level = "info"
+format = "json"
+access_log = true
+error_log = true
+log_path = "/var/log/highper-gateway"
+
+# ========================================
+# Geographic Routing (Scenario 15)
+# ========================================
+
+[geographic]
+enabled = false
+database_path = "/etc/highper-gateway/geoip/GeoLite2-City.mmdb"
+default_region = "us-east"
+routing_strategy = "nearest"
+
+[[geographic.regions]]
+name = "us-east"
+location = { latitude = 40.7128, longitude = -74.0060 }
+
+[[geographic.regions]]
+name = "eu-west"
+location = { latitude = 51.5074, longitude = -0.1278 }
+
+[[geographic.regions]]
+name = "ap-south"
+location = { latitude = 1.3521, longitude = 103.8198 }

@@ -114,6 +114,10 @@ pub struct PhpFpmConfig {
     /// Additional FastCGI parameters
     #[serde(default)]
     pub fastcgi_params: std::collections::HashMap<String, String>,
+
+    /// Document root path inside PHP-FPM container (for path translation)
+    /// If set, translates host paths to container paths in SCRIPT_FILENAME
+    pub document_root: Option<String>,
 }
 
 impl Default for PhpFpmConfig {
@@ -128,6 +132,7 @@ impl Default for PhpFpmConfig {
             script_extensions: default_php_extensions(),
             script_filename_override: None,
             fastcgi_params: std::collections::HashMap::new(),
+            document_root: None,
         }
     }
 }

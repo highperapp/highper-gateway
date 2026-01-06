@@ -347,6 +347,8 @@ impl Middleware for DdosProtectionMiddleware {
     ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
         let config = self.config.clone();
         let tracking = self.tracking.clone();
+        let whitelist = self.config.whitelist.clone();
+        let blacklist = self.config.blacklist.clone();
 
         Box::pin(async move {
             // Extract client IP
@@ -354,15 +356,17 @@ impl Middleware for DdosProtectionMiddleware {
                 .unwrap_or_else(|| "unknown".to_string());
 
             // Check whitelist
-            if self.is_whitelisted(&client_ip) {
-                debug!("IP {} is whitelisted, bypassing DDoS protection", client_ip);
-                return Ok(req);
-            }
+            if let Ok(addr) = client_ip.parse::<IpAddr>() {
+                if whitelist.contains(&addr) {
+                    debug!("IP {} is whitelisted, bypassing DDoS protection", client_ip);
+                    return Ok(req);
+                }
 
-            // Check blacklist
-            if self.is_blacklisted(&client_ip) {
-                warn!("Request from blacklisted IP: {}", client_ip);
-                return Err(Self::create_banned_response());
+                // Check blacklist
+                if blacklist.contains(&addr) {
+                    warn!("Request from blacklisted IP: {}", client_ip);
+                    return Err(Self::create_banned_response());
+                }
             }
 
             // Get or create tracking data

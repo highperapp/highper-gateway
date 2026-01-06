@@ -79,6 +79,7 @@ impl Server {
                     script_extensions: route_php_config.script_extensions.clone(),
                     script_filename_override: None,
                     fastcgi_params: std::collections::HashMap::new(),
+                    document_root: route_php_config.document_root.clone(),
                 };
 
                 info!("PHP-FPM pool initialized: socket={}, pool_size={}",

@@ -1,0 +1,42 @@
+# Scenario 02: Layer 7 HTTP - HTTP/1.1 Load Balancing
+# Protocol: HTTP/1.1
+# Focus: Round-robin, least connections, health checks
+# Target: 200K+ req/s (based on DigitalOcean baseline)
+
+version: '3.8'
+
+services:
+  # Use base gateway with HTTP-specific configuration
+  gateway:
+    environment:
+      - SCENARIO=02-http-loadbalancer
+      - HTTP_ENABLED=true
+      - HTTP_PORT=8080
+      - KEEPALIVE_TIMEOUT=75
+      - MAX_CONNECTIONS=100000
+
+  # Additional HTTP backend (total 4 backends for better load distribution)
+  backend-http-4:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-4
+    networks:
+      loadtest:
+        ipv4_address: 172.20.0.23
+    ports:
+      - "8004:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-4
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  loadtest:
+    external: true

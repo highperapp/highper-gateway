@@ -47,7 +47,7 @@ impl PhpFpmPool {
             if conn.is_idle() && !conn.is_expired() {
                 return Ok(PooledFpmConnection {
                     id: *entry.key(),
-                    socket: Connection::Unix(UnixStream::connect(&self.config.socket)?),
+                    socket: self.create_connection()?,
                     pool: Arc::clone(&self.connections),
                 });
             }
@@ -108,6 +108,11 @@ impl PhpFpmPool {
         for id in to_remove {
             self.connections.remove(&id);
         }
+    }
+
+    /// Get document root for path translation
+    pub fn document_root(&self) -> Option<&str> {
+        self.config.document_root.as_deref()
     }
 }
 

@@ -147,6 +147,105 @@ impl RequestValidationMiddleware {
         Self::new(RequestValidationConfig::api())
     }
 
+    /// Validate request URL
+    fn validate_url(&self, uri: &hyper::Uri) -> Result<(), String> {
+        let url = uri.to_string();
+
+        // Check URL length
+        if url.len() > self.config.max_url_length {
+            return Err(format!("URL too long: {} > {}", url.len(), self.config.max_url_length));
+        }
+
+        // URL-decode for pattern matching (attackers often use URL encoding to bypass filters)
+        let decoded_url = urlencoding::decode(&url).unwrap_or(std::borrow::Cow::Borrowed(&url));
+
+        // Check for null bytes
+        if self.config.null_byte_detection && decoded_url.contains('\0') {
+            return Err("Null byte detected in URL".to_string());
+        }
+
+        // Check for path traversal (check both encoded and decoded)
+        if self.config.path_traversal_detection {
+            for pattern in &self.path_traversal_patterns {
+                if pattern.is_match(&url) || pattern.is_match(&decoded_url) {
+                    return Err(format!("Path traversal pattern detected: {}", pattern.as_str()));
+                }
+            }
+        }
+
+        // Check for SQL injection in URL (check both encoded and decoded)
+        if self.config.sql_injection_detection {
+            for pattern in &self.sql_patterns {
+                if pattern.is_match(&url) || pattern.is_match(&decoded_url) {
+                    return Err(format!("SQL injection pattern detected in URL"));
+                }
+            }
+        }
+
+        // Check for XSS in URL (check both encoded and decoded)
+        if self.config.xss_detection {
+            for pattern in &self.xss_patterns {
+                if pattern.is_match(&url) || pattern.is_match(&decoded_url) {
+                    return Err(format!("XSS pattern detected in URL"));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate request headers
+    fn validate_headers(&self, headers: &hyper::HeaderMap) -> Result<(), String> {
+        // Calculate total header size
+        let total_size: usize = headers.iter()
+            .map(|(name, value)| name.as_str().len() + value.len())
+            .sum();
+
+        if total_size > self.config.max_header_size {
+            return Err(format!("Headers too large: {} > {}", total_size, self.config.max_header_size));
+        }
+
+        // Validate User-Agent
+        if self.config.block_suspicious_user_agents {
+            if let Some(user_agent) = headers.get(header::USER_AGENT) {
+                if let Ok(ua_str) = user_agent.to_str() {
+                    for pattern in &self.suspicious_user_agents {
+                        if pattern.is_match(ua_str) {
+                            return Err(format!("Suspicious user agent detected: {}", ua_str));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for null bytes in headers
+        if self.config.null_byte_detection {
+            for (name, value) in headers.iter() {
+                if name.as_str().contains('\0') {
+                    return Err(format!("Null byte in header name: {}", name));
+                }
+                if let Ok(val_str) = value.to_str() {
+                    if val_str.contains('\0') {
+                        return Err(format!("Null byte in header value: {}", name));
+                    }
+                }
+            }
+        }
+
+        // Validate Content-Length
+        if let Some(content_length) = headers.get(header::CONTENT_LENGTH) {
+            if let Ok(length_str) = content_length.to_str() {
+                if let Ok(length) = length_str.parse::<usize>() {
+                    if self.config.max_body_size > 0 && length > self.config.max_body_size {
+                        return Err(format!("Request body too large: {} > {}", length, self.config.max_body_size));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Compile SQL injection detection patterns
     fn compile_sql_patterns() -> Vec<Regex> {
         vec![
@@ -216,116 +315,6 @@ impl RequestValidationMiddleware {
             Regex::new(r"(?i)(w3af|skipfish|wapiti|whatweb)").unwrap(),
         ]
     }
-
-    /// Validate request URL
-    fn validate_url(&self, uri: &hyper::Uri) -> Result<(), String> {
-        let url = uri.to_string();
-
-        // Check URL length
-        if url.len() > self.config.max_url_length {
-            return Err(format!("URL too long: {} > {}", url.len(), self.config.max_url_length));
-        }
-
-        // Check for null bytes
-        if self.config.null_byte_detection && url.contains('\0') {
-            return Err("Null byte detected in URL".to_string());
-        }
-
-        // Check for path traversal
-        if self.config.path_traversal_detection {
-            for pattern in &self.path_traversal_patterns {
-                if pattern.is_match(&url) {
-                    return Err(format!("Path traversal pattern detected: {}", pattern.as_str()));
-                }
-            }
-        }
-
-        // Check for SQL injection in URL
-        if self.config.sql_injection_detection {
-            for pattern in &self.sql_patterns {
-                if pattern.is_match(&url) {
-                    return Err(format!("SQL injection pattern detected in URL"));
-                }
-            }
-        }
-
-        // Check for XSS in URL
-        if self.config.xss_detection {
-            for pattern in &self.xss_patterns {
-                if pattern.is_match(&url) {
-                    return Err(format!("XSS pattern detected in URL"));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Validate request headers
-    fn validate_headers(&self, headers: &hyper::HeaderMap) -> Result<(), String> {
-        // Calculate total header size
-        let total_size: usize = headers.iter()
-            .map(|(name, value)| name.as_str().len() + value.len())
-            .sum();
-
-        if total_size > self.config.max_header_size {
-            return Err(format!("Headers too large: {} > {}", total_size, self.config.max_header_size));
-        }
-
-        // Validate User-Agent
-        if self.config.block_suspicious_user_agents {
-            if let Some(user_agent) = headers.get(header::USER_AGENT) {
-                if let Ok(ua_str) = user_agent.to_str() {
-                    for pattern in &self.suspicious_user_agents {
-                        if pattern.is_match(ua_str) {
-                            return Err(format!("Suspicious user agent detected: {}", ua_str));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check for null bytes in headers
-        if self.config.null_byte_detection {
-            for (name, value) in headers.iter() {
-                if name.as_str().contains('\0') {
-                    return Err(format!("Null byte in header name: {}", name));
-                }
-                if let Ok(val_str) = value.to_str() {
-                    if val_str.contains('\0') {
-                        return Err(format!("Null byte in header value: {}", name));
-                    }
-                }
-            }
-        }
-
-        // Validate Content-Length
-        if let Some(content_length) = headers.get(header::CONTENT_LENGTH) {
-            if let Ok(length_str) = content_length.to_str() {
-                if let Ok(length) = length_str.parse::<usize>() {
-                    if self.config.max_body_size > 0 && length > self.config.max_body_size {
-                        return Err(format!("Request body too large: {} > {}", length, self.config.max_body_size));
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Create error response
-    fn create_error_response(message: &str, status: StatusCode) -> Response<ResponseBody> {
-        warn!("Request validation failed: {}", message);
-
-        Response::builder()
-            .status(status)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(ResponseBody::Buffered(Full::new(Bytes::from(format!(
-                r#"{{"error":"Request validation failed","details":"{}"}}"#,
-                message.replace('"', "'")
-            )))))
-            .unwrap()
-    }
 }
 
 impl Middleware for RequestValidationMiddleware {
@@ -337,11 +326,15 @@ impl Middleware for RequestValidationMiddleware {
         &self,
         req: Request<hyper::body::Incoming>,
     ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+        // Perform validation synchronously before async block
+        let url_validation = self.validate_url(req.uri());
+        let header_validation = self.validate_headers(req.headers());
+
         Box::pin(async move {
             debug!("Validating request: {} {}", req.method(), req.uri());
 
-            // Validate URL
-            if let Err(msg) = self.validate_url(req.uri()) {
+            // Check URL validation result
+            if let Err(msg) = url_validation {
                 let response = Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header(header::CONTENT_TYPE, "application/json")
@@ -353,8 +346,8 @@ impl Middleware for RequestValidationMiddleware {
                 return Err(response);
             }
 
-            // Validate headers
-            if let Err(msg) = self.validate_headers(req.headers()) {
+            // Check header validation result
+            if let Err(msg) = header_validation {
                 let response = Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header(header::CONTENT_TYPE, "application/json")
@@ -380,10 +373,11 @@ mod tests {
     fn test_sql_injection_detection() {
         let middleware = RequestValidationMiddleware::default_validation();
 
-        let uri: hyper::Uri = "http://example.com/user?id=1' OR '1'='1".parse().unwrap();
+        // URL-encode special characters for valid URIs
+        let uri: hyper::Uri = "http://example.com/user?id=1%27%20OR%20%271%27=%271".parse().unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
-        let uri: hyper::Uri = "http://example.com/user?name=admin'--".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/user?name=admin%27--".parse().unwrap();
         assert!(middleware.validate_url(&uri).is_err());
     }
 
@@ -391,10 +385,11 @@ mod tests {
     fn test_xss_detection() {
         let middleware = RequestValidationMiddleware::default_validation();
 
-        let uri: hyper::Uri = "http://example.com/search?q=<script>alert('xss')</script>".parse().unwrap();
+        // URL-encode special characters for valid URIs
+        let uri: hyper::Uri = "http://example.com/search?q=%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E".parse().unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
-        let uri: hyper::Uri = "http://example.com/page?redirect=javascript:alert(1)".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/page?redirect=javascript%3Aalert%281%29".parse().unwrap();
         assert!(middleware.validate_url(&uri).is_err());
     }
 
@@ -402,7 +397,7 @@ mod tests {
     fn test_path_traversal_detection() {
         let middleware = RequestValidationMiddleware::default_validation();
 
-        let uri: hyper::Uri = "http://example.com/file?path=../../etc/passwd".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/file?path=..%2F..%2Fetc%2Fpasswd".parse().unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
         let uri: hyper::Uri = "http://example.com/file?path=%2e%2e%2f".parse().unwrap();

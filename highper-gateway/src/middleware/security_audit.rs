@@ -397,9 +397,11 @@ impl Middleware for SecurityAuditMiddleware {
         &self,
         response: Response<ResponseBody>,
     ) -> Pin<Box<dyn Future<Output = MiddlewareResult> + Send>> {
+        let config = self.config.clone();
+
         Box::pin(async move {
             // Log failed authentication attempts
-            if response.status() == StatusCode::UNAUTHORIZED && self.config.log_auth_attempts {
+            if response.status() == StatusCode::UNAUTHORIZED && config.log_auth_attempts {
                 let event = SecurityAuditEvent::new(
                     SecurityEventType::AuthAttempt,
                     SecurityEventSeverity::Warning,
@@ -409,7 +411,7 @@ impl Middleware for SecurityAuditMiddleware {
             }
 
             // Log forbidden access attempts
-            if response.status() == StatusCode::FORBIDDEN && self.config.log_authz_decisions {
+            if response.status() == StatusCode::FORBIDDEN && config.log_authz_decisions {
                 let event = SecurityAuditEvent::new(
                     SecurityEventType::AuthzDecision,
                     SecurityEventSeverity::Warning,

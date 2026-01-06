@@ -1,0 +1,51 @@
+# Minimal Highper Gateway Configuration for Load Testing
+# Only essential features for HTTP load balancing
+
+[server]
+host = "0.0.0.0"
+port = 8080
+https_port = 8443
+admin_port = 9090
+workers = 4
+max_connections = 100000
+keepalive_timeout = 75
+request_timeout = 60
+
+# HTTP Load Balancer Upstreams
+[[upstream]]
+name = "http-backends"
+protocol = "http"
+load_balancing = "round_robin"
+health_check_interval = 5
+health_check_timeout = 3
+health_check_path = "/health"
+
+[[upstream.servers]]
+host = "backend-http-1"
+port = 8000
+weight = 1
+
+[[upstream.servers]]
+host = "backend-http-2"
+port = 8000
+weight = 1
+
+[[upstream.servers]]
+host = "backend-http-3"
+port = 8000
+weight = 1
+
+# HTTP Load Balancer Route
+[[route]]
+path = "/*"
+upstream = "http-backends"
+methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+[metrics]
+enabled = true
+prometheus_enabled = true
+prometheus_port = 9090
+
+[logging]
+level = "info"
+format = "text"

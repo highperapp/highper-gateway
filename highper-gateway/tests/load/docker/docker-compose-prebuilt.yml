@@ -1,0 +1,67 @@
+# Minimal Docker Compose using pre-built gateway binary
+# Fastest option for local testing
+
+networks:
+  loadtest:
+    driver: bridge
+
+services:
+  # Backend 1
+  backend-http-1:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-1
+    networks:
+      - loadtest
+    ports:
+      - "8001:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # Backend 2
+  backend-http-2:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-2
+    networks:
+      - loadtest
+    ports:
+      - "8002:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-2
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # Backend 3
+  backend-http-3:
+    build:
+      context: ./backends/rust-http
+      dockerfile: Dockerfile
+    container_name: backend-http-3
+    networks:
+      - loadtest
+    ports:
+      - "8003:8000"
+    environment:
+      - PORT=8000
+      - HOSTNAME=backend-http-3
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
