@@ -14,13 +14,30 @@ echo "========================================="
 cleanup() {
     echo "Cleaning up..."
     [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
+
+    # Force cleanup all backend containers
+    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
+    docker rm -f $(docker ps -aq --filter "name=ws-backend") 2>/dev/null || true
+    docker rm -f $(docker ps -aq --filter "name=redis") 2>/dev/null || true
+
+    # Cleanup docker-compose stack
     (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
-    docker rm -f ws-backend-1 ws-backend-2 2>/dev/null || true
-    docker rm -f redis-1 2>/dev/null || true
+
+    # Kill any processes using our ports
+    for port in 8080 8001 8002 8003 9001 9002 6380; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    # Wait for ports to be free
+    sleep 2
     echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
+
+# Force cleanup at test start to ensure clean state
+echo "Ensuring clean test environment..."
+cleanup
 
 # Start HTTP backends
 echo "Starting HTTP backend servers..."

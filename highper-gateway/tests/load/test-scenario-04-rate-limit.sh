@@ -63,6 +63,12 @@ max_connections = 500000
 read_buffer_size = 32768
 write_buffer_size = 32768
 
+# Global rate limiting configuration (applies to all requests)
+[rate_limit]
+enabled = true
+capacity = 100
+window = "10s"
+
 [[upstreams]]
 name = "backends"
 
@@ -81,34 +87,26 @@ keepalive = "60s"
 pool_size = 500
 tcp_nodelay = true
 
-# Rate limiting configuration
 [[routes]]
-name = "api-limited"
+name = "api-route"
 upstream = "backends"
 
 [routes.match]
 paths = ["/api/*"]
 methods = ["GET", "POST"]
 
-# Rate limit: 1000 requests per second per IP
-[routes.rate_limit]
-enabled = true
-requests_per_second = 1000
-burst = 100
-
-# Second route without rate limiting (for comparison)
 [[routes]]
-name = "unlimited"
+name = "default"
 upstream = "backends"
 
 [routes.match]
-paths = ["/unlimited/*"]
+paths = ["/*"]
 
 [observability.metrics]
 enabled = false
 
 [observability.logging]
-level = "warn"
+level = "info"
 format = "json"
 EOF
 

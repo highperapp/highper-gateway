@@ -54,6 +54,8 @@ pub struct Handler {
     cache: Option<Arc<crate::gateway::cache::LocalCache>>,
     /// GraphQL gateway for schema stitching and federation (optional, enabled via config)
     graphql_gateway: Option<Arc<crate::gateway::graphql::GraphQLGateway>>,
+    /// Rate limiter for request throttling (optional, enabled via config)
+    rate_limiter: Option<Arc<crate::middleware::rate_limit::RateLimiter>>,
 }
 
 /// Upstream server group with load balancing and circuit breaker
@@ -245,6 +247,28 @@ impl Handler {
             None
         };
 
+        // Initialize rate limiter if enabled
+        let rate_limiter = if let Some(rate_limit_config) = &config.rate_limit {
+            if rate_limit_config.enabled {
+                let rl_config = crate::middleware::rate_limit::RateLimitConfig {
+                    requests_per_window: rate_limit_config.capacity,
+                    window_duration: rate_limit_config.window,
+                    enabled: true,
+                    rate_limit_message: None,
+                };
+
+                let limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rl_config));
+
+                info!("Initialized rate limiter (capacity: {}, window: {:?})",
+                    rate_limit_config.capacity, rate_limit_config.window);
+                Some(limiter)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             client,
@@ -262,6 +286,7 @@ impl Handler {
             ws_shutdown_coordinator,
             cache,
             graphql_gateway: None,  // Initialize in with_graphql_gateway method
+            rate_limiter,
         }
     }
 
@@ -393,6 +418,28 @@ impl Handler {
             None
         };
 
+        // Initialize rate limiter if enabled
+        let rate_limiter = if let Some(rate_limit_config) = &config.rate_limit {
+            if rate_limit_config.enabled {
+                let rl_config = crate::middleware::rate_limit::RateLimitConfig {
+                    requests_per_window: rate_limit_config.capacity,
+                    window_duration: rate_limit_config.window,
+                    enabled: true,
+                    rate_limit_message: None,
+                };
+
+                let limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rl_config));
+
+                info!("Initialized rate limiter (capacity: {}, window: {:?})",
+                    rate_limit_config.capacity, rate_limit_config.window);
+                Some(limiter)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             client,
@@ -410,6 +457,7 @@ impl Handler {
             ws_shutdown_coordinator,
             cache,
             graphql_gateway: None,  // Initialize in with_graphql_gateway method
+            rate_limiter,
         }
     }
 
@@ -478,6 +526,36 @@ impl Handler {
         );
 
         debug!("Received {} request for {} (Host: {}, Client IP: {:?})", method, path, host, client_ip);
+
+        // Check rate limiting
+        if let Some(rate_limiter) = &self.rate_limiter {
+            let ip_for_rate_limit = client_ip.as_deref().unwrap_or("unknown");
+
+            if !rate_limiter.check_rate_limit(ip_for_rate_limit) {
+                debug!("Rate limit exceeded for client: {}", ip_for_rate_limit);
+
+                let duration = start.elapsed().as_secs_f64();
+                record_request(method.as_str(), StatusCode::TOO_MANY_REQUESTS.as_u16(), duration);
+
+                // Record response in tracing
+                crate::observability::tracing::record_http_response(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    duration * 1000.0,
+                );
+
+                // Get rate limit response and convert body to ResponseBody
+                let response = rate_limiter.rate_limit_response();
+                let (parts, body) = response.into_parts();
+
+                // Extract bytes from Full<Bytes> body
+                use http_body_util::BodyExt;
+                let body_bytes = body.collect().await.unwrap().to_bytes();
+
+                // Reconstruct response with ResponseBody
+                let final_response = Response::from_parts(parts, ResponseBody::buffered(body_bytes));
+                return Ok(final_response);
+            }
+        }
 
         // Check for ACME HTTP-01 challenge
         if method == Method::GET && path.starts_with("/.well-known/acme-challenge/") {
