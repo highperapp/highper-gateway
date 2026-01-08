@@ -14,11 +14,28 @@ echo "========================================="
 cleanup() {
     echo "Cleaning up..."
     [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
+
+    # Force cleanup all backend containers
+    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
+
+    # Cleanup docker-compose stack
     (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
+
+    # Kill any processes using our ports
+    for port in 8443 8001 8002 8003; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    # Wait for ports to be free
+    sleep 2
     echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
+
+# Force cleanup at test start to ensure clean state
+echo "Ensuring clean test environment..."
+cleanup
 
 # Generate CA and certificates for mTLS
 echo "Generating certificates for mTLS..."
@@ -102,7 +119,41 @@ min_version = "1.2"
 max_version = "1.3"
 alpn_protocols = ["h2", "http/1.1"]
 
-# Note: WAF and mTLS features demonstrated through request validation tests
+# WAF configuration
+[waf]
+enabled = true
+mode = "custom"
+block_mode = true
+max_body_size = 1048576
+
+[waf.custom]
+# SQL injection patterns
+[[waf.custom.rules]]
+id = "sql-injection"
+pattern = "(?i)(union|select|insert|update|delete|drop)\\s+(from|into|table)"
+action = "block"
+severity = "high"
+
+# XSS patterns
+[[waf.custom.rules]]
+id = "xss"
+pattern = "(?i)<script|javascript:|onerror=|onload="
+action = "block"
+severity = "high"
+
+# Path traversal
+[[waf.custom.rules]]
+id = "path-traversal"
+pattern = "\\.\\./|\\.\\.\\\\|%2e%2e"
+action = "block"
+severity = "medium"
+
+# Command injection
+[[waf.custom.rules]]
+id = "command-injection"
+pattern = "(?i)(;|\\||`|\\$\\(|&&)\\s*(cat|ls|rm|wget|curl|bash|sh)"
+action = "block"
+severity = "critical"
 
 [[upstreams]]
 name = "backends"

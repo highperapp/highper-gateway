@@ -557,6 +557,30 @@ impl Handler {
             }
         }
 
+        // Process request through middleware chain (WAF, etc.)
+        let req = match self.middleware_chain.process_request(req).await {
+            Ok(req) => req,
+            Err(blocked_response) => {
+                // Middleware (e.g., WAF) blocked the request
+                let duration = start.elapsed().as_secs_f64();
+                let status = blocked_response.status();
+                record_request(method.as_str(), status.as_u16(), duration);
+
+                // Record response in tracing
+                crate::observability::tracing::record_http_response(
+                    status,
+                    duration * 1000.0,
+                );
+
+                // Convert Full<Bytes> response to ResponseBody
+                let (parts, body) = blocked_response.into_parts();
+                use http_body_util::BodyExt;
+                let body_bytes = body.collect().await.unwrap_or_default().to_bytes();
+                let final_response = Response::from_parts(parts, ResponseBody::buffered(body_bytes));
+                return Ok(final_response);
+            }
+        };
+
         // Check for ACME HTTP-01 challenge
         if method == Method::GET && path.starts_with("/.well-known/acme-challenge/") {
             if let Some(challenge_store) = &self.challenge_store {
