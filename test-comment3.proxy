@@ -1,6 +1,0 @@
-# Scenario 01
-:8080 tcp {
-    # Backend servers (will be populated by deploy script)
-    proxy 127.0.0.1:8081
-}
-log info
