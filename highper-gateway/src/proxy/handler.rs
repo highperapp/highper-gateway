@@ -1101,8 +1101,29 @@ impl Handler {
                             let path_str = path.to_string();
                             let headers = req.headers().clone();
 
+                            // Collect request body for POST/PUT/PATCH methods
+                            let (parts, incoming_body) = req.into_parts();
+                            let body_bytes = if method == Method::POST || method == Method::PUT || method == Method::PATCH {
+                                // Extract content length
+                                let content_length = parts.headers
+                                    .get("content-length")
+                                    .and_then(|h| h.to_str().ok())
+                                    .and_then(|s| s.parse::<u64>().ok());
+
+                                match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                                    Ok(collected) => Some(collected.bytes),
+                                    Err(e) => {
+                                        warn!("Failed to collect request body: {}", e);
+                                        None
+                                    }
+                                }
+                            } else {
+                                // For GET/DELETE etc., body is usually empty
+                                None
+                            };
+
                             let result = circuit_breaker.execute(|| async {
-                                client.forward(&backend_url_clone, method_clone.clone(), &path_str, headers.clone()).await
+                                client.forward(&backend_url_clone, method_clone.clone(), &path_str, headers.clone(), body_bytes.clone()).await
                             }).await;
 
                         match result {

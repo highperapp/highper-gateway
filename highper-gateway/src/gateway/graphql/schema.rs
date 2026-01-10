@@ -172,6 +172,11 @@ impl SchemaRegistry {
             "query": introspection_query
         });
 
+        // Serialize request body to JSON bytes
+        let body_json = serde_json::to_vec(&request_body)
+            .context("Failed to serialize introspection query")?;
+        let body_bytes = bytes::Bytes::from(body_json);
+
         // Make request to backend
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -180,7 +185,7 @@ impl SchemaRegistry {
         );
 
         let response = client
-            .forward(url, hyper::Method::POST, "/graphql", headers)
+            .forward(url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
             .await
             .context("Failed to fetch schema")?;
 

@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(cargo install:*)",
-      "Bash(nerdctl:*)"
+      "Bash(nerdctl:*)",
+      "Bash(cargo test:*)",
+      "Bash(docker-compose:*)",
+      "Bash(grep -l PASSED test-results-20260102/*.log)"
     ],
     "deny": [],
     "ask": []

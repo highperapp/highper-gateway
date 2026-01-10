@@ -14,11 +14,25 @@ echo "========================================="
 cleanup() {
     echo "Cleaning up..."
     [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
-    docker rm -f graphql-server-1 graphql-server-2 2>/dev/null || true
+
+    # Force cleanup GraphQL containers
+    docker rm -f $(docker ps -aq --filter "name=graphql-server") 2>/dev/null || true
+
+    # Kill any processes using our ports
+    for port in 8080 4001 4002; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    # Wait for ports to be free
+    sleep 2
     echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
+
+# Force cleanup at test start to ensure clean state
+echo "Ensuring clean test environment..."
+cleanup
 
 # Create GraphQL server code
 echo "Creating GraphQL backend server..."
@@ -203,35 +217,58 @@ GRAPHQL_SERVER
 # Start GraphQL backend servers
 echo "Starting GraphQL backend servers..."
 
+# Server 1
 docker run -d --name graphql-server-1 \
     -p 4001:4000 \
     -v /tmp/graphql-backend:/app \
     -e BACKEND_NAME=graphql-1 \
     -e PORT=4000 \
     -w /app \
-    --rm \
     node:18-alpine \
-    node server.js > /dev/null 2>&1
+    node server.js
 
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to start graphql-server-1"
+    docker logs graphql-server-1 2>&1 | tail -20
+    exit 1
+fi
+
+# Server 2
 docker run -d --name graphql-server-2 \
     -p 4002:4000 \
     -v /tmp/graphql-backend:/app \
     -e BACKEND_NAME=graphql-2 \
     -e PORT=4000 \
     -w /app \
-    --rm \
     node:18-alpine \
-    node server.js > /dev/null 2>&1
+    node server.js
 
-sleep 8
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to start graphql-server-2"
+    docker logs graphql-server-2 2>&1 | tail -20
+    exit 1
+fi
 
-# Check backend health
+echo "Waiting for GraphQL backends to start..."
+sleep 10
+
+# Check backend health with retries
 echo "Checking GraphQL backends..."
 for port in 4001 4002; do
-    if curl -s -f http://localhost:$port/health > /dev/null 2>&1; then
-        echo "✓ GraphQL backend on port $port ready"
-    else
-        echo "⚠ GraphQL backend on port $port not ready"
+    success=0
+    for i in {1..5}; do
+        if curl -s -f http://localhost:$port/health > /dev/null 2>&1; then
+            echo "✓ GraphQL backend on port $port ready"
+            success=1
+            break
+        fi
+        echo "  Attempt $i/5: Waiting for port $port..."
+        sleep 2
+    done
+
+    if [ $success -eq 0 ]; then
+        echo "✗ GraphQL backend on port $port NOT ready after 5 attempts"
+        docker logs graphql-server-$((port - 4000)) 2>&1 | tail -20
     fi
 done
 

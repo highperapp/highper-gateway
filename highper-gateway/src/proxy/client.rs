@@ -5,7 +5,7 @@ use crate::proxy::retry::{RetryConfig, RetryExecutor, RetryPolicy, RetryStrategy
 use crate::proxy::pool_metrics::ConnectionPoolMetrics;
 use crate::Result;
 use bytes::Bytes;
-use http_body_util::Empty;
+use http_body_util::{Empty, Full, combinators::BoxBody};
 use hyper::{Method, Request, Response, Uri};
 use hyper::body::Incoming;
 use hyper_util::client::legacy::Client as HyperClient;
@@ -19,7 +19,7 @@ use tracing::{debug, error, warn};
 /// Supports both HTTP/1.1 and HTTP/2
 #[derive(Clone)]
 pub struct Client {
-    inner: HyperClient<HttpConnector, Empty<Bytes>>,
+    inner: HyperClient<HttpConnector, BoxBody<Bytes, hyper::Error>>,
     retry_executor: Option<Arc<RetryExecutor>>,
     pool_metrics: Arc<ConnectionPoolMetrics>,
 }
@@ -131,7 +131,8 @@ impl Client {
         upstream_url: &str,
         method: Method,
         path: &str,
-        _headers: hyper::HeaderMap,
+        headers: hyper::HeaderMap,
+        body: Option<Bytes>,
     ) -> Result<Response<Incoming>> {
         // Build the upstream URI
         let uri = format!("{}{}", upstream_url.trim_end_matches('/'), path);
@@ -142,10 +143,10 @@ impl Client {
 
         let result = if let Some(retry_executor) = &self.retry_executor {
             // Use retry logic
-            self.forward_with_retry(uri.clone(), method, retry_executor).await
+            self.forward_with_retry(uri.clone(), method, headers.clone(), body.clone(), retry_executor).await
         } else {
             // Direct forwarding without retry
-            self.forward_direct(uri.clone(), method).await
+            self.forward_direct(uri.clone(), method, headers, body).await
         };
 
         // Track connection status
@@ -166,14 +167,29 @@ impl Client {
     }
 
     /// Forward request without retry
-    async fn forward_direct(&self, uri: String, method: Method) -> Result<Response<Incoming>> {
+    async fn forward_direct(&self, uri: String, method: Method, headers: hyper::HeaderMap, body: Option<Bytes>) -> Result<Response<Incoming>> {
         debug!("Forwarding {} request to {}", method, uri);
 
         let uri: Uri = uri.parse()?;
-        let req = Request::builder()
+
+        // Build request body
+        use http_body_util::BodyExt;
+        let body_boxed: BoxBody<Bytes, hyper::Error> = if let Some(body_bytes) = body {
+            Full::new(body_bytes).map_err(|never| match never {}).boxed()
+        } else {
+            Empty::<Bytes>::new().map_err(|never| match never {}).boxed()
+        };
+
+        let mut req = Request::builder()
             .method(method)
-            .uri(uri)
-            .body(Empty::<Bytes>::new())?;
+            .uri(uri);
+
+        // Copy headers
+        for (key, value) in headers.iter() {
+            req = req.header(key, value);
+        }
+
+        let req = req.body(body_boxed)?;
 
         match self.inner.request(req).await {
             Ok(response) => {
@@ -192,6 +208,8 @@ impl Client {
         &self,
         uri: String,
         method: Method,
+        headers: hyper::HeaderMap,
+        body: Option<Bytes>,
         retry_executor: &Arc<RetryExecutor>,
     ) -> Result<Response<Incoming>> {
         debug!("Forwarding {} request to {} (with retry)", method, uri);
@@ -201,10 +219,25 @@ impl Client {
 
         retry_executor
             .execute(|| async {
-                let req = Request::builder()
+                // Build request body
+                use http_body_util::BodyExt;
+                let body_boxed: BoxBody<Bytes, hyper::Error> = if let Some(body_bytes) = body.clone() {
+                    Full::new(body_bytes).map_err(|never| match never {}).boxed()
+                } else {
+                    Empty::<Bytes>::new().map_err(|never| match never {}).boxed()
+                };
+
+                let mut req_builder = Request::builder()
                     .method(method.clone())
-                    .uri(uri_parsed.clone())
-                    .body(Empty::<Bytes>::new())
+                    .uri(uri_parsed.clone());
+
+                // Copy headers
+                for (key, value) in headers.iter() {
+                    req_builder = req_builder.header(key, value);
+                }
+
+                let req = req_builder
+                    .body(body_boxed)
                     .map_err(|e| format!("Failed to build request: {}", e))?;
 
                 inner

@@ -231,6 +231,7 @@ impl HealthChecker {
                 Method::GET,
                 &self.config.path,
                 headers,
+                None, // No body for GET request
             ),
         )
         .await;

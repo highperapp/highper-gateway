@@ -120,6 +120,11 @@ impl GraphQLExecutor {
             })
         };
 
+        // Serialize request body to JSON bytes
+        let body_json = serde_json::to_vec(&request_body)
+            .context("Failed to serialize GraphQL request body")?;
+        let body_bytes = bytes::Bytes::from(body_json);
+
         // Prepare headers
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -133,7 +138,7 @@ impl GraphQLExecutor {
 
         // Make request
         let response = client
-            .forward(&backend.url, hyper::Method::POST, "/graphql", headers)
+            .forward(&backend.url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
             .await
             .context(format!("Failed to execute query on backend: {}", backend.name))?;
 
@@ -191,6 +196,11 @@ impl GraphQLExecutor {
             })
         };
 
+        // Serialize request body to JSON bytes
+        let body_json = serde_json::to_vec(&request_body)
+            .context("Failed to serialize GraphQL request body")?;
+        let body_bytes = bytes::Bytes::from(body_json);
+
         // Prepare headers
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -204,7 +214,7 @@ impl GraphQLExecutor {
 
         // Make request
         let response = self.client
-            .forward(&backend.url, hyper::Method::POST, "/graphql", headers)
+            .forward(&backend.url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
             .await
             .context(format!("Failed to execute query on backend: {}", backend.name))?;
 

@@ -1,7 +1,6 @@
 //! HTTP server implementation
 
 use crate::config::{Config, Protocol};
-use crate::http::http3_quiche::Http3Server;
 use crate::proxy::Handler;
 use crate::proxy::connection_pool::{ConnectionPoolManager, PoolConfig, PoolStats};
 use crate::runtime::GLOBAL_IO;
@@ -269,22 +268,11 @@ impl Server {
             supports_http1, supports_http2, supports_http3
         );
 
-        // Spawn HTTP/3 server if enabled
+        // Note: HTTP/3 server is started by the runtime (src/runtime/mod.rs)
+        // to avoid duplicate UDP socket binding
+
+        // Track all connection acceptor tasks
         let mut tasks = Vec::new();
-        if supports_http3 {
-            // Wrap config in RwLock for HTTP/3 server
-            let http3_config = Arc::new(RwLock::new((*self.config).clone()));
-            let http3_server = Http3Server::new(http3_config);
-
-            let http3_task = tokio::spawn(async move {
-                if let Err(e) = http3_server.run().await {
-                    error!("HTTP/3 server error: {}", e);
-                }
-            });
-
-            tasks.push(http3_task);
-            info!("HTTP/3 server task spawned");
-        }
 
         // Accept connections on all listeners
         for (listener, is_tls) in all_listeners {
@@ -393,8 +381,9 @@ impl Server {
                                             warn!("Error serving connection from {}: {}", remote_addr, e);
                                         }
                                     } else if supports_http2 {
-                                        // HTTP/2 only
-                                        debug!("Serving HTTP connection from {} with HTTP/2", remote_addr);
+                                        // HTTP/2 only (for gRPC, h2c, etc.)
+                                        debug!("Serving HTTP connection from {} with HTTP/2 (prior knowledge)", remote_addr);
+                                        // Enable HTTP/2 prior knowledge for gRPC (h2c)
                                         if let Err(e) = http2::Builder::new(TokioExecutor::new())
                                             .serve_connection(io, service)
                                             .await

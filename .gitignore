@@ -1,39 +1,106 @@
 # Build artifacts
 target/
+*/target/
 *.bin
+**/*.rs.bk
+*.pdb
+Cargo.lock
+.cargo/
+build/
+dist/
 
-# IDE
+# IDE / Editors
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+*.iml
+.project
+.classpath
+.settings/
 
 # OS
 .DS_Store
 Thumbs.db
+._*
+.Spotlight-V100
+.Trashes
 
 # Logs
 *.log
 logs/
+/tmp/
+*.profraw
 
-# Local config
+# Security / Certificates (NEVER commit!)
 config-local.yaml
 config-local.toml
 *.pem
 *.key
 *.crt
+*.csr
+*.p12
+*.pfx
+/certs/
+/ssl/
+.env
+.env.*
+.env.infrastructure
+.env.local
 
-# Test results
+# Test results and data
 load-tests/results/*.bin
+results/
+/tests/load/results/
+/tests/load/test-results-*/
+/highper-gateway/tests/load/results/
 
-# Ignore dev notes (keep essential load testing docs)
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+appendonly.aof
+
+# Cache
+.cache/
+/cache/
+*.tmp
+*.temp
+
+# GeoIP databases (large files)
+*.mmdb
+/geoip/
+/geodb/
+
+# Claude Code temp files
+/tmp/claude*/
+/.claude/
+
+# WAF rules (can be large)
+/waf/rules/
+/modsecurity-rules/
+
+# Python (if any)
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Node (if any)
+node_modules/
+
+# Profiling
+flamegraph*.svg
+perf.data
+criterion/
+
+# Ignore dev notes (keep essential docs)
 docs/dev-notes/
 
-# Allow essential load testing documentation
+# Allow essential documentation
 !docs/SYSTEM_OPTIMIZATIONS.md
 !docs/RESOURCE_SIZING_GUIDE.md
-# Load test environment (NEVER commit!)
-.env
-results/
-*.log
-.env.infrastructure
+!examples/**/*.toml
+!tests/**/*.sh

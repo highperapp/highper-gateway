@@ -14,11 +14,28 @@ echo "========================================="
 cleanup() {
     echo "Cleaning up..."
     [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
+
+    # Force cleanup all backend containers
+    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
+
+    # Cleanup docker-compose stack
     (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
+
+    # Kill any processes using our ports
+    for port in 8443 8001 8002 8003; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    # Wait for ports to be free
+    sleep 2
     echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
+
+# Force cleanup at test start to ensure clean state
+echo "Ensuring clean test environment..."
+cleanup
 
 # Check for HTTP/3 capable curl
 echo "Checking for HTTP/3 client support..."
@@ -28,12 +45,20 @@ if curl --version 2>/dev/null | grep -q "HTTP3"; then
     echo "✓ System curl supports HTTP/3"
     HTTP3_CAPABLE=true
     CURL_CMD="curl"
+    USE_DOCKER_CURL=false
 elif command -v curl-http3 &> /dev/null; then
     echo "✓ curl-http3 binary found"
     HTTP3_CAPABLE=true
     CURL_CMD="curl-http3"
+    USE_DOCKER_CURL=false
+elif command -v docker &> /dev/null; then
+    echo "✓ Will use Docker-based HTTP/3 curl client"
+    HTTP3_CAPABLE=true
+    # Pull the HTTP/3-capable curl image
+    docker pull curlimages/curl:latest > /dev/null 2>&1
+    USE_DOCKER_CURL=true
 else
-    echo "⚠ HTTP/3-capable curl not found"
+    echo "⚠ HTTP/3-capable curl not found and Docker not available"
     echo "  This test will use alternative HTTP/3 validation methods"
     HTTP3_CAPABLE=false
 fi
@@ -69,9 +94,14 @@ echo ""
 echo "Creating gateway configuration with HTTP/3 support..."
 cat > /tmp/gateway-http3-test.toml <<'EOF'
 [server]
-bind = ["127.0.0.1:8443"]
+bind = []
+tls_bind = ["0.0.0.0:8443"]
 workers = "auto"
-protocols = ["http1", "http2"]
+protocols = ["http1", "http2", "http3"]
+
+[server.http3]
+enabled = true
+port = 8443
 
 [server.performance]
 max_connections = 100000
@@ -80,12 +110,11 @@ write_buffer_size = 32768
 
 # TLS configuration (required for HTTP/3)
 [tls]
-enabled = true
-cert_path = "/tmp/gateway-http3-certs/server.crt"
-key_path = "/tmp/gateway-http3-certs/server.key"
-alpn_protocols = ["h3", "h3-29", "h2", "http/1.1"]
-min_version = "1.2"
-max_version = "1.3"
+
+[[tls.certificates]]
+domain = "localhost"
+cert_file = "/tmp/gateway-http3-certs/server.crt"
+key_file = "/tmp/gateway-http3-certs/server.key"
 
 # HTTP backends
 [[upstreams]]
@@ -181,7 +210,15 @@ echo "========================================="
 
 if [ "$HTTP3_CAPABLE" = true ]; then
     echo "Testing with HTTP/3 capable curl..."
-    response=$($CURL_CMD -k -s --http3 https://localhost:8443/api/ping 2>&1)
+
+    # Use Docker curl if needed (it runs inside container, so use host.docker.internal or gateway network)
+    if [ "$USE_DOCKER_CURL" = true ]; then
+        # Docker curl needs to access host network
+        response=$(docker run --rm --network=host curlimages/curl:latest \
+            -k -s --http3-only https://127.0.0.1:8443/api/ping 2>&1)
+    else
+        response=$($CURL_CMD -k -s --http3 https://localhost:8443/api/ping 2>&1)
+    fi
 
     echo "HTTP/3 request response:"
     echo "$response" | jq '.' 2>/dev/null || echo "$response"
@@ -197,9 +234,14 @@ if [ "$HTTP3_CAPABLE" = true ]; then
     # Verbose HTTP/3 test
     echo ""
     echo "Running verbose HTTP/3 test..."
-    $CURL_CMD -k -v --http3 https://localhost:8443/api/ping > "${RESULT_DIR}/http3-verbose.txt" 2>&1
+    if [ "$USE_DOCKER_CURL" = true ]; then
+        docker run --rm --network=host curlimages/curl:latest \
+            -k -v --http3-only https://127.0.0.1:8443/api/ping > "${RESULT_DIR}/http3-verbose.txt" 2>&1
+    else
+        $CURL_CMD -k -v --http3 https://localhost:8443/api/ping > "${RESULT_DIR}/http3-verbose.txt" 2>&1
+    fi
 
-    if grep -qi "using http3\|h3\|quic" "${RESULT_DIR}/http3-verbose.txt"; then
+    if grep -qi "using http3\|h3\|quic\|HTTP/3" "${RESULT_DIR}/http3-verbose.txt"; then
         echo "✓ HTTP/3 protocol negotiated (see ${RESULT_DIR}/http3-verbose.txt)"
     else
         echo "⚠ Check verbose output for protocol details"

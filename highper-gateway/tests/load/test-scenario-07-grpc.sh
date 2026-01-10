@@ -14,11 +14,29 @@ echo "========================================="
 cleanup() {
     echo "Cleaning up..."
     [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
-    docker rm -f grpc-server-1 grpc-server-2 2>/dev/null || true
+
+    # Force cleanup gRPC containers
+    docker rm -f $(docker ps -aq --filter "name=grpc-server") 2>/dev/null || true
+
+    # Kill any processes using our ports
+    for port in 8080 50051 50052; do
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+    done
+
+    # Wait for ports to be free
+    sleep 2
     echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
+
+# Detect host IP for Docker containers to connect (WSL2 compatibility)
+HOST_IP=$(hostname -I | awk '{print $1}')
+echo "Host IP detected: $HOST_IP"
+
+# Force cleanup at test start to ensure clean state
+echo "Ensuring clean test environment..."
+cleanup
 
 # Create gRPC server code
 echo "Creating gRPC backend servers..."
@@ -209,40 +227,86 @@ if __name__ == '__main__':
         channel.close()
 PYTHON_CLIENT
 
+# Create optimized Dockerfile with pre-installed dependencies
+echo "Creating optimized Docker image with gRPC dependencies..."
+cat > /tmp/grpc-backend/Dockerfile <<'DOCKERFILE'
+FROM python:3.11-slim
+
+# Install gRPC dependencies (this is the slow part - do it once!)
+RUN pip install --no-cache-dir grpcio grpcio-tools
+
+WORKDIR /app
+
+# Pre-compile proto files on image build
+COPY service.proto .
+RUN python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto
+
+# Copy server and client scripts
+COPY server.py client.py ./
+
+CMD ["python3", "server.py"]
+DOCKERFILE
+
+# Build the optimized image (only once!)
+echo "Building gRPC image with dependencies (one-time setup)..."
+docker build -t grpc-test:optimized /tmp/grpc-backend > /dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to build Docker image"
+    docker build -t grpc-test:optimized /tmp/grpc-backend
+    exit 1
+fi
+
+echo "✓ Docker image built with gRPC dependencies pre-installed"
+
 # Start gRPC backend servers
-echo "Starting gRPC backend servers (this may take a moment)..."
+echo "Starting gRPC backend servers..."
 
 docker run -d --name grpc-server-1 \
     -p 50051:50051 \
-    -v /tmp/grpc-backend:/app \
     -e BACKEND_NAME=grpc-1 \
     -e PORT=50051 \
-    -w /app \
-    --rm \
-    python:3.11-slim \
-    bash -c 'pip install -q grpcio grpcio-tools && python3 server.py' > /dev/null 2>&1
+    grpc-test:optimized > /dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to start grpc-server-1"
+    docker logs grpc-server-1 2>&1 | tail -20
+    exit 1
+fi
 
 docker run -d --name grpc-server-2 \
     -p 50052:50051 \
-    -v /tmp/grpc-backend:/app \
     -e BACKEND_NAME=grpc-2 \
     -e PORT=50051 \
-    -w /app \
-    --rm \
-    python:3.11-slim \
-    bash -c 'pip install -q grpcio grpcio-tools && python3 server.py' > /dev/null 2>&1
+    grpc-test:optimized > /dev/null 2>&1
 
-echo "Waiting for gRPC servers to start (installing dependencies)..."
-sleep 25
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to start grpc-server-2"
+    docker logs grpc-server-2 2>&1 | tail -20
+    exit 1
+fi
+
+echo "Waiting for gRPC servers to start..."
+sleep 5
 
 # Check if servers are ready by attempting connection
 echo "Checking gRPC backends..."
 for port in 50051 50052; do
-    if docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-        bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:$port hello" 2>/dev/null | grep -q "Hello"; then
-        echo "✓ gRPC backend on port $port ready"
-    else
-        echo "⚠ gRPC backend on port $port may not be ready"
+    success=0
+    for i in {1..5}; do
+        if docker run --rm --network host grpc-test:optimized \
+            python3 client.py localhost:$port hello 2>/dev/null | grep -q "Hello"; then
+            echo "✓ gRPC backend on port $port ready"
+            success=1
+            break
+        fi
+        echo "  Attempt $i/5: Waiting for port $port..."
+        sleep 2
+    done
+
+    if [ $success -eq 0 ]; then
+        echo "✗ gRPC backend on port $port NOT ready after 5 attempts"
+        docker logs grpc-server-$((port - 50050)) 2>&1 | tail -20
     fi
 done
 
@@ -251,7 +315,7 @@ echo ""
 echo "Creating gateway configuration for gRPC..."
 cat > /tmp/gateway-grpc-test.toml <<'EOF'
 [server]
-bind = ["127.0.0.1:8080"]
+bind = ["0.0.0.0:8080"]
 workers = "auto"
 protocols = ["http2"]
 
@@ -321,8 +385,8 @@ echo "========================================="
 echo "Test 1: gRPC Unary Call - SayHello"
 echo "========================================="
 
-response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 hello" 2>/dev/null)
+response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py $HOST_IP:8080 hello 2>/dev/null)
 
 echo "Method: SayHello(name='World')"
 echo "Response: $response"
@@ -337,8 +401,8 @@ echo "========================================="
 echo "Test 2: gRPC Unary Call - ListUsers"
 echo "========================================="
 
-response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 list" 2>/dev/null)
+response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py $HOST_IP:8080 list 2>/dev/null)
 
 echo "Method: ListUsers()"
 echo "Response: $response"
@@ -353,8 +417,8 @@ echo "========================================="
 echo "Test 3: gRPC Unary Call - GetUser"
 echo "========================================="
 
-response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 get 2" 2>/dev/null)
+response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py $HOST_IP:8080 get 2 2>/dev/null)
 
 echo "Method: GetUser(id='2')"
 echo "Response: $response"
@@ -370,8 +434,8 @@ echo "Test 4: gRPC Server Streaming"
 echo "========================================="
 
 echo "Method: StreamMessages(count=5)"
-response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 stream 5" 2>/dev/null)
+response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py $HOST_IP:8080 stream 5 2>/dev/null)
 
 echo "Response:"
 echo "$response"
@@ -390,8 +454,8 @@ echo "Sending 10 gRPC calls to test load distribution..."
 declare -A backend_counts
 
 for i in {1..10}; do
-    response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-        bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 hello" 2>/dev/null)
+    response=$(docker run --rm --network host grpc-test:optimized \
+        python3 client.py $HOST_IP:8080 hello 2>/dev/null)
 
     backend=$(echo "$response" | grep -oP 'backend: \K[^ ]+' || echo "unknown")
     backend_counts["$backend"]=$((${backend_counts["$backend"]:-0} + 1))
@@ -419,7 +483,7 @@ if command -v ghz &> /dev/null; then
         --rps 100 \
         --duration 10s \
         --connections 10 \
-        localhost:8080 \
+        $HOST_IP:8080 \
         > "${RESULT_DIR}/grpc-perf.txt" 2>&1
 
     if [ -f "${RESULT_DIR}/grpc-perf.txt" ]; then
@@ -436,8 +500,8 @@ else
     success_count=0
 
     for i in {1..100}; do
-        if docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-            bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 hello" 2>/dev/null | grep -q "Hello"; then
+        if docker run --rm --network host grpc-test:optimized \
+            python3 client.py $HOST_IP:8080 hello 2>/dev/null | grep -q "Hello"; then
             ((success_count++))
         fi
         [ $((i % 20)) -eq 0 ] && echo "  Progress: $i/100 calls"
@@ -461,13 +525,13 @@ echo "Test 7: Gateway vs Direct Comparison"
 echo "========================================="
 
 echo "Testing direct backend connection..."
-direct_response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:50051 hello" 2>/dev/null)
+direct_response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py localhost:50051 hello 2>/dev/null)
 echo "  Direct: $direct_response"
 
 echo "Testing through gateway..."
-gateway_response=$(docker run --rm --network host -v /tmp/grpc-backend:/app -w /app python:3.11-slim \
-    bash -c "pip install -q grpcio grpcio-tools && python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto && python3 client.py localhost:8080 hello" 2>/dev/null)
+gateway_response=$(docker run --rm --network host grpc-test:optimized \
+    python3 client.py $HOST_IP:8080 hello 2>/dev/null)
 echo "  Gateway: $gateway_response"
 
 if [ ! -z "$direct_response" ] && [ ! -z "$gateway_response" ]; then
@@ -500,5 +564,5 @@ echo "  StreamMessages(count: int) -> stream Message"
 echo ""
 echo "Proto file: /tmp/grpc-backend/service.proto"
 echo "Backend servers: localhost:50051, localhost:50052"
-echo "Gateway endpoint: localhost:8080"
+echo "Gateway endpoint: $HOST_IP:8080"
 echo "========================================="

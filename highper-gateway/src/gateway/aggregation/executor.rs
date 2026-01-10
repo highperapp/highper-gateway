@@ -217,7 +217,7 @@ impl AggregationExecutor {
         // Execute request with timeout
         let result = timeout(
             Duration::from_millis(timeout_ms),
-            client.forward(base_url, method, &path, headers),
+            client.forward(base_url, method, &path, headers, None), // No body for aggregation requests
         )
         .await;
 
