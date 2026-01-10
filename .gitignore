@@ -1,15 +1,29 @@
-# Build artifacts
+# Highper Gateway - Comprehensive .gitignore
+# Last Updated: 2026-01-10
+
+# ============================================
+# BUILD ARTIFACTS
+# ============================================
 target/
 */target/
+**/target/
 *.bin
 **/*.rs.bk
 *.pdb
-Cargo.lock
+Cargo.lock  # Keep at root, ignore in subdirectories
+*/Cargo.lock
 .cargo/
 build/
 dist/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
 
-# IDE / Editors
+# ============================================
+# IDE / EDITORS
+# ============================================
 .idea/
 .vscode/
 *.swp
@@ -19,21 +33,40 @@ dist/
 .project
 .classpath
 .settings/
+*.sublime-project
+*.sublime-workspace
+.metals/
+.bloop/
+.bsp/
 
-# OS
+# ============================================
+# OS SPECIFIC
+# ============================================
 .DS_Store
 Thumbs.db
 ._*
 .Spotlight-V100
 .Trashes
+ehthumbs.db
+Desktop.ini
 
-# Logs
+# ============================================
+# LOGS (NEVER COMMIT!)
+# ============================================
 *.log
 logs/
 /tmp/
 *.profraw
+*.log.*
+**/*.log
+loadtest.log
+provision*.log
+deploy*.log
+build*.log
 
-# Security / Certificates (NEVER commit!)
+# ============================================
+# SECURITY / CERTIFICATES (NEVER COMMIT!)
+# ============================================
 config-local.yaml
 config-local.toml
 *.pem
@@ -48,59 +81,235 @@ config-local.toml
 .env.*
 .env.infrastructure
 .env.local
+.env.development
+.env.production
+.env.test
+secrets/
+*.secret
+*.token
 
-# Test results and data
-load-tests/results/*.bin
+# ============================================
+# TEST RESULTS AND DATA
+# ============================================
 results/
+test-results/
+**/results/
+load-tests/results/
 /tests/load/results/
 /tests/load/test-results-*/
 /highper-gateway/tests/load/results/
+/highper-gateway/tests/load/test-results-*/
+*.vegeta
+*.bin
+*.result
+coverage/
+*.profdata
 
-# Database files
+# ============================================
+# DATABASE FILES
+# ============================================
 *.db
 *.sqlite
 *.sqlite3
+*.sqlite3-journal
 dump.rdb
 appendonly.aof
 
-# Cache
+# ============================================
+# CACHE
+# ============================================
 .cache/
 /cache/
 *.tmp
 *.temp
+.cargo-cache/
 
-# GeoIP databases (large files)
+# ============================================
+# GEOIP DATABASES (LARGE FILES)
+# ============================================
 *.mmdb
 /geoip/
 /geodb/
+GeoLite2-*.mmdb
+GeoIP2-*.mmdb
 
-# Claude Code temp files
+# ============================================
+# CLAUDE CODE TEMP FILES
+# ============================================
 /tmp/claude*/
 /.claude/
 
-# WAF rules (can be large)
+# ============================================
+# WAF RULES (CAN BE LARGE)
+# ============================================
 /waf/rules/
 /modsecurity-rules/
+coreruleset/
 
-# Python (if any)
+# ============================================
+# PYTHON (IF ANY)
+# ============================================
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
 venv/
 env/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Node (if any)
+# ============================================
+# NODE (IF ANY)
+# ============================================
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json  # If using yarn
+.npm
 
-# Profiling
+# ============================================
+# PROFILING
+# ============================================
 flamegraph*.svg
 perf.data
+perf.data.old
 criterion/
+*.flamegraph
 
-# Ignore dev notes (keep essential docs)
-docs/dev-notes/
+# ============================================
+# DOCKER
+# ============================================
+docker-compose.override.yml
 
-# Allow essential documentation
-!docs/SYSTEM_OPTIMIZATIONS.md
-!docs/RESOURCE_SIZING_GUIDE.md
+# ============================================
+# KUBERNETES
+# ============================================
+*.kubeconfig
+kubeconfig*.yaml
+
+# ============================================
+# TERRAFORM
+# ============================================
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# ============================================
+# CLOUD PROVIDER CREDENTIALS
+# ============================================
+.vultr/
+.digitalocean/
+.aws/
+.gcp/
+*.pem
+
+# ============================================
+# TEMPORARY FILES
+# ============================================
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# ============================================
+# BACKUP FILES
+# ============================================
+*.bak
+*.backup
+*.old
+*.orig
+*~
+
+# ============================================
+# COMPILED DOCUMENTATION
+# ============================================
+/book/
+/mdbook/
+site/
+
+# ============================================
+# ALLOW ESSENTIAL FILES
+# ============================================
+# Documentation
+!docs/**/*.md
+!README.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!LICENSE
+!KNOWN_LIMITATIONS.md
+
+# Examples (keep these!)
 !examples/**/*.toml
+!examples/**/*.yaml
+!examples/**/*.hcl
+!examples/**/*.proxy
+!highper-gateway/examples/**/*
+
+# Tests (keep these!)
 !tests/**/*.sh
+!highper-gateway/tests/**/*.sh
+!scripts/**/*.sh
+
+# Configs (keep examples)
+!examples/configs/**/*
+
+# Infrastructure (keep templates)
+!infrastructure/**/*.yaml
+!infrastructure/**/*.yml
+!infrastructure/**/*.toml
+!infrastructure/**/*.sh
+!infrastructure/**/*.service
+
+# Keep Dockerfiles
+!Dockerfile*
+!**/Dockerfile*
+
+# ============================================
+# PROJECT SPECIFIC
+# ============================================
+# Root Cargo.lock should be kept (for reproducible builds)
+!/Cargo.lock
+
+# Ignore test proxy files (except in examples)
+/test*.proxy
+/test*.yaml
+test-comment*.proxy
+test-empty*.proxy
+test-first*.proxy
+test-from*.proxy
+test-multi*.proxy
+test-no*.proxy
+test-simple*.proxy
+test-tcp*.proxy
+test-with*.proxy
+
+# Backend test files in root
+/test_backend.py
+/test_php_fpm.dsl
+/simple-backend.*
+
+# Old config files in root
+/config-production*.toml
+/loadtest-config*.toml
+
+# Docker compose variants in root
+/docker-compose.loadtest.yml
+/docker-compose.override.yml
+
+# ============================================
+# MONITORING & METRICS
+# ============================================
+/metrics/
+/monitoring-data/
+
+# ============================================
+# BENCHMARKS
+# ============================================
+/benchmark-results/
