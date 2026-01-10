@@ -574,7 +574,7 @@ hcloud quota list
 
 - **Full Documentation:** `../../docs/VALIDATION_REPORT.md`
 - **Configuration Examples:** `../../examples/configs/yaml/`
-- **Issues:** [GitHub Issues](https://github.com/yourusername/highper-gateway/issues)
+- **Issues:** [GitHub Issues](https://github.com/highperapp/highper-gateway/issues)
 
 ---
 

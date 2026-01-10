@@ -57,7 +57,7 @@ See [Comprehensive Validation](docs/validation/COMPREHENSIVE_VALIDATION.md) for 
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_ORG/highper-gateway.git
+git clone https://github.com/highperapp/highper-gateway.git
 cd highper-gateway/highper-gateway
 
 # Build release binary
@@ -232,7 +232,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Clone and build
-git clone https://github.com/YOUR_ORG/highper-gateway.git
+git clone https://github.com/highperapp/highper-gateway.git
 cd highper-gateway/highper-gateway
 cargo build
 
@@ -246,23 +246,52 @@ bash test-scenario-02-native.sh
 
 ## License
 
-[Add your license here]
+This project is licensed under the Apache License 2.0. See [LICENSE](../LICENSE) for details.
+
+The Apache 2.0 license applies to:
+- Core gateway functionality
+- Plugin SDK and plugin architecture
+- All features and components
+- Configuration DSL and parsers
+- Testing frameworks and examples
 
 ## Roadmap
 
-- [ ] HTTP/4 support when specification is finalized
-- [ ] Kubernetes operator for automatic deployment
-- [ ] Web UI for configuration and monitoring
-- [ ] AI-powered traffic analysis and DDoS protection
+### v1.0.x (Patches)
+- [ ] OCSP fetcher production hardening
+- [ ] Cloud load test automatic cleanup
+- [ ] Enhanced error handling and logging
+- [ ] Performance optimizations
+
+### v1.1.0 (Next Minor Release)
+- [ ] Static service discovery implementation
+- [ ] Complete OAuth2 implementation (PKCE, token refresh, revocation)
+- [ ] Enhanced certificate validation (cross-signed certificates)
+- [ ] Improved CRL checker with delta CRL support
 - [ ] Advanced circuit breaker patterns
+
+### v1.2.0 (Future)
+- [ ] Directory listing for static file server
+- [ ] PowerShell scripts for Windows native support
+- [ ] Web UI for configuration and monitoring
+- [ ] Additional load balancing algorithms (consistent hashing, maglev)
+- [ ] Enhanced observability (OpenTelemetry, Jaeger)
+
+### v2.0.0 (Major Release)
 - [ ] Multi-datacenter global load balancing
+- [ ] Advanced traffic shaping and QoS
+- [ ] AI-powered traffic analysis and anomaly detection
 - [ ] Serverless function integration
+- [ ] Kubernetes operator for automatic deployment
+- [ ] gRPC-web and Connect protocol support
+
+See [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) for detailed status and [CHANGELOG.md](../CHANGELOG.md) for release history.
 
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/YOUR_ORG/highper-gateway/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/YOUR_ORG/highper-gateway/discussions)
+- **Issues**: [GitHub Issues](https://github.com/highperapp/highper-gateway/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/highperapp/highper-gateway/discussions)
 
 ## Acknowledgments
 

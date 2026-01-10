@@ -1,6 +1,6 @@
 [Unit]
 Description=Highper Gateway Watchdog - Auto-recovery and Health Monitoring
-Documentation=https://github.com/yourusername/highper-gateway
+Documentation=https://github.com/highperapp/highper-gateway
 After=highper-gateway.service
 Requires=highper-gateway.service
 

@@ -135,7 +135,7 @@ sudo apt update && sudo apt install -y \
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Clone and build
-git clone https://github.com/YOUR_ORG/highper-gateway.git
+git clone https://github.com/highperapp/highper-gateway.git
 cd highper-gateway/highper-gateway
 cargo build --release
 

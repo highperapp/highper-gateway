@@ -1,6 +1,6 @@
 [Unit]
 Description=Highper Gateway - High-Performance Reverse Proxy and API Gateway
-Documentation=https://github.com/yourusername/highper-gateway
+Documentation=https://github.com/highperapp/highper-gateway
 After=network-online.target
 Wants=network-online.target
 # Start after consul/etcd if using service discovery

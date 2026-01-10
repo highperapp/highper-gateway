@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Highper Gateway Team"]
 description = "High-performance reverse proxy and API gateway with io_uring"
 license = "MIT"
-repository = "https://github.com/yourusername/highper-gateway"
+repository = "https://github.com/highperapp/highper-gateway"
 
 [dependencies]
 # Async runtime - we'll use tokio-uring for io_uring support
