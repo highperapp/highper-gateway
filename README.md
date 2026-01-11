@@ -277,7 +277,9 @@ Import the dashboard from `monitoring/grafana-dashboard.json`.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+Apache 2.0 License - see [LICENSE](LICENSE) for details.
+
+This allows you to use Highper Gateway in commercial products and create paid plugins with different licenses.
 
 ## Contributing
 

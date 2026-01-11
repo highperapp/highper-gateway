@@ -1142,4 +1142,4 @@ highper-gateway version
 
 **Last Updated**: November 25, 2025
 **Status**: Production-Ready (v1.0)
-**License**: MIT
+**License**: Apache 2.0
