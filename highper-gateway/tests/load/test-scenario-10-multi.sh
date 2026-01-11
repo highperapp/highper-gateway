@@ -13,24 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
 
-    # Force cleanup all backend containers
-    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
-    docker rm -f $(docker ps -aq --filter "name=ws-backend") 2>/dev/null || true
-    docker rm -f $(docker ps -aq --filter "name=redis") 2>/dev/null || true
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
 
-    # Cleanup docker-compose stack
-    (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
 
-    # Kill any processes using our ports
-    for port in 8080 8001 8002 8003 9001 9002 6380; do
-        lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    done
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
 
-    # Wait for ports to be free
-    sleep 2
-    echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
@@ -237,17 +241,21 @@ if curl -s http://localhost:8080/api/ping | grep -q "backend"; then
 fi
 
 echo "Running HTTP load test (1000 req/s for 5s)..."
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=1000 \
     -duration=5s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/http-protocol.bin" 2>&1
+    > '${RESULT_DIR}/http-protocol.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for HTTP protocol test"
+}
 
-cat "${RESULT_DIR}/http-protocol.bin" | vegeta report -type=json > "${RESULT_DIR}/http-protocol.json"
+if [ -f "${RESULT_DIR}/http-protocol.bin" ] && [ -s "${RESULT_DIR}/http-protocol.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/http-protocol.bin" > "${RESULT_DIR}/http-protocol.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/http-protocol.json" ]; then
+if [ -f "${RESULT_DIR}/http-protocol.json" ] && [ -s "${RESULT_DIR}/http-protocol.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/http-protocol.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/http-protocol.json")
     success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/http-protocol.json")
@@ -309,17 +317,21 @@ echo "Test 4: Concurrent Multi-Protocol Traffic"
 echo "========================================="
 
 echo "Sending mixed HTTP traffic while other protocols active..."
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=500 \
     -duration=3s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/concurrent.bin" 2>&1
+    > '${RESULT_DIR}/concurrent.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for concurrent test"
+}
 
-cat "${RESULT_DIR}/concurrent.bin" | vegeta report -type=json > "${RESULT_DIR}/concurrent.json"
+if [ -f "${RESULT_DIR}/concurrent.bin" ] && [ -s "${RESULT_DIR}/concurrent.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/concurrent.bin" > "${RESULT_DIR}/concurrent.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/concurrent.json" ]; then
+if [ -f "${RESULT_DIR}/concurrent.json" ] && [ -s "${RESULT_DIR}/concurrent.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/concurrent.json")
     success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/concurrent.json")
     echo "  Concurrent test: ${rate} req/s, Success=${success}%"

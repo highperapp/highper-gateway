@@ -22,13 +22,23 @@ cleanup() {
     if [ ! -z "${GATEWAY_PID:-}" ]; then
         echo "Stopping gateway (PID: $GATEWAY_PID)..."
         kill $GATEWAY_PID 2>/dev/null || true
-        wait $GATEWAY_PID 2>/dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
     fi
 
-    # Stop WebSocket backends
-    docker rm -f ws-backend-1 ws-backend-2 ws-backend-3 2>/dev/null || true
-
-    echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM

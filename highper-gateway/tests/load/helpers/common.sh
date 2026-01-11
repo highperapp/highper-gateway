@@ -437,6 +437,10 @@ EOF
 # Cleanup Functions
 # ========================================
 
+# Global array to track resources that need cleanup
+declare -g -A CLEANUP_RESOURCES
+declare -g -a CLEANUP_PIDS
+
 cleanup_pids() {
     local pids=("$@")
 
@@ -448,9 +452,94 @@ cleanup_pids() {
     done
 }
 
+# Register a resource for automatic cleanup
+# Usage: register_cleanup "type" "identifier" "cleanup_command"
+# Example: register_cleanup "aws-instance" "i-1234567890abcdef0" "aws ec2 terminate-instances --instance-ids"
+register_cleanup() {
+    local resource_type=$1
+    local resource_id=$2
+    local cleanup_cmd=$3
+
+    local key="${resource_type}:${resource_id}"
+    CLEANUP_RESOURCES["$key"]="$cleanup_cmd"
+
+    log_debug "Registered cleanup: ${resource_type} ${resource_id}"
+}
+
+# Register a PID for automatic cleanup
+register_cleanup_pid() {
+    local pid=$1
+    CLEANUP_PIDS+=("$pid")
+    log_debug "Registered cleanup PID: $pid"
+}
+
+# Perform cloud resource cleanup
+cleanup_cloud_resources() {
+    if [ ${#CLEANUP_RESOURCES[@]} -eq 0 ]; then
+        log_debug "No cloud resources to clean up"
+        return 0
+    fi
+
+    log_warn "Cleaning up ${#CLEANUP_RESOURCES[@]} cloud resource(s)..."
+
+    local cleanup_failed=0
+
+    for key in "${!CLEANUP_RESOURCES[@]}"; do
+        local resource_type="${key%%:*}"
+        local resource_id="${key#*:}"
+        local cleanup_cmd="${CLEANUP_RESOURCES[$key]}"
+
+        log_info "Cleaning up ${resource_type}: ${resource_id}"
+
+        # Execute cleanup command
+        if eval "${cleanup_cmd} ${resource_id}" 2>/dev/null; then
+            log_success "Cleaned up ${resource_type}: ${resource_id}"
+        else
+            log_error "Failed to clean up ${resource_type}: ${resource_id}"
+            log_warn "Manual cleanup may be required: ${cleanup_cmd} ${resource_id}"
+            cleanup_failed=$((cleanup_failed + 1))
+        fi
+    done
+
+    if [ $cleanup_failed -gt 0 ]; then
+        log_warn "${cleanup_failed} resource(s) failed to clean up automatically"
+        return 1
+    else
+        log_success "All cloud resources cleaned up successfully"
+        return 0
+    fi
+}
+
+# Main trap cleanup handler
+# Automatically called on SIGINT, SIGTERM, EXIT
 trap_cleanup() {
-    log_info "Received interrupt signal, cleaning up..."
-    # Cleanup will be handled by individual scripts
+    log_warn "===== CLEANUP INITIATED ====="
+    log_info "Received interrupt/exit signal, cleaning up resources..."
+
+    # 1. Clean up PIDs (local processes)
+    if [ ${#CLEANUP_PIDS[@]} -gt 0 ]; then
+        log_info "Cleaning up ${#CLEANUP_PIDS[@]} process(es)..."
+        cleanup_pids "${CLEANUP_PIDS[@]}"
+    fi
+
+    # 2. Clean up cloud resources (unless KEEP_INSTANCES is set)
+    if [ "${LOAD_TEST_KEEP_INSTANCES:-false}" != "true" ]; then
+        cleanup_cloud_resources
+    else
+        log_warn "LOAD_TEST_KEEP_INSTANCES=true, skipping cloud resource cleanup"
+        log_warn "Resources will remain running - manual cleanup required"
+    fi
+
+    log_success "===== CLEANUP COMPLETE ====="
+}
+
+# Setup trap handlers for automatic cleanup
+setup_cleanup_traps() {
+    trap 'trap_cleanup; exit 130' SIGINT  # Ctrl+C
+    trap 'trap_cleanup; exit 143' SIGTERM # Kill signal
+    trap 'trap_cleanup' EXIT               # Normal exit
+
+    log_debug "Cleanup traps registered (SIGINT, SIGTERM, EXIT)"
 }
 
 # ========================================

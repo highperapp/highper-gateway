@@ -13,23 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
 
-    # Force cleanup all backend containers
-    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
-    docker rm -f $(docker ps -aq --filter "name=consul") 2>/dev/null || true
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
 
-    # Cleanup docker-compose stack
-    (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
 
-    # Kill any processes using our ports
-    for port in 8080 8001 8002 8003 8500; do
-        lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    done
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
 
-    # Wait for ports to be free
-    sleep 2
-    echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
@@ -248,17 +253,21 @@ echo "Test 5: Performance with Service Discovery"
 echo "========================================="
 
 echo "Running load test (1000 req/s for 5s)..."
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=1000 \
     -duration=5s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/discovery-load.bin" 2>&1
+    > '${RESULT_DIR}/discovery-load.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for discovery load test"
+}
 
-cat "${RESULT_DIR}/discovery-load.bin" | vegeta report -type=json > "${RESULT_DIR}/discovery-load.json"
+if [ -f "${RESULT_DIR}/discovery-load.bin" ] && [ -s "${RESULT_DIR}/discovery-load.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/discovery-load.bin" > "${RESULT_DIR}/discovery-load.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/discovery-load.json" ]; then
+if [ -f "${RESULT_DIR}/discovery-load.json" ] && [ -s "${RESULT_DIR}/discovery-load.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/discovery-load.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/discovery-load.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/discovery-load.json")

@@ -13,19 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
 
-    # Force cleanup gRPC containers
-    docker rm -f $(docker ps -aq --filter "name=grpc-server") 2>/dev/null || true
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
 
-    # Kill any processes using our ports
-    for port in 8080 50051 50052; do
-        lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    done
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
 
-    # Wait for ports to be free
-    sleep 2
-    echo "Cleanup complete"
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
 }
 
 trap cleanup EXIT INT TERM

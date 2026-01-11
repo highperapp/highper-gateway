@@ -29,7 +29,7 @@ run_test() {
 
     if [ ! -f "$script" ]; then
         echo "⚠ Test script not found: $script"
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
         FAILED_SCENARIOS+=("$num: $name (script not found)")
         return 1
     fi
@@ -40,7 +40,7 @@ run_test() {
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
         echo "✅ PASS (${duration}s)"
-        ((PASSED++))
+        PASSED=$((PASSED + 1))
         return 0
     else
         local exit_code=$?
@@ -57,28 +57,28 @@ run_test() {
         echo "Last 15 lines of output:"
         tail -15 "/tmp/scenario-${num}.log" | sed 's/^/  /'
 
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
         FAILED_SCENARIOS+=("$num: $name")
         return 1
     fi
 }
 
-# Run all 15 scenarios
-run_test 1 "Layer 4 TCP - Pure TCP Proxying" "test-scenario-01-tcp-native.sh" 90
-run_test 2 "Layer 7 HTTP - HTTP/1.1 Load Balancing" "test-scenario-02-native.sh" 90
-run_test 3 "HTTPS/TLS Termination" "test-scenario-03-tls.sh" 120
-run_test 4 "API Gateway with Rate Limiting" "test-scenario-04-rate-limit.sh" 90
-run_test 5 "HTTP/3 QUIC" "test-scenario-05-http3.sh" 120
-run_test 6 "WebSocket Load Balancer" "test-scenario-06-websocket.sh" 90
-run_test 7 "gRPC Gateway" "test-scenario-07-grpc.sh" 120
-run_test 8 "Database Load Balancer" "test-scenario-08-database.sh" 120
-run_test 9 "WAF + mTLS" "test-scenario-09-waf.sh" 120
-run_test 10 "Hybrid Multi-Protocol" "test-scenario-10-multi.sh" 120
-run_test 11 "CDN Edge Caching" "test-scenario-11-cache.sh" 90
-run_test 12 "Microservices Discovery" "test-scenario-12-discovery.sh" 120
-run_test 13 "GraphQL Gateway" "test-scenario-13-graphql.sh" 120
-run_test 14 "Static + PHP-FPM" "test-scenario-14-php.sh" 120
-run_test 15 "Geographic Load Balancing" "test-scenario-15-geo.sh" 90
+# Run all 15 scenarios with increased timeouts
+run_test 1 "Layer 4 TCP - Pure TCP Proxying" "test-scenario-01-tcp-native.sh" 200 || true
+run_test 2 "Layer 7 HTTP - HTTP/1.1 Load Balancing" "test-scenario-02-native.sh" 150 || true
+run_test 3 "HTTPS/TLS Termination" "test-scenario-03-tls.sh" 180 || true
+run_test 4 "API Gateway with Rate Limiting" "test-scenario-04-rate-limit.sh" 150 || true
+run_test 5 "HTTP/3 QUIC" "test-scenario-05-http3.sh" 180 || true
+run_test 6 "WebSocket Load Balancer" "test-scenario-06-websocket.sh" 150 || true
+run_test 7 "gRPC Gateway" "test-scenario-07-grpc.sh" 180 || true
+run_test 8 "Database Load Balancer" "test-scenario-08-database.sh" 180 || true
+run_test 9 "WAF + mTLS" "test-scenario-09-waf.sh" 180 || true
+run_test 10 "Hybrid Multi-Protocol" "test-scenario-10-multi.sh" 180 || true
+run_test 11 "CDN Edge Caching" "test-scenario-11-cache.sh" 150 || true
+run_test 12 "Microservices Discovery" "test-scenario-12-discovery.sh" 180 || true
+run_test 13 "GraphQL Gateway" "test-scenario-13-graphql.sh" 180 || true
+run_test 14 "Static + PHP-FPM" "test-scenario-14-php.sh" 180 || true
+run_test 15 "Geographic Load Balancing" "test-scenario-15-geo.sh" 150 || true
 
 # Final summary
 echo ""

@@ -245,6 +245,7 @@ mod tests {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         }
     }
 

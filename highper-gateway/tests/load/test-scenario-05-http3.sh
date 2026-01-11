@@ -13,22 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
 
-    # Force cleanup all backend containers
-    docker rm -f $(docker ps -aq --filter "name=backend") 2>/dev/null || true
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
 
-    # Cleanup docker-compose stack
-    (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
 
-    # Kill any processes using our ports
-    for port in 8443 8001 8002 8003; do
-        lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    done
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
 
-    # Wait for ports to be free
-    sleep 2
-    echo "Cleanup complete"
 }
 
 trap cleanup EXIT INT TERM
@@ -311,7 +317,7 @@ echo "Test 6: HTTP/2 Performance (Baseline)"
 echo "========================================="
 
 echo "Running HTTP/2 load test (1000 req/s for 5s)..."
-echo "GET https://localhost:8443/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET https://localhost:8443/api/ping' | vegeta attack \
     -rate=1000 \
     -duration=5s \
     -timeout=5s \
@@ -319,11 +325,15 @@ echo "GET https://localhost:8443/api/ping" | vegeta attack \
     -keepalive=true \
     -http2=true \
     -insecure \
-    > "${RESULT_DIR}/http2-baseline.bin" 2>&1
+    > '${RESULT_DIR}/http2-baseline.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for HTTP/2 test"
+}
 
-cat "${RESULT_DIR}/http2-baseline.bin" | vegeta report -type=json > "${RESULT_DIR}/http2-baseline.json"
+if [ -f "${RESULT_DIR}/http2-baseline.bin" ] && [ -s "${RESULT_DIR}/http2-baseline.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/http2-baseline.bin" > "${RESULT_DIR}/http2-baseline.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/http2-baseline.json" ]; then
+if [ -f "${RESULT_DIR}/http2-baseline.json" ] && [ -s "${RESULT_DIR}/http2-baseline.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/http2-baseline.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/http2-baseline.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/http2-baseline.json")

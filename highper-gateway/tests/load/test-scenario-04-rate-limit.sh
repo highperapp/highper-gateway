@@ -22,7 +22,21 @@ cleanup() {
     if [ ! -z "${GATEWAY_PID:-}" ]; then
         echo "Stopping gateway (PID: $GATEWAY_PID)..."
         kill $GATEWAY_PID 2>/dev/null || true
-        wait $GATEWAY_PID 2>/dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
     fi
 
     # Stop Docker backends
@@ -160,18 +174,23 @@ echo "Limit: 1000 req/s, Testing at: 500 req/s"
 echo "Expected: 100% success"
 echo "========================================="
 
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=500 \
     -duration=10s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/below-limit.bin" 2>&1
+    > '${RESULT_DIR}/below-limit.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for Test 1"
+    exit 1
+}
 
-cat "${RESULT_DIR}/below-limit.bin" | vegeta report -type=json > "${RESULT_DIR}/below-limit.json"
-cat "${RESULT_DIR}/below-limit.bin" | vegeta report -type=text > "${RESULT_DIR}/below-limit.txt"
+if [ -f "${RESULT_DIR}/below-limit.bin" ] && [ -s "${RESULT_DIR}/below-limit.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/below-limit.bin" > "${RESULT_DIR}/below-limit.json" 2>/dev/null || true
+    timeout 10s vegeta report -type=text < "${RESULT_DIR}/below-limit.bin" > "${RESULT_DIR}/below-limit.txt" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/below-limit.json" ]; then
+if [ -f "${RESULT_DIR}/below-limit.json" ] && [ -s "${RESULT_DIR}/below-limit.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/below-limit.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/below-limit.json")
     success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/below-limit.json")
@@ -194,18 +213,23 @@ echo "Limit: 1000 req/s, Testing at: 1000 req/s"
 echo "Expected: ~100% success (with token bucket)"
 echo "========================================="
 
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=1000 \
     -duration=10s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/at-limit.bin" 2>&1
+    > '${RESULT_DIR}/at-limit.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for Test 2"
+    exit 1
+}
 
-cat "${RESULT_DIR}/at-limit.bin" | vegeta report -type=json > "${RESULT_DIR}/at-limit.json"
-cat "${RESULT_DIR}/at-limit.bin" | vegeta report -type=text > "${RESULT_DIR}/at-limit.txt"
+if [ -f "${RESULT_DIR}/at-limit.bin" ] && [ -s "${RESULT_DIR}/at-limit.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/at-limit.bin" > "${RESULT_DIR}/at-limit.json" 2>/dev/null || true
+    timeout 10s vegeta report -type=text < "${RESULT_DIR}/at-limit.bin" > "${RESULT_DIR}/at-limit.txt" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/at-limit.json" ]; then
+if [ -f "${RESULT_DIR}/at-limit.json" ] && [ -s "${RESULT_DIR}/at-limit.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/at-limit.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/at-limit.json")
     success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/at-limit.json")
@@ -228,18 +252,23 @@ echo "Limit: 1000 req/s, Testing at: 2000 req/s"
 echo "Expected: ~50% success, ~50% rate limited"
 echo "========================================="
 
-echo "GET http://localhost:8080/api/ping" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/api/ping' | vegeta attack \
     -rate=2000 \
     -duration=10s \
     -timeout=5s \
     -workers=8 \
     -keepalive=true \
-    > "${RESULT_DIR}/above-limit.bin" 2>&1
+    > '${RESULT_DIR}/above-limit.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for Test 3"
+    exit 1
+}
 
-cat "${RESULT_DIR}/above-limit.bin" | vegeta report -type=json > "${RESULT_DIR}/above-limit.json"
-cat "${RESULT_DIR}/above-limit.bin" | vegeta report -type=text > "${RESULT_DIR}/above-limit.txt"
+if [ -f "${RESULT_DIR}/above-limit.bin" ] && [ -s "${RESULT_DIR}/above-limit.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/above-limit.bin" > "${RESULT_DIR}/above-limit.json" 2>/dev/null || true
+    timeout 10s vegeta report -type=text < "${RESULT_DIR}/above-limit.bin" > "${RESULT_DIR}/above-limit.txt" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/above-limit.json" ]; then
+if [ -f "${RESULT_DIR}/above-limit.json" ] && [ -s "${RESULT_DIR}/above-limit.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/above-limit.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/above-limit.json")
     success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/above-limit.json")

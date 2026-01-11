@@ -101,6 +101,7 @@ mod tests {
             graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
+            webserver: None,
         };
 
         assert!(validate_config(&config).is_err());

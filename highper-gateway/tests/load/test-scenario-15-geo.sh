@@ -13,10 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
-    (cd docker 2>/dev/null && docker-compose -f docker-compose-prebuilt.yml down 2>/dev/null) || true
-    docker rm -f geo-us-east-1 geo-us-west-1 geo-eu-1 geo-asia-1 2>/dev/null || true
-    echo "Cleanup complete"
+
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
 }
 
 trap cleanup EXIT INT TERM
@@ -355,18 +373,22 @@ X-Forwarded-For: 1.1.1.1
 
 TARGETS
 
-vegeta attack \
+timeout 30s bash -c "vegeta attack \
     -targets=/tmp/geo-targets.txt \
     -rate=500 \
     -duration=5s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/geo-routing.bin" 2>&1
+    > '${RESULT_DIR}/geo-routing.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for GeoIP routing test"
+}
 
-cat "${RESULT_DIR}/geo-routing.bin" | vegeta report -type=json > "${RESULT_DIR}/geo-routing.json"
+if [ -f "${RESULT_DIR}/geo-routing.bin" ] && [ -s "${RESULT_DIR}/geo-routing.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/geo-routing.bin" > "${RESULT_DIR}/geo-routing.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/geo-routing.json" ]; then
+if [ -f "${RESULT_DIR}/geo-routing.json" ] && [ -s "${RESULT_DIR}/geo-routing.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/geo-routing.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/geo-routing.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/geo-routing.json")
@@ -386,18 +408,23 @@ for ip_region in "54.144.1.1:US-East" "13.52.1.1:US-West" "151.101.1.69:EU" "1.1
     ip="${ip_region%%:*}"
     region_name="${ip_region##*:}"
 
-    echo "GET http://localhost:8080/api/test" | vegeta attack \
-        -header="X-Forwarded-For: $ip" \
+    timeout 30s bash -c "echo 'GET http://localhost:8080/api/test' | vegeta attack \
+        -header='X-Forwarded-For: $ip' \
         -rate=200 \
         -duration=3s \
         -timeout=5s \
         -workers=2 \
         -keepalive=true \
-        > "${RESULT_DIR}/region-${region_name}.bin" 2>&1
+        > '${RESULT_DIR}/region-${region_name}.bin' 2>&1" || {
+        echo "⚠ Vegeta timed out or failed for region $region_name"
+        continue
+    }
 
-    cat "${RESULT_DIR}/region-${region_name}.bin" | vegeta report -type=json > "${RESULT_DIR}/region-${region_name}.json"
+    if [ -f "${RESULT_DIR}/region-${region_name}.bin" ] && [ -s "${RESULT_DIR}/region-${region_name}.bin" ]; then
+        timeout 10s vegeta report -type=json < "${RESULT_DIR}/region-${region_name}.bin" > "${RESULT_DIR}/region-${region_name}.json" 2>/dev/null || true
+    fi
 
-    if [ -f "${RESULT_DIR}/region-${region_name}.json" ]; then
+    if [ -f "${RESULT_DIR}/region-${region_name}.json" ] && [ -s "${RESULT_DIR}/region-${region_name}.json" ]; then
         p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/region-${region_name}.json")
         p95=$(jq -r '.latencies."95th" // 0 | tonumber / 1000000' "${RESULT_DIR}/region-${region_name}.json")
         success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/region-${region_name}.json")

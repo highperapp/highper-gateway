@@ -1226,6 +1226,7 @@ mod tests {
             rate_limit: None,
             waf: None,
             graphql: None,
+            webserver: None,
         };
 
         Http3Server::new(Arc::new(RwLock::new(config)))

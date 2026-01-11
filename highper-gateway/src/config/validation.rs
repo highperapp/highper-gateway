@@ -587,6 +587,7 @@ mod tests {
             graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
+            webserver: None,
         };
 
         let result = ConfigValidator::validate(&config);
@@ -616,6 +617,7 @@ mod tests {
             graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
+            webserver: None,
         };
 
         let result = ConfigValidator::validate(&config);
@@ -645,6 +647,7 @@ mod tests {
             graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
+            webserver: None,
         };
 
         let result = ConfigValidator::validate(&config);
@@ -695,6 +698,7 @@ mod tests {
             graphql: None,
             websocket: crate::websocket::WebSocketConfig::default(),
             grpc: crate::grpc::GrpcConfig::default(),
+            webserver: None,
         };
 
         let result = ConfigValidator::validate(&config);

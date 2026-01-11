@@ -1,8 +1,0 @@
-GET http://localhost:8080/
-X-Test-ID: vegeta-simple-1
-
-GET http://localhost:8080/health
-X-Test-ID: vegeta-simple-2
-
-GET http://localhost:8080/metrics
-X-Test-ID: vegeta-simple-3

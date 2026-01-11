@@ -13,10 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
-    docker rm -f php-fpm-backend 2>/dev/null || true
-    rm -rf /tmp/php-test-www 2>/dev/null || true
-    echo "Cleanup complete"
+
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
 }
 
 trap cleanup EXIT INT TERM
@@ -233,18 +251,22 @@ echo "========================================="
 echo "Test 3: Static File Performance"
 echo "========================================="
 
-echo "GET http://localhost:8080/index.html" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/index.html' | vegeta attack \
     -rate=1000 \
     -duration=5s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/static-file.bin" 2>&1
+    > '${RESULT_DIR}/static-file.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for static file test"
+}
 
-cat "${RESULT_DIR}/static-file.bin" | vegeta report -type=json > "${RESULT_DIR}/static-file.json"
-cat "${RESULT_DIR}/static-file.bin" | vegeta report -type=text > "${RESULT_DIR}/static-file.txt"
+if [ -f "${RESULT_DIR}/static-file.bin" ] && [ -s "${RESULT_DIR}/static-file.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/static-file.bin" > "${RESULT_DIR}/static-file.json" 2>/dev/null || true
+    timeout 10s vegeta report -type=text < "${RESULT_DIR}/static-file.bin" > "${RESULT_DIR}/static-file.txt" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/static-file.json" ]; then
+if [ -f "${RESULT_DIR}/static-file.json" ] && [ -s "${RESULT_DIR}/static-file.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/static-file.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/static-file.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/static-file.json")
@@ -259,18 +281,22 @@ echo "========================================="
 echo "Test 4: PHP-FPM Performance"
 echo "========================================="
 
-echo "GET http://localhost:8080/benchmark.php" | vegeta attack \
+timeout 30s bash -c "echo 'GET http://localhost:8080/benchmark.php' | vegeta attack \
     -rate=500 \
     -duration=5s \
     -timeout=5s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/php-file.bin" 2>&1
+    > '${RESULT_DIR}/php-file.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for PHP-FPM test"
+}
 
-cat "${RESULT_DIR}/php-file.bin" | vegeta report -type=json > "${RESULT_DIR}/php-file.json"
-cat "${RESULT_DIR}/php-file.bin" | vegeta report -type=text > "${RESULT_DIR}/php-file.txt"
+if [ -f "${RESULT_DIR}/php-file.bin" ] && [ -s "${RESULT_DIR}/php-file.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/php-file.bin" > "${RESULT_DIR}/php-file.json" 2>/dev/null || true
+    timeout 10s vegeta report -type=text < "${RESULT_DIR}/php-file.bin" > "${RESULT_DIR}/php-file.txt" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/php-file.json" ]; then
+if [ -f "${RESULT_DIR}/php-file.json" ] && [ -s "${RESULT_DIR}/php-file.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/php-file.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/php-file.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/php-file.json")

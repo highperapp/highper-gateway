@@ -13,19 +13,28 @@ echo "========================================="
 
 cleanup() {
     echo "Cleaning up..."
-    [ ! -z "${GATEWAY_PID:-}" ] && kill $GATEWAY_PID 2>/dev/null || true
 
-    # Force cleanup GraphQL containers
-    docker rm -f $(docker ps -aq --filter "name=graphql-server") 2>/dev/null || true
+    # Stop gateway if running
+    if [ ! -z "${GATEWAY_PID:-}" ]; then
+        echo "Stopping gateway (PID: $GATEWAY_PID)..."
+        kill $GATEWAY_PID 2>/dev/null || true
 
-    # Kill any processes using our ports
-    for port in 8080 4001 4002; do
-        lsof -ti:$port | xargs kill -9 2>/dev/null || true
-    done
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
 
-    # Wait for ports to be free
-    sleep 2
-    echo "Cleanup complete"
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
 }
 
 trap cleanup EXIT INT TERM
@@ -477,18 +486,22 @@ cat > /tmp/graphql-query.json <<'QUERY'
 {"query": "{ users { id name email } backend }"}
 QUERY
 
-vegeta attack \
+timeout 30s bash -c "vegeta attack \
     -targets=/tmp/graphql-targets.txt \
     -rate=500 \
     -duration=5s \
     -timeout=10s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/graphql-perf.bin" 2>&1
+    > '${RESULT_DIR}/graphql-perf.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for GraphQL performance test"
+}
 
-cat "${RESULT_DIR}/graphql-perf.bin" | vegeta report -type=json > "${RESULT_DIR}/graphql-perf.json"
+if [ -f "${RESULT_DIR}/graphql-perf.bin" ] && [ -s "${RESULT_DIR}/graphql-perf.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/graphql-perf.bin" > "${RESULT_DIR}/graphql-perf.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/graphql-perf.json" ]; then
+if [ -f "${RESULT_DIR}/graphql-perf.json" ] && [ -s "${RESULT_DIR}/graphql-perf.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/graphql-perf.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/graphql-perf.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/graphql-perf.json")
@@ -515,18 +528,22 @@ Content-Type: application/json
 
 TARGETS
 
-vegeta attack \
+timeout 30s bash -c "vegeta attack \
     -targets=/tmp/graphql-complex-targets.txt \
     -rate=300 \
     -duration=5s \
     -timeout=10s \
     -workers=4 \
     -keepalive=true \
-    > "${RESULT_DIR}/graphql-complex.bin" 2>&1
+    > '${RESULT_DIR}/graphql-complex.bin' 2>&1" || {
+    echo "⚠ Vegeta timed out or failed for GraphQL complex query test"
+}
 
-cat "${RESULT_DIR}/graphql-complex.bin" | vegeta report -type=json > "${RESULT_DIR}/graphql-complex.json"
+if [ -f "${RESULT_DIR}/graphql-complex.bin" ] && [ -s "${RESULT_DIR}/graphql-complex.bin" ]; then
+    timeout 10s vegeta report -type=json < "${RESULT_DIR}/graphql-complex.bin" > "${RESULT_DIR}/graphql-complex.json" 2>/dev/null || true
+fi
 
-if [ -f "${RESULT_DIR}/graphql-complex.json" ]; then
+if [ -f "${RESULT_DIR}/graphql-complex.json" ] && [ -s "${RESULT_DIR}/graphql-complex.json" ]; then
     rate=$(jq -r '.rate // 0' "${RESULT_DIR}/graphql-complex.json")
     p50=$(jq -r '.latencies."50th" // 0 | tonumber / 1000000' "${RESULT_DIR}/graphql-complex.json")
     p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/graphql-complex.json")

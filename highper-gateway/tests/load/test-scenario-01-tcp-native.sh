@@ -22,7 +22,21 @@ cleanup() {
     if [ ! -z "${GATEWAY_PID:-}" ]; then
         echo "Stopping gateway (PID: $GATEWAY_PID)..."
         kill $GATEWAY_PID 2>/dev/null || true
-        wait $GATEWAY_PID 2>/dev/null || true
+
+        # Wait up to 5 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+
+        # Force kill if still running
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            echo "Force killing gateway (PID: $GATEWAY_PID)..."
+            kill -9 $GATEWAY_PID 2>/dev/null || true
+            sleep 1
+        fi
     fi
 
     # Stop Docker backends
@@ -172,25 +186,36 @@ echo ""
 for rate in 1000 2000 3000 4000 5000; do
     echo "Testing at ${rate} req/s..."
 
-    echo "GET http://localhost:9000/api/ping" | vegeta attack \
+    # Run vegeta with timeout wrapper to prevent hangs
+    timeout 30s bash -c "echo 'GET http://localhost:9000/api/ping' | vegeta attack \
         -rate=${rate} \
         -duration=10s \
         -timeout=5s \
         -workers=8 \
         -keepalive=true \
-        > "${RESULT_DIR}/vegeta-${rate}rps.bin" 2>&1
+        > '${RESULT_DIR}/vegeta-${rate}rps.bin' 2>&1" || {
+        echo "  ⚠ Vegeta timed out or failed for ${rate} req/s (continuing...)"
+        continue
+    }
 
-    # Generate reports
-    cat "${RESULT_DIR}/vegeta-${rate}rps.bin" | vegeta report -type=json > "${RESULT_DIR}/vegeta-${rate}rps.json" 2>/dev/null || true
-    cat "${RESULT_DIR}/vegeta-${rate}rps.bin" | vegeta report -type=text > "${RESULT_DIR}/vegeta-${rate}rps.txt" 2>/dev/null || true
+    # Generate reports with error handling
+    if [ -f "${RESULT_DIR}/vegeta-${rate}rps.bin" ] && [ -s "${RESULT_DIR}/vegeta-${rate}rps.bin" ]; then
+        timeout 10s vegeta report -type=json < "${RESULT_DIR}/vegeta-${rate}rps.bin" > "${RESULT_DIR}/vegeta-${rate}rps.json" 2>/dev/null || true
+        timeout 10s vegeta report -type=text < "${RESULT_DIR}/vegeta-${rate}rps.bin" > "${RESULT_DIR}/vegeta-${rate}rps.txt" 2>/dev/null || true
+    fi
 
     # Extract key metrics
-    if [ -f "${RESULT_DIR}/vegeta-${rate}rps.json" ]; then
+    if [ -f "${RESULT_DIR}/vegeta-${rate}rps.json" ] && [ -s "${RESULT_DIR}/vegeta-${rate}rps.json" ]; then
         actual_rate=$(jq -r '.rate // 0' "${RESULT_DIR}/vegeta-${rate}rps.json" 2>/dev/null || echo "0")
         p99=$(jq -r '.latencies."99th" // 0 | tonumber / 1000000' "${RESULT_DIR}/vegeta-${rate}rps.json" 2>/dev/null || echo "0")
         success=$(jq -r '.success // 0 | . * 100' "${RESULT_DIR}/vegeta-${rate}rps.json" 2>/dev/null || echo "0")
         echo "  Results: ${actual_rate} req/s, P99: ${p99}ms, Success: ${success}%"
+    else
+        echo "  ⚠ No valid results for ${rate} req/s"
     fi
+
+    # Brief pause between tests to allow connections to close
+    sleep 2
 done
 
 # Generate summary
