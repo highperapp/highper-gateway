@@ -1,0 +1,53 @@
+[Unit]
+Description=Highper Gateway - High Performance Reverse Proxy
+Documentation=https://highper-gateway.io/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=highper-gateway
+Group=highper-gateway
+ExecStart=/usr/bin/highper-gateway --config /etc/highper-gateway/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Capabilities for privileged ports and io_uring
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_IPC_LOCK
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_IPC_LOCK
+
+# Resource limits for io_uring
+LimitMEMLOCK=infinity
+LimitNOFILE=1048576
+LimitNPROC=infinity
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+PrivateDevices=yes
+
+# Read-write paths
+ReadWritePaths=/var/log/highper-gateway
+ReadWritePaths=/var/lib/highper-gateway
+
+# Logging
+StandardOutput=append:/var/log/highper-gateway/gateway.log
+StandardError=append:/var/log/highper-gateway/error.log
+
+# Working directory
+WorkingDirectory=/var/lib/highper-gateway
+
+# Environment
+Environment=RUST_LOG=info
+Environment=RUST_BACKTRACE=1
+
+[Install]
+WantedBy=multi-user.target

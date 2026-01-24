@@ -1,0 +1,141 @@
+# Highper Gateway Configuration
+# Use Case 09: WAF + mTLS (Mutual TLS)
+# Ports: 443
+
+server:
+  name: "highper-gateway-waf-mtls"
+
+io_uring:
+  entries: 4096
+  sq_poll: true
+  sq_poll_cpu: 0
+
+# Mutual TLS configuration
+tls:
+  default:
+    cert: /etc/highper-gateway/certs/server.crt
+    key: /etc/highper-gateway/certs/server.key
+    ca: /etc/highper-gateway/certs/ca.crt
+    client_auth: required  # require, request, or none
+    verify_depth: 3
+    protocols:
+      - TLSv1.2
+      - TLSv1.3
+    crl:
+      enabled: true
+      path: /etc/highper-gateway/certs/crl.pem
+      check_interval: 3600
+
+listeners:
+  - name: secure-gateway
+    protocol: https
+    bind: "0.0.0.0:443"
+    tls: default
+    waf:
+      enabled: true
+      ruleset: /etc/highper-gateway/rules/waf.rules
+    routes:
+      - match:
+          path_prefix: /api
+        backend: api-servers
+        waf:
+          mode: block
+      - match:
+          path_prefix: /
+        backend: web-servers
+        waf:
+          mode: detect
+
+backends:
+  - name: api-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: web-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.2.10:8080"
+      - address: "10.0.2.11:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+# WAF configuration
+waf:
+  enabled: true
+  mode: block  # block, detect, or off
+  ruleset_dir: /etc/highper-gateway/rules
+  rules:
+    # OWASP Core Rule Set
+    - sql_injection:
+        enabled: true
+        sensitivity: high
+    - xss:
+        enabled: true
+        sensitivity: high
+    - path_traversal:
+        enabled: true
+    - command_injection:
+        enabled: true
+    - protocol_attack:
+        enabled: true
+    - request_limits:
+        max_request_size: 10485760
+        max_uri_length: 8192
+        max_header_size: 16384
+        max_headers: 100
+
+  # IP reputation
+  ip_reputation:
+    enabled: true
+    blocklist: /etc/highper-gateway/rules/ip-blocklist.txt
+    allowlist: /etc/highper-gateway/rules/ip-allowlist.txt
+
+  # Rate limiting per client certificate
+  rate_limit:
+    enabled: true
+    by_client_cert: true
+    requests_per_second: 100
+    burst: 50
+
+  # Logging
+  logging:
+    enabled: true
+    log_blocked: true
+    log_detected: true
+    output: /var/log/highper-gateway/waf.log
+
+# Client certificate extraction
+client_cert:
+  extract_dn: true
+  headers:
+    - name: X-Client-Cert-DN
+      value: "$client_cert_dn"
+    - name: X-Client-Cert-Serial
+      value: "$client_cert_serial"
+    - name: X-Client-Cert-Fingerprint
+      value: "$client_cert_fingerprint"
+
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

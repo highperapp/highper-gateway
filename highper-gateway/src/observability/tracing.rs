@@ -1,8 +1,9 @@
-//! Distributed tracing with OpenTelemetry
+//! Distributed tracing and metrics with OpenTelemetry
 //!
 //! Provides trace context propagation, span creation, and export to backends like Jaeger.
+//! Also supports OTLP (OpenTelemetry Protocol) for traces and metrics export.
 
-use crate::config::TracingConfig;
+use crate::config::{TracingConfig, OtlpConfig};
 use opentelemetry::{
     global,
     trace::{TraceError, TracerProvider as _, Tracer},
@@ -46,6 +47,7 @@ pub fn init_tracing(config: &TracingConfig) -> Result<(), TraceError> {
     // Initialize tracer based on exporter type
     let tracer_provider = match config.exporter.as_str() {
         "jaeger" => init_jaeger_tracer(config, resource)?,
+        "otlp" => init_otlp_tracer(config, resource)?,
         "stdout" => init_stdout_tracer(config, resource)?,
         _ => {
             warn!(
@@ -72,6 +74,20 @@ pub fn init_tracing(config: &TracingConfig) -> Result<(), TraceError> {
 
     info!("Distributed tracing initialized successfully");
 
+    // Initialize OTLP metrics if using OTLP exporter and metrics are enabled
+    if config.exporter == "otlp" && config.otlp.metrics_enabled {
+        let metrics_config = OtlpMetricsConfig {
+            enabled: true,
+            endpoint: config.endpoint.clone(),
+            service_name: config.service_name.clone(),
+            export_interval_secs: config.otlp.export_interval_secs,
+        };
+
+        if let Err(e) = init_otlp_metrics(&metrics_config) {
+            warn!("Failed to initialize OTLP metrics: {}", e);
+        }
+    }
+
     Ok(())
 }
 
@@ -96,6 +112,42 @@ fn init_jaeger_tracer(
         .map_err(|e| TraceError::Other(Box::new(e)))?;
 
     // Build TracerProvider with batch exporter
+    Ok(TracerProvider::builder()
+        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+        .with_config(
+            opentelemetry_sdk::trace::Config::default()
+                .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+                    config.sample_rate,
+                ))))
+                .with_id_generator(RandomIdGenerator::default())
+                .with_resource(resource),
+        )
+        .build())
+}
+
+/// Initialize OTLP exporter (OpenTelemetry Protocol)
+///
+/// Supports exporting traces via gRPC to any OTLP-compatible backend
+/// (e.g., Jaeger, Tempo, Honeycomb, Datadog, etc.)
+fn init_otlp_tracer(
+    config: &TracingConfig,
+    resource: Resource,
+) -> Result<TracerProvider, TraceError> {
+    use opentelemetry_otlp::WithExportConfig;
+
+    info!(
+        "Configuring OTLP trace exporter: endpoint={}, service={}",
+        config.endpoint, config.service_name
+    );
+
+    // Create OTLP exporter with gRPC transport
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(&config.endpoint)
+        .build_span_exporter()
+        .map_err(|e| TraceError::Other(Box::new(e)))?;
+
+    // Build TracerProvider with batch exporter for better performance
     Ok(TracerProvider::builder()
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
         .with_config(
@@ -139,6 +191,123 @@ pub async fn shutdown_tracing() {
     global::shutdown_tracer_provider();
 }
 
+// =====================================================
+// OTLP Metrics Support
+// =====================================================
+
+use opentelemetry::metrics::MeterProvider;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
+use std::sync::Arc;
+
+/// OTLP Metrics configuration
+#[derive(Debug, Clone)]
+pub struct OtlpMetricsConfig {
+    /// Enable OTLP metrics export
+    pub enabled: bool,
+    /// OTLP endpoint (defaults to http://localhost:4317)
+    pub endpoint: String,
+    /// Service name for metrics
+    pub service_name: String,
+    /// Export interval in seconds (defaults to 60)
+    pub export_interval_secs: u64,
+}
+
+impl Default for OtlpMetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: "http://localhost:4317".to_string(),
+            service_name: "highper-gateway".to_string(),
+            export_interval_secs: 60,
+        }
+    }
+}
+
+/// Global OTLP meter provider (stored for shutdown)
+static OTLP_METER_PROVIDER: std::sync::OnceLock<Arc<SdkMeterProvider>> = std::sync::OnceLock::new();
+
+/// Initialize OTLP metrics exporter
+///
+/// This sets up a periodic metrics export to an OTLP-compatible backend.
+/// The exporter sends metrics at the configured interval.
+pub fn init_otlp_metrics(config: &OtlpMetricsConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use opentelemetry_otlp::WithExportConfig;
+    use std::time::Duration;
+
+    if !config.enabled {
+        info!("OTLP metrics export is disabled");
+        return Ok(());
+    }
+
+    info!(
+        "Initializing OTLP metrics exporter: endpoint={}, service={}, interval={}s",
+        config.endpoint, config.service_name, config.export_interval_secs
+    );
+
+    // Build resource with service name
+    let resource = Resource::new(vec![
+        KeyValue::new("service.name", config.service_name.clone()),
+        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+    ]);
+
+    // Create OTLP metrics exporter using the metrics pipeline
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(&config.endpoint);
+
+    // Build meter provider with OTLP exporter
+    // The pipeline configures periodic export automatically
+    let meter_provider = opentelemetry_otlp::new_pipeline()
+        .metrics(opentelemetry_sdk::runtime::Tokio)
+        .with_exporter(exporter)
+        .with_period(Duration::from_secs(config.export_interval_secs))
+        .with_resource(resource)
+        .build()?;
+
+    // Store provider for shutdown
+    let provider = Arc::new(meter_provider);
+    let _ = OTLP_METER_PROVIDER.set(Arc::clone(&provider));
+
+    info!("OTLP metrics exporter initialized successfully");
+    Ok(())
+}
+
+/// Get the global OTLP meter for creating custom metrics
+pub fn get_otlp_meter(name: impl Into<std::borrow::Cow<'static, str>>) -> opentelemetry::metrics::Meter {
+    opentelemetry::global::meter(name)
+}
+
+/// Shutdown OTLP metrics and flush any pending exports
+pub fn shutdown_otlp_metrics() {
+    info!("Shutting down OTLP metrics exporter...");
+    if let Some(provider) = OTLP_METER_PROVIDER.get() {
+        if let Err(e) = provider.shutdown() {
+            warn!("Error shutting down OTLP metrics provider: {}", e);
+        }
+    }
+}
+
+/// Record a counter metric via OTLP
+pub fn record_otlp_counter(name: impl Into<std::borrow::Cow<'static, str>>, value: u64, attributes: &[KeyValue]) {
+    let meter = get_otlp_meter("highper-gateway");
+    let counter = meter.u64_counter(name).init();
+    counter.add(value, attributes);
+}
+
+/// Record a gauge metric via OTLP
+pub fn record_otlp_gauge(name: impl Into<std::borrow::Cow<'static, str>>, value: f64, attributes: &[KeyValue]) {
+    let meter = get_otlp_meter("highper-gateway");
+    let gauge = meter.f64_up_down_counter(name).init();
+    gauge.add(value, attributes);
+}
+
+/// Record a histogram metric via OTLP
+pub fn record_otlp_histogram(name: impl Into<std::borrow::Cow<'static, str>>, value: f64, attributes: &[KeyValue]) {
+    let meter = get_otlp_meter("highper-gateway");
+    let histogram = meter.f64_histogram(name).init();
+    histogram.record(value, attributes);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +321,7 @@ mod tests {
             sample_rate: 1.0,
             service_name: "test-proxy".to_string(),
             resource_attributes: HashMap::new(),
+            otlp: OtlpConfig::default(),
         }
     }
 
@@ -172,6 +342,49 @@ mod tests {
         assert_eq!(config.enabled, true);
         assert_eq!(config.exporter, "stdout");
         assert_eq!(config.sample_rate, 1.0);
+    }
+
+    #[test]
+    fn test_otlp_metrics_config_default() {
+        let config = OtlpMetricsConfig::default();
+        assert_eq!(config.enabled, false);
+        assert_eq!(config.endpoint, "http://localhost:4317");
+        assert_eq!(config.service_name, "highper-gateway");
+        assert_eq!(config.export_interval_secs, 60);
+    }
+
+    #[test]
+    fn test_otlp_config_default() {
+        let config = OtlpConfig::default();
+        assert_eq!(config.metrics_enabled, false);
+        assert_eq!(config.export_interval_secs, 60);
+        assert_eq!(config.compression, false);
+        assert_eq!(config.timeout_secs, 30);
+        assert!(config.headers.is_empty());
+    }
+
+    #[test]
+    fn test_tracing_config_with_otlp() {
+        let config = TracingConfig {
+            enabled: true,
+            exporter: "otlp".to_string(),
+            endpoint: "http://localhost:4317".to_string(),
+            sample_rate: 0.5,
+            service_name: "test-service".to_string(),
+            resource_attributes: HashMap::new(),
+            otlp: OtlpConfig {
+                metrics_enabled: true,
+                export_interval_secs: 30,
+                compression: true,
+                headers: HashMap::new(),
+                timeout_secs: 10,
+            },
+        };
+
+        assert_eq!(config.exporter, "otlp");
+        assert_eq!(config.otlp.metrics_enabled, true);
+        assert_eq!(config.otlp.export_interval_secs, 30);
+        assert_eq!(config.otlp.compression, true);
     }
 }
 

@@ -30,6 +30,18 @@ pub struct BackendState {
     /// Whether backend is in drain mode
     pub draining: bool,
 
+    /// Timestamp when drain started (Unix timestamp in seconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain_started_at: Option<u64>,
+
+    /// Drain timeout in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain_timeout_secs: Option<u64>,
+
+    /// Whether drain has completed (all connections closed or timeout reached)
+    #[serde(default)]
+    pub drain_completed: bool,
+
     /// Reason for current state (for disable/drain)
     pub reason: Option<String>,
 
@@ -52,6 +64,34 @@ pub enum HealthStatus {
 
     /// Health status unknown
     Unknown,
+}
+
+/// Drain status information for a backend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrainStatus {
+    /// Backend ID
+    pub backend_id: String,
+
+    /// Whether backend is currently draining
+    pub draining: bool,
+
+    /// Whether drain has completed (all connections closed)
+    pub drain_completed: bool,
+
+    /// Current active connections
+    pub active_connections: usize,
+
+    /// Seconds elapsed since drain started
+    pub elapsed_secs: u64,
+
+    /// Total timeout in seconds
+    pub timeout_secs: u64,
+
+    /// Seconds remaining until timeout
+    pub remaining_secs: u64,
+
+    /// Whether the drain has timed out
+    pub timed_out: bool,
 }
 
 /// Basic metrics tracking
@@ -241,13 +281,103 @@ impl ProxyState {
 
     /// Update backend drain status
     pub async fn set_backend_draining(&self, id: &str, draining: bool) -> bool {
+        self.set_backend_draining_with_timeout(id, draining, None, None).await
+    }
+
+    /// Update backend drain status with timeout and reason
+    pub async fn set_backend_draining_with_timeout(
+        &self,
+        id: &str,
+        draining: bool,
+        timeout_secs: Option<u64>,
+        reason: Option<String>,
+    ) -> bool {
         let mut backends = self.backends.write().await;
         if let Some(backend) = backends.get_mut(id) {
             backend.draining = draining;
+            if draining {
+                // Starting drain
+                backend.drain_started_at = Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                );
+                backend.drain_timeout_secs = timeout_secs;
+                backend.drain_completed = false;
+                backend.reason = reason;
+            } else {
+                // Stopping drain (either completed or cancelled)
+                backend.drain_started_at = None;
+                backend.drain_timeout_secs = None;
+                backend.drain_completed = false;
+                backend.reason = None;
+            }
             true
         } else {
             false
         }
+    }
+
+    /// Mark drain as completed
+    pub async fn complete_drain(&self, id: &str) -> bool {
+        let mut backends = self.backends.write().await;
+        if let Some(backend) = backends.get_mut(id) {
+            if backend.draining {
+                backend.drain_completed = true;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Check if drain has timed out
+    pub async fn is_drain_timed_out(&self, id: &str) -> bool {
+        let backends = self.backends.read().await;
+        if let Some(backend) = backends.get(id) {
+            if let (Some(started_at), Some(timeout)) = (backend.drain_started_at, backend.drain_timeout_secs) {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                return now >= started_at + timeout;
+            }
+        }
+        false
+    }
+
+    /// Get drain status for a backend
+    pub async fn get_drain_status(&self, id: &str) -> Option<DrainStatus> {
+        let backends = self.backends.read().await;
+        backends.get(id).and_then(|backend| {
+            if !backend.draining {
+                return None;
+            }
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let elapsed = backend.drain_started_at.map(|s| now.saturating_sub(s)).unwrap_or(0);
+            let remaining = backend.drain_timeout_secs
+                .map(|t| t.saturating_sub(elapsed))
+                .unwrap_or(0);
+
+            Some(DrainStatus {
+                backend_id: id.to_string(),
+                draining: backend.draining,
+                drain_completed: backend.drain_completed,
+                active_connections: backend.active_connections,
+                elapsed_secs: elapsed,
+                timeout_secs: backend.drain_timeout_secs.unwrap_or(0),
+                remaining_secs: remaining,
+                timed_out: backend.drain_timeout_secs.map(|t| elapsed >= t).unwrap_or(false),
+            })
+        })
     }
 
     /// Update backend health status
@@ -298,6 +428,9 @@ mod tests {
             url: "http://localhost:8080".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Healthy,
@@ -320,6 +453,9 @@ mod tests {
             url: "http://localhost:8080".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Healthy,
@@ -351,6 +487,9 @@ mod tests {
                 url: format!("http://localhost:808{}", i),
                 enabled: true,
                 draining: false,
+                drain_started_at: None,
+                drain_timeout_secs: None,
+                drain_completed: false,
                 reason: None,
                 active_connections: 0,
                 health_status: HealthStatus::Healthy,
@@ -360,5 +499,165 @@ mod tests {
 
         let all_backends = state.get_all_backends().await;
         assert_eq!(all_backends.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_drain_backend() {
+        let state = ProxyState::new();
+
+        let backend = BackendState {
+            id: "test_upstream_0".to_string(),
+            upstream: "test_upstream".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 5,
+            health_status: HealthStatus::Healthy,
+        };
+
+        state.register_backend(backend).await;
+
+        // Start draining with 60 second timeout
+        let success = state.set_backend_draining_with_timeout(
+            "test_upstream_0",
+            true,
+            Some(60),
+            Some("Maintenance".to_string()),
+        ).await;
+        assert!(success);
+
+        // Verify drain state
+        let backend = state.get_backend("test_upstream_0").await.unwrap();
+        assert!(backend.draining);
+        assert!(backend.drain_started_at.is_some());
+        assert_eq!(backend.drain_timeout_secs, Some(60));
+        assert!(!backend.drain_completed);
+        assert_eq!(backend.reason, Some("Maintenance".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_drain_status() {
+        let state = ProxyState::new();
+
+        let backend = BackendState {
+            id: "test_upstream_0".to_string(),
+            upstream: "test_upstream".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 10,
+            health_status: HealthStatus::Healthy,
+        };
+
+        state.register_backend(backend).await;
+
+        // Before draining, status should be None
+        let status = state.get_drain_status("test_upstream_0").await;
+        assert!(status.is_none());
+
+        // Start draining
+        state.set_backend_draining_with_timeout(
+            "test_upstream_0",
+            true,
+            Some(30),
+            None,
+        ).await;
+
+        // Get drain status
+        let status = state.get_drain_status("test_upstream_0").await;
+        assert!(status.is_some());
+
+        let status = status.unwrap();
+        assert!(status.draining);
+        assert!(!status.drain_completed);
+        assert_eq!(status.active_connections, 10);
+        assert_eq!(status.timeout_secs, 30);
+        assert!(!status.timed_out);
+    }
+
+    #[tokio::test]
+    async fn test_complete_drain() {
+        let state = ProxyState::new();
+
+        let backend = BackendState {
+            id: "test_upstream_0".to_string(),
+            upstream: "test_upstream".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 0,
+            health_status: HealthStatus::Healthy,
+        };
+
+        state.register_backend(backend).await;
+
+        // Start draining
+        state.set_backend_draining_with_timeout(
+            "test_upstream_0",
+            true,
+            Some(60),
+            None,
+        ).await;
+
+        // Complete drain
+        let success = state.complete_drain("test_upstream_0").await;
+        assert!(success);
+
+        // Verify drain is completed
+        let backend = state.get_backend("test_upstream_0").await.unwrap();
+        assert!(backend.draining);
+        assert!(backend.drain_completed);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_drain() {
+        let state = ProxyState::new();
+
+        let backend = BackendState {
+            id: "test_upstream_0".to_string(),
+            upstream: "test_upstream".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 5,
+            health_status: HealthStatus::Healthy,
+        };
+
+        state.register_backend(backend).await;
+
+        // Start draining
+        state.set_backend_draining_with_timeout(
+            "test_upstream_0",
+            true,
+            Some(60),
+            Some("Maintenance".to_string()),
+        ).await;
+
+        // Cancel drain
+        let success = state.set_backend_draining("test_upstream_0", false).await;
+        assert!(success);
+
+        // Verify drain is cancelled
+        let backend = state.get_backend("test_upstream_0").await.unwrap();
+        assert!(!backend.draining);
+        assert!(backend.drain_started_at.is_none());
+        assert!(backend.drain_timeout_secs.is_none());
+        assert!(!backend.drain_completed);
     }
 }

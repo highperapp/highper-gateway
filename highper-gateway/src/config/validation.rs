@@ -689,6 +689,8 @@ mod tests {
                 error_pages: std::collections::HashMap::new(),
                 directory_listing: false,
                 limits: None,
+                validation: None,
+                transform: None,
             }],
             observability: ObservabilityConfig::default(),
             admin: None,

@@ -5,7 +5,9 @@
 
 use super::backend::{CacheBackend, CacheError, CacheStats};
 use super::backends::{InMemoryBackend, MultiTierBackend, RedisBackend};
+use super::disk::{DiskBackend, DiskCacheConfig, TieredBackend};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,6 +17,36 @@ use std::time::Duration;
 pub enum CacheBackendType {
     /// In-memory cache (local, fast, non-persistent)
     InMemory,
+
+    /// Disk cache (persistent, survives restarts)
+    Disk {
+        /// Path to cache directory
+        path: PathBuf,
+        /// Maximum cache size in bytes
+        #[serde(default = "default_disk_size")]
+        max_size: u64,
+        /// Minimum object size to cache (smaller objects skipped)
+        #[serde(default)]
+        min_object_size: usize,
+        /// Enable compression
+        #[serde(default)]
+        compression: bool,
+    },
+
+    /// Tiered cache (memory hot tier + disk warm tier)
+    Tiered {
+        /// Path to disk cache directory
+        disk_path: PathBuf,
+        /// Maximum disk cache size in bytes
+        #[serde(default = "default_disk_size")]
+        disk_size: u64,
+        /// Maximum size for entries in hot tier (memory)
+        #[serde(default = "default_hot_max_size")]
+        hot_max_size: usize,
+        /// Enable compression for disk tier
+        #[serde(default)]
+        compression: bool,
+    },
 
     /// Redis cache (distributed, persistent)
     Redis {
@@ -27,6 +59,14 @@ pub enum CacheBackendType {
         /// Distributed backend configuration
         distributed: Box<CacheBackendType>,
     },
+}
+
+fn default_disk_size() -> u64 {
+    10 * 1024 * 1024 * 1024 // 10GB
+}
+
+fn default_hot_max_size() -> usize {
+    1024 * 1024 // 1MB
 }
 
 impl Default for CacheBackendType {
@@ -48,6 +88,39 @@ impl CacheManager {
         let backend: Arc<dyn CacheBackend> = match backend_type {
             CacheBackendType::InMemory => Arc::new(InMemoryBackend::new()),
 
+            CacheBackendType::Disk {
+                path,
+                max_size,
+                min_object_size,
+                compression,
+            } => {
+                let config = DiskCacheConfig {
+                    path,
+                    max_size,
+                    min_object_size,
+                    compression,
+                    cleanup_interval: Duration::from_secs(300),
+                };
+                Arc::new(DiskBackend::new(config).await?)
+            }
+
+            CacheBackendType::Tiered {
+                disk_path,
+                disk_size,
+                hot_max_size,
+                compression,
+            } => {
+                let disk_config = DiskCacheConfig {
+                    path: disk_path,
+                    max_size: disk_size,
+                    min_object_size: 0,
+                    compression,
+                    cleanup_interval: Duration::from_secs(300),
+                };
+                let disk = Arc::new(DiskBackend::new(disk_config).await?);
+                Arc::new(TieredBackend::new(disk, hot_max_size, Duration::from_secs(300)))
+            }
+
             CacheBackendType::Redis { url } => {
                 Arc::new(RedisBackend::new(&url).await?)
             }
@@ -67,6 +140,39 @@ impl CacheManager {
             match backend_type {
                 CacheBackendType::InMemory => {
                     Ok(Arc::new(InMemoryBackend::new()) as Arc<dyn CacheBackend>)
+                }
+
+                CacheBackendType::Disk {
+                    path,
+                    max_size,
+                    min_object_size,
+                    compression,
+                } => {
+                    let config = DiskCacheConfig {
+                        path,
+                        max_size,
+                        min_object_size,
+                        compression,
+                        cleanup_interval: Duration::from_secs(300),
+                    };
+                    Ok(Arc::new(DiskBackend::new(config).await?) as Arc<dyn CacheBackend>)
+                }
+
+                CacheBackendType::Tiered {
+                    disk_path,
+                    disk_size,
+                    hot_max_size,
+                    compression,
+                } => {
+                    let disk_config = DiskCacheConfig {
+                        path: disk_path,
+                        max_size: disk_size,
+                        min_object_size: 0,
+                        compression,
+                        cleanup_interval: Duration::from_secs(300),
+                    };
+                    let disk = Arc::new(DiskBackend::new(disk_config).await?);
+                    Ok(Arc::new(TieredBackend::new(disk, hot_max_size, Duration::from_secs(300))) as Arc<dyn CacheBackend>)
                 }
 
                 CacheBackendType::Redis { url } => {

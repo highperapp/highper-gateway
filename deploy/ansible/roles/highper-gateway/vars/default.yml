@@ -1,0 +1,9 @@
+---
+# Default packages (Debian-based)
+
+highper_gateway_packages:
+  - curl
+  - wget
+  - ca-certificates
+  - gnupg
+  - jq

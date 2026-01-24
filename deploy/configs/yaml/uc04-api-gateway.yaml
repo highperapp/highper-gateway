@@ -1,0 +1,184 @@
+# Highper Gateway Configuration
+# Use Case 04: API Gateway with Rate Limiting
+# Ports: 8080, 443
+
+server:
+  name: "highper-gateway-api-gw"
+
+# io_uring configuration
+io_uring:
+  entries: 4096
+  sq_poll: true
+  sq_poll_cpu: 0
+
+# TLS configuration
+tls:
+  enabled: true
+  cert: /etc/highper-gateway/certs/server.crt
+  key: /etc/highper-gateway/certs/server.key
+
+# API Gateway listeners
+listeners:
+  - name: api-https
+    protocol: https
+    bind: "0.0.0.0:443"
+    tls: default
+    routes:
+      - match:
+          path_prefix: /v1/users
+        backend: user-service
+        rate_limit:
+          requests_per_second: 100
+          burst: 20
+      - match:
+          path_prefix: /v1/products
+        backend: product-service
+        rate_limit:
+          requests_per_second: 500
+          burst: 100
+      - match:
+          path_prefix: /v1/orders
+        backend: order-service
+        rate_limit:
+          requests_per_second: 200
+          burst: 50
+        auth:
+          required: true
+
+  - name: api-http
+    protocol: http
+    bind: "0.0.0.0:8080"
+    routes:
+      - match:
+          path_prefix: /
+        redirect:
+          to: https
+          code: 301
+
+# Backend services
+backends:
+  - name: user-service
+    strategy: round_robin
+    servers:
+      - address: "user-service.default.svc:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+    timeout: 5000
+    retry:
+      attempts: 3
+      conditions:
+        - connection_error
+        - 502
+        - 503
+
+  - name: product-service
+    strategy: least_conn
+    servers:
+      - address: "product-service.default.svc:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+    timeout: 10000
+
+  - name: order-service
+    strategy: round_robin
+    servers:
+      - address: "order-service.default.svc:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 5
+    timeout: 15000
+
+# Rate limiting configuration
+rate_limiting:
+  enabled: true
+  default:
+    requests_per_second: 1000
+    burst: 200
+  by_client_ip: true
+  response_headers: true
+
+# Authentication
+auth:
+  jwt:
+    enabled: true
+    secret_env: JWT_SECRET
+    algorithms:
+      - HS256
+      - RS256
+    header: Authorization
+    prefix: Bearer
+
+# CORS configuration
+cors:
+  enabled: true
+  allow_origins:
+    - "https://example.com"
+    - "https://*.example.com"
+  allow_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+  allow_headers:
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+  max_age: 3600
+
+# Request/Response transformation
+transform:
+  request:
+    headers:
+      add:
+        - name: X-Gateway-Version
+          value: "1.0"
+        - name: X-Request-ID
+          value: "$request_id"
+      remove:
+        - X-Internal-Header
+  response:
+    headers:
+      add:
+        - name: X-Response-Time
+          value: "$response_time"
+      remove:
+        - Server
+
+# Logging
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+  access_log:
+    enabled: true
+    output: /var/log/highper-gateway/access.log
+    fields:
+      - timestamp
+      - method
+      - path
+      - status
+      - response_time
+      - client_ip
+      - user_agent
+      - request_id
+
+# Metrics
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+# Health check
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

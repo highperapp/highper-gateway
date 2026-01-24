@@ -18,8 +18,128 @@ newline = _{ NEWLINE }
 config = {
     SOI ~
     newline* ~
-    (global_directive | site)* ~
+    (include_directive | variable_def | global_directive | site | conditional_block | for_block)* ~
     EOI
+}
+
+// ============================================================================
+// HCL IMPROVEMENTS - Variables, Conditionals, Loops, Includes
+// ============================================================================
+
+// Variable definition: var name = value
+variable_def = {
+    "var" ~ var_identifier ~ "=" ~ var_value ~ newline
+}
+
+var_identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+var_value = {
+    quoted_string
+  | number
+  | bool_value
+  | var_list
+  | var_map
+  | var_reference
+}
+
+// Variable list: [item1, item2, item3]
+var_list = {
+    "[" ~ newline* ~
+    (var_value ~ ("," ~ newline*)?)* ~
+    "]"
+}
+
+// Variable map: { key1 = value1, key2 = value2 }
+var_map = {
+    "{" ~ newline* ~
+    (var_map_entry ~ ("," ~ newline*)?)* ~
+    "}"
+}
+
+var_map_entry = {
+    var_identifier ~ "=" ~ var_value
+}
+
+// Variable reference: ${var_name} or ${var_name.nested.key}
+var_reference = @{
+    "${" ~ var_identifier ~ ("." ~ var_identifier)* ~ "}"
+}
+
+// Include directive: include "path/to/file.proxy" or include_glob "configs/*.proxy"
+include_directive = {
+    ("include" | "include_glob") ~ quoted_string ~ newline
+}
+
+// Conditional: if condition { ... } else { ... }
+conditional_block = {
+    "if" ~ condition ~ "{" ~ newline* ~
+    (newline* ~ config_item)* ~ newline* ~
+    "}" ~ newline* ~
+    else_block?
+}
+
+else_block = {
+    "else" ~ "{" ~ newline* ~
+    (newline* ~ config_item)* ~ newline* ~
+    "}" ~ newline*
+}
+
+// Items that can appear in conditionals
+config_item = {
+    variable_def
+  | site
+  | directive
+  | for_block
+  | conditional_block
+}
+
+// Condition expressions
+condition = {
+    condition_term ~ (("&&" | "||") ~ condition_term)*
+}
+
+condition_term = {
+    "!" ~ condition_primary
+  | condition_primary
+}
+
+condition_primary = {
+    "(" ~ condition ~ ")"
+  | comparison
+  | var_reference
+  | bool_value
+  | env_check
+}
+
+comparison = {
+    comparison_value ~ comparison_op ~ comparison_value
+}
+
+comparison_value = {
+    var_reference
+  | env_var
+  | quoted_string
+  | number
+  | bool_value
+}
+
+comparison_op = { "==" | "!=" | ">=" | "<=" | ">" | "<" }
+
+// Environment variable check: env("VAR_NAME") exists | env("VAR_NAME") == "value"
+env_check = {
+    env_var ~ "exists"
+}
+
+// For loop: for item in list { ... }
+for_block = {
+    "for" ~ var_identifier ~ "in" ~ (var_reference | var_list | range_expr) ~ "{" ~ newline* ~
+    (newline* ~ config_item)* ~ newline* ~
+    "}" ~ newline*
+}
+
+// Range expression: range(1, 10) or range(1, 10, 2)
+range_expr = {
+    "range(" ~ number ~ "," ~ number ~ ("," ~ number)? ~ ")"
 }
 
 // Global directives (apply to all sites)
@@ -198,7 +318,7 @@ tcp_directive = {
     tcp_protocol ~ proxy_directive?
 }
 
-// Load balancing: lb round_robin | least_conn | ip_hash | random | weighted | consistent_hash
+// Load balancing: lb round_robin | least_conn | least_response_time | ip_hash | random | weighted | consistent_hash
 lb_directive = {
     "lb" ~ lb_algorithm ~ newline
 }
@@ -206,6 +326,7 @@ lb_directive = {
 lb_algorithm = {
     "round_robin"
   | "least_conn"
+  | "least_response_time"
   | "ip_hash"
   | "random"
   | "weighted"

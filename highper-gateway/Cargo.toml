@@ -1,6 +1,6 @@
 [package]
 name = "highper-gateway"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["Highper Gateway Team"]
 description = "High-performance reverse proxy and API gateway with io_uring"
@@ -51,6 +51,7 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 toml = "0.8"
 notify = "6.1"  # File system watching for hot reload
+jsonschema = "0.18"  # JSON Schema validation
 
 # High-performance data structures
 dashmap = { workspace = true }
@@ -86,6 +87,7 @@ opentelemetry = { version = "0.22", features = ["trace", "metrics"] }
 opentelemetry-jaeger = { version = "0.21", features = ["rt-tokio", "collector_client", "reqwest_collector_client"] }
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace"] }
 opentelemetry-stdout = { version = "0.3", features = ["trace"] }
+opentelemetry-otlp = { version = "0.15", features = ["tonic", "grpc-tonic", "metrics", "trace"] }
 tracing-opentelemetry = "0.23"
 url = "2.5"
 

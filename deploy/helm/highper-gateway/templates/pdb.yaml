@@ -1,0 +1,25 @@
+{{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "highper-gateway.fullname" . }}
+  labels:
+    {{- include "highper-gateway.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "highper-gateway.selectorLabels" . | nindent 6 }}
+{{- else if gt (int .Values.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "highper-gateway.fullname" . }}
+  labels:
+    {{- include "highper-gateway.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "highper-gateway.selectorLabels" . | nindent 6 }}
+{{- end }}

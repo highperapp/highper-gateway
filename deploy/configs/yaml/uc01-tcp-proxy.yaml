@@ -1,0 +1,107 @@
+# Highper Gateway Configuration
+# Use Case 01: Layer 4 TCP Proxy
+# Ports: 80, 443, 3306, 5432
+
+server:
+  name: "highper-gateway-tcp-proxy"
+
+# io_uring configuration - optimized for TCP proxy
+io_uring:
+  entries: 8192
+  sq_poll: true
+  sq_poll_cpu: 0
+
+# Layer 4 TCP listeners
+listeners:
+  - name: http-proxy
+    protocol: tcp
+    bind: "0.0.0.0:80"
+    backend: web-servers
+
+  - name: https-proxy
+    protocol: tcp
+    bind: "0.0.0.0:443"
+    backend: web-servers-tls
+
+  - name: mysql-proxy
+    protocol: tcp
+    bind: "0.0.0.0:3306"
+    backend: mysql-servers
+
+  - name: postgres-proxy
+    protocol: tcp
+    bind: "0.0.0.0:5432"
+    backend: postgres-servers
+
+# Backend pools
+backends:
+  - name: web-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.1.10:80"
+        weight: 1
+      - address: "10.0.1.11:80"
+        weight: 1
+    health_check:
+      enabled: true
+      protocol: tcp
+      interval: 10
+      timeout: 5
+      threshold: 3
+
+  - name: web-servers-tls
+    strategy: round_robin
+    servers:
+      - address: "10.0.1.10:443"
+      - address: "10.0.1.11:443"
+    health_check:
+      enabled: true
+      protocol: tcp
+      interval: 10
+
+  - name: mysql-servers
+    strategy: least_conn
+    servers:
+      - address: "10.0.2.10:3306"
+        weight: 2  # Primary
+      - address: "10.0.2.11:3306"
+        weight: 1  # Replica
+    health_check:
+      enabled: true
+      protocol: tcp
+      interval: 5
+      timeout: 2
+
+  - name: postgres-servers
+    strategy: least_conn
+    servers:
+      - address: "10.0.3.10:5432"
+      - address: "10.0.3.11:5432"
+    health_check:
+      enabled: true
+      protocol: tcp
+      interval: 5
+
+# Connection settings
+connection:
+  keepalive: true
+  timeout: 30000  # 30 seconds
+  max_connections: 65535
+
+# Logging
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+
+# Metrics
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+# Health check
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

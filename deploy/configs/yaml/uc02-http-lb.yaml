@@ -1,0 +1,116 @@
+# Highper Gateway Configuration
+# Use Case 02: Layer 7 HTTP Load Balancer
+# Ports: 80, 8080
+
+server:
+  name: "highper-gateway-http-lb"
+
+# io_uring configuration
+io_uring:
+  entries: 4096
+  sq_poll: true
+  sq_poll_cpu: 0
+
+# HTTP listeners
+listeners:
+  - name: http-main
+    protocol: http
+    bind: "0.0.0.0:80"
+    routes:
+      - match:
+          path_prefix: /api
+        backend: api-servers
+      - match:
+          path_prefix: /
+        backend: web-servers
+
+  - name: http-admin
+    protocol: http
+    bind: "0.0.0.0:8080"
+    routes:
+      - match:
+          path_prefix: /
+        backend: admin-servers
+
+# Backend pools with health checks
+backends:
+  - name: web-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.1.10:8080"
+        weight: 1
+      - address: "10.0.1.11:8080"
+        weight: 1
+      - address: "10.0.1.12:8080"
+        weight: 1
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+      timeout: 5
+      threshold: 3
+
+  - name: api-servers
+    strategy: least_conn
+    servers:
+      - address: "10.0.2.10:8080"
+      - address: "10.0.2.11:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /api/health
+      interval: 5
+      timeout: 3
+
+  - name: admin-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.3.10:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 30
+
+# HTTP settings
+http:
+  keepalive: true
+  keepalive_timeout: 60
+  request_timeout: 30000
+  max_request_size: 10485760  # 10MB
+
+# Headers
+headers:
+  request:
+    add:
+      - name: X-Forwarded-Proto
+        value: http
+      - name: X-Request-ID
+        value: "$request_id"
+  response:
+    add:
+      - name: X-Served-By
+        value: highper-gateway
+
+# Logging
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+  access_log:
+    enabled: true
+    output: /var/log/highper-gateway/access.log
+    format: combined
+
+# Metrics
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+# Health check
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

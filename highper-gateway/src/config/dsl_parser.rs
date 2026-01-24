@@ -535,6 +535,7 @@ fn parse_lb_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
             let algo = match inner.as_str() {
                 "round_robin" => LoadBalancingAlgorithm::RoundRobin,
                 "least_conn" => LoadBalancingAlgorithm::LeastConnections,
+                "least_response_time" => LoadBalancingAlgorithm::LeastResponseTime,
                 "ip_hash" => LoadBalancingAlgorithm::IpHash,
                 "random" => LoadBalancingAlgorithm::Random,
                 "weighted" => LoadBalancingAlgorithm::Weighted,

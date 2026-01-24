@@ -1,0 +1,22 @@
+---
+# Highper Gateway - Ansible Role Handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart highper-gateway
+  ansible.builtin.systemd:
+    name: highper-gateway
+    state: restarted
+  when: highper_gateway_service_started
+
+- name: Reload highper-gateway
+  ansible.builtin.systemd:
+    name: highper-gateway
+    state: reloaded
+  when: highper_gateway_service_started
+
+- name: Apply sysctl settings
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/99-highper-gateway.conf
+  changed_when: true

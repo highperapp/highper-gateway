@@ -1,0 +1,11 @@
+---
+# Debian/Ubuntu specific variables
+
+highper_gateway_packages:
+  - curl
+  - wget
+  - ca-certificates
+  - gnupg
+  - liburing2
+  - liburing-dev
+  - jq

@@ -1,0 +1,231 @@
+---
+# Highper Gateway - TLS Certificate Rotation Playbook
+# Rotates TLS certificates with zero-downtime reload
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/tls-rotate.yml \
+#     -e "cert_file=path/to/new/cert.pem" \
+#     -e "key_file=path/to/new/key.pem"
+#
+#   Or from Vault:
+#   ansible-playbook -i inventory/hosts.yml playbooks/tls-rotate.yml \
+#     -e "vault_path=secret/highper-gateway/tls"
+
+- name: Rotate TLS Certificates
+  hosts: gateway
+  become: true
+  serial: 1  # One at a time for safety
+
+  vars:
+    cert_dir: /etc/highper-gateway/certs
+    backup_dir: /var/lib/highper-gateway/backups/certs
+    validate_cert: true
+    reload_after: true
+
+  pre_tasks:
+    - name: Validate input
+      ansible.builtin.assert:
+        that:
+          - (cert_file is defined and key_file is defined) or vault_path is defined
+        fail_msg: "Must provide cert_file+key_file or vault_path"
+
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0700"
+
+    - name: Backup current certificates
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/"
+        dest: "{{ backup_dir }}/{{ ansible_date_time.epoch }}/"
+        remote_src: true
+      failed_when: false
+
+  tasks:
+    # Option 1: Deploy from files
+    - name: Deploy certificate from file
+      ansible.builtin.copy:
+        src: "{{ cert_file }}"
+        dest: "{{ cert_dir }}/server.crt"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0644"
+      when: cert_file is defined
+      register: cert_deployed
+
+    - name: Deploy private key from file
+      ansible.builtin.copy:
+        src: "{{ key_file }}"
+        dest: "{{ cert_dir }}/server.key"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0600"
+      when: key_file is defined
+      register: key_deployed
+
+    - name: Deploy CA certificate from file
+      ansible.builtin.copy:
+        src: "{{ ca_file }}"
+        dest: "{{ cert_dir }}/ca.crt"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0644"
+      when: ca_file is defined
+
+    # Option 2: Deploy from HashiCorp Vault
+    - name: Fetch certificate from Vault
+      ansible.builtin.set_fact:
+        vault_cert: "{{ lookup('hashi_vault', vault_path + ':certificate') }}"
+        vault_key: "{{ lookup('hashi_vault', vault_path + ':private_key') }}"
+        vault_ca: "{{ lookup('hashi_vault', vault_path + ':ca_chain', default='') }}"
+      when: vault_path is defined
+      no_log: true
+
+    - name: Deploy certificate from Vault
+      ansible.builtin.copy:
+        content: "{{ vault_cert }}"
+        dest: "{{ cert_dir }}/server.crt"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0644"
+      when: vault_path is defined
+      register: vault_cert_deployed
+      no_log: true
+
+    - name: Deploy private key from Vault
+      ansible.builtin.copy:
+        content: "{{ vault_key }}"
+        dest: "{{ cert_dir }}/server.key"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0600"
+      when: vault_path is defined
+      register: vault_key_deployed
+      no_log: true
+
+    - name: Deploy CA chain from Vault
+      ansible.builtin.copy:
+        content: "{{ vault_ca }}"
+        dest: "{{ cert_dir }}/ca.crt"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0644"
+      when:
+        - vault_path is defined
+        - vault_ca | length > 0
+      no_log: true
+
+    # Validation
+    - name: Verify certificate and key match
+      ansible.builtin.shell: |
+        CERT_MOD=$(openssl x509 -noout -modulus -in {{ cert_dir }}/server.crt | md5sum)
+        KEY_MOD=$(openssl rsa -noout -modulus -in {{ cert_dir }}/server.key | md5sum)
+        [ "$CERT_MOD" = "$KEY_MOD" ] && echo "MATCH" || echo "MISMATCH"
+      register: cert_key_match
+      changed_when: false
+      when: validate_cert
+
+    - name: Fail if certificate and key don't match
+      ansible.builtin.fail:
+        msg: "Certificate and private key do not match!"
+      when:
+        - validate_cert
+        - cert_key_match.stdout != "MATCH"
+
+    - name: Check certificate expiration
+      ansible.builtin.shell: |
+        openssl x509 -enddate -noout -in {{ cert_dir }}/server.crt | cut -d= -f2
+      register: cert_expiry
+      changed_when: false
+
+    - name: Parse certificate details
+      ansible.builtin.shell: |
+        openssl x509 -noout -subject -issuer -dates -in {{ cert_dir }}/server.crt
+      register: cert_details
+      changed_when: false
+
+    - name: Display certificate information
+      ansible.builtin.debug:
+        msg: |
+          Certificate Details:
+          {{ cert_details.stdout }}
+
+    - name: Verify certificate is not expired
+      ansible.builtin.shell: |
+        openssl x509 -checkend 0 -noout -in {{ cert_dir }}/server.crt
+      register: cert_valid
+      changed_when: false
+      failed_when: cert_valid.rc != 0
+      when: validate_cert
+
+    # Reload service
+    - name: Reload Highper Gateway to apply new certificates
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: reloaded
+      when:
+        - reload_after
+        - cert_deployed.changed or key_deployed.changed or vault_cert_deployed.changed | default(false)
+      register: reload_result
+
+    - name: Wait for service to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 30
+      delay: 2
+      when: reload_result.changed | default(false)
+
+    - name: Verify TLS is working
+      ansible.builtin.uri:
+        url: "https://localhost:443/health"
+        validate_certs: false
+        status_code: [200, 404]  # 404 is OK if no route for /health on HTTPS
+      register: tls_check
+      failed_when: false
+      when: reload_result.changed | default(false)
+
+  rescue:
+    - name: Certificate rotation failed - restoring backup
+      ansible.builtin.debug:
+        msg: "Certificate rotation failed, restoring previous certificates..."
+
+    - name: Find latest backup
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        file_type: directory
+      register: backup_dirs
+
+    - name: Restore certificates from backup
+      ansible.builtin.copy:
+        src: "{{ (backup_dirs.files | sort(attribute='mtime') | last).path }}/"
+        dest: "{{ cert_dir }}/"
+        remote_src: true
+      when: backup_dirs.matched > 0
+
+    - name: Reload service with restored certificates
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: reloaded
+
+    - name: Fail with error message
+      ansible.builtin.fail:
+        msg: "Certificate rotation failed on {{ inventory_hostname }}, restored from backup"
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          TLS Certificate Rotation Complete on {{ inventory_hostname }}
+          New certificate expires: {{ cert_expiry.stdout }}
+
+    - name: Clean up old backups (keep last 5)
+      ansible.builtin.shell: |
+        cd {{ backup_dir }} && ls -dt */ | tail -n +6 | xargs -r rm -rf
+      changed_when: false
+      failed_when: false

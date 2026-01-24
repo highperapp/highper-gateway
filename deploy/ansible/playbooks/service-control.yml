@@ -1,0 +1,105 @@
+---
+# Highper Gateway - Service Control Playbook
+# Manage service state across hosts
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/service-control.yml \
+#     -e "action=restart"
+#
+# Actions: start, stop, restart, reload, status
+
+- name: Highper Gateway Service Control
+  hosts: gateway
+  become: true
+  serial: "{{ '1' if (action in ['restart', 'stop'] and rolling | default(true)) else '100%' }}"
+
+  vars:
+    action: status  # start, stop, restart, reload, status
+    rolling: true
+    wait_for_healthy: true
+    drain_timeout: 30
+
+  tasks:
+    - name: Validate action
+      ansible.builtin.assert:
+        that:
+          - action in ['start', 'stop', 'restart', 'reload', 'status']
+        fail_msg: "Invalid action '{{ action }}'. Must be: start, stop, restart, reload, status"
+
+    # Status check
+    - name: Get service status
+      ansible.builtin.systemd:
+        name: highper-gateway
+      register: service_status
+      when: action == 'status'
+
+    - name: Display service status
+      ansible.builtin.debug:
+        msg: |
+          Service Status on {{ inventory_hostname }}:
+            - State: {{ service_status.status.ActiveState }}
+            - SubState: {{ service_status.status.SubState }}
+            - PID: {{ service_status.status.MainPID }}
+            - Memory: {{ service_status.status.MemoryCurrent | default('N/A') }}
+            - Started: {{ service_status.status.ActiveEnterTimestamp | default('N/A') }}
+      when: action == 'status'
+
+    # Graceful stop with connection draining
+    - name: Initiate graceful shutdown (drain connections)
+      ansible.builtin.command: >
+        kill -SIGTERM {{ ansible_facts.services['highper-gateway.service'].pid | default('') }}
+      when:
+        - action in ['stop', 'restart']
+        - drain_timeout > 0
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for connection draining
+      ansible.builtin.pause:
+        seconds: "{{ drain_timeout }}"
+      when:
+        - action in ['stop', 'restart']
+        - drain_timeout > 0
+
+    # Service actions
+    - name: Start service
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: started
+      when: action == 'start'
+
+    - name: Stop service
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: stopped
+      when: action == 'stop'
+
+    - name: Restart service
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: restarted
+      when: action == 'restart'
+
+    - name: Reload service
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: reloaded
+      when: action == 'reload'
+
+    # Health check after start/restart/reload
+    - name: Wait for service to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 30
+      delay: 2
+      when:
+        - action in ['start', 'restart', 'reload']
+        - wait_for_healthy
+
+    - name: Display action result
+      ansible.builtin.debug:
+        msg: "Action '{{ action }}' completed successfully on {{ inventory_hostname }}"
+      when: action != 'status'

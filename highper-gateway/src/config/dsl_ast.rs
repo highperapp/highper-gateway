@@ -402,6 +402,7 @@ impl Backend {
 pub enum LoadBalancingAlgorithm {
     RoundRobin,
     LeastConnections,
+    LeastResponseTime,
     IpHash,
     Random,
     Weighted,
@@ -413,6 +414,7 @@ impl std::fmt::Display for LoadBalancingAlgorithm {
         match self {
             LoadBalancingAlgorithm::RoundRobin => write!(f, "round_robin"),
             LoadBalancingAlgorithm::LeastConnections => write!(f, "least_conn"),
+            LoadBalancingAlgorithm::LeastResponseTime => write!(f, "least_response_time"),
             LoadBalancingAlgorithm::IpHash => write!(f, "ip_hash"),
             LoadBalancingAlgorithm::Random => write!(f, "random"),
             LoadBalancingAlgorithm::Weighted => write!(f, "weighted"),

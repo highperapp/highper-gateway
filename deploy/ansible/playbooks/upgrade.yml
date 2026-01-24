@@ -1,0 +1,171 @@
+---
+# Highper Gateway - Upgrade Playbook
+# Performs rolling upgrade with automatic rollback on failure
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml \
+#     -e "version=1.2.0" \
+#     -e "rolling=true"
+
+- name: Upgrade Highper Gateway
+  hosts: gateway
+  become: true
+  serial: "{{ '1' if rolling | default(true) else '100%' }}"
+  max_fail_percentage: 0
+
+  vars:
+    version: "{{ upgrade_version | default('latest') }}"
+    rolling: true
+    backup_dir: /var/lib/highper-gateway/backups
+    health_check_retries: 30
+    health_check_delay: 2
+
+  pre_tasks:
+    - name: Display upgrade info
+      ansible.builtin.debug:
+        msg: |
+          Upgrading Highper Gateway:
+            - Target version: {{ version }}
+            - Rolling upgrade: {{ rolling }}
+            - Host: {{ inventory_hostname }}
+
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0750"
+
+    - name: Get current version
+      ansible.builtin.command: /usr/bin/highper-gateway --version
+      register: current_version
+      changed_when: false
+      failed_when: false
+
+    - name: Backup current binary
+      ansible.builtin.copy:
+        src: /usr/bin/highper-gateway
+        dest: "{{ backup_dir }}/highper-gateway.{{ ansible_date_time.epoch }}"
+        remote_src: true
+        mode: "0755"
+      when: current_version.rc == 0
+
+    - name: Backup current configuration
+      ansible.builtin.copy:
+        src: /etc/highper-gateway/
+        dest: "{{ backup_dir }}/config.{{ ansible_date_time.epoch }}/"
+        remote_src: true
+      when: current_version.rc == 0
+
+  tasks:
+    - name: Download new binary
+      ansible.builtin.get_url:
+        url: "https://releases.highper-gateway.io/{{ version }}/highper-gateway-linux-{{ ansible_architecture }}"
+        dest: /tmp/highper-gateway-new
+        mode: "0755"
+        checksum: "sha256:https://releases.highper-gateway.io/{{ version }}/checksums.sha256"
+      register: download_result
+
+    - name: Stop service gracefully
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: stopped
+      register: stop_result
+
+    - name: Install new binary
+      ansible.builtin.copy:
+        src: /tmp/highper-gateway-new
+        dest: /usr/bin/highper-gateway
+        remote_src: true
+        mode: "0755"
+        owner: root
+        group: root
+      register: install_result
+
+    - name: Set capabilities on new binary
+      ansible.builtin.command: >
+        setcap 'cap_net_bind_service,cap_ipc_lock=+ep' /usr/bin/highper-gateway
+      changed_when: true
+
+    - name: Start service
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: started
+      register: start_result
+
+    - name: Wait for service to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+
+    - name: Verify new version
+      ansible.builtin.command: /usr/bin/highper-gateway --version
+      register: new_version
+      changed_when: false
+
+    - name: Display upgrade result
+      ansible.builtin.debug:
+        msg: |
+          Upgrade successful on {{ inventory_hostname }}:
+            - Previous: {{ current_version.stdout | default('N/A') }}
+            - Current: {{ new_version.stdout }}
+
+  rescue:
+    - name: Upgrade failed - initiating rollback
+      ansible.builtin.debug:
+        msg: "Upgrade failed on {{ inventory_hostname }}, rolling back..."
+
+    - name: Find latest backup
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns: "highper-gateway.*"
+        file_type: file
+      register: backup_files
+
+    - name: Restore previous binary
+      ansible.builtin.copy:
+        src: "{{ (backup_files.files | sort(attribute='mtime') | last).path }}"
+        dest: /usr/bin/highper-gateway
+        remote_src: true
+        mode: "0755"
+      when: backup_files.matched > 0
+
+    - name: Set capabilities on restored binary
+      ansible.builtin.command: >
+        setcap 'cap_net_bind_service,cap_ipc_lock=+ep' /usr/bin/highper-gateway
+      changed_when: true
+
+    - name: Restart service with previous version
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: restarted
+
+    - name: Wait for service to be healthy after rollback
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        status_code: 200
+      register: rollback_health
+      until: rollback_health.status == 200
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+
+    - name: Fail with rollback message
+      ansible.builtin.fail:
+        msg: "Upgrade failed and rolled back on {{ inventory_hostname }}"
+
+  post_tasks:
+    - name: Clean up temporary files
+      ansible.builtin.file:
+        path: /tmp/highper-gateway-new
+        state: absent
+
+    - name: Clean up old backups (keep last 5)
+      ansible.builtin.shell: |
+        cd {{ backup_dir }} && ls -t highper-gateway.* | tail -n +6 | xargs -r rm
+      changed_when: false
+      failed_when: false

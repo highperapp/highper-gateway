@@ -377,16 +377,29 @@ pub async fn drain_backend(
     }
 
     let drain_timeout = request.drain_timeout_seconds.unwrap_or(60);
+    let reason = request.reason.clone();
 
     // Update state if available
-    if let Some(state) = state {
-        let success = state.set_backend_draining(backend_id, true).await;
+    if let Some(ref state) = state {
+        let success = state.set_backend_draining_with_timeout(
+            backend_id,
+            true,
+            Some(drain_timeout),
+            reason.clone(),
+        ).await;
         if !success {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to update backend state",
             );
         }
+
+        // Spawn a background task to monitor drain progress
+        let state_clone = state.clone();
+        let backend_id_owned = backend_id.to_string();
+        tokio::spawn(async move {
+            monitor_drain_progress(state_clone, backend_id_owned, drain_timeout).await;
+        });
     }
 
     json_response(
@@ -394,12 +407,160 @@ pub async fn drain_backend(
         json!(BackendControlResponse {
             success: true,
             message: format!(
-                "Backend '{}' is draining. Timeout: {}s",
-                backend_id, drain_timeout
+                "Backend '{}' is draining. Timeout: {}s. Reason: {}",
+                backend_id,
+                drain_timeout,
+                reason.unwrap_or_else(|| "No reason provided".to_string())
             ),
             backend: None,
         }),
     )
+}
+
+/// Monitor drain progress and complete when all connections are closed or timeout is reached
+async fn monitor_drain_progress(state: Arc<ProxyState>, backend_id: String, timeout_secs: u64) {
+    use std::time::Duration;
+    use tracing::{debug, info, warn};
+
+    let check_interval = Duration::from_secs(1);
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+
+    loop {
+        tokio::time::sleep(check_interval).await;
+
+        // Check if drain is still active
+        let drain_status = state.get_drain_status(&backend_id).await;
+        match drain_status {
+            None => {
+                // Drain was cancelled or backend removed
+                debug!("Drain cancelled for backend {}", backend_id);
+                return;
+            }
+            Some(status) => {
+                if status.drain_completed {
+                    info!("Drain completed for backend {} (already marked complete)", backend_id);
+                    return;
+                }
+
+                // Check if all connections are closed
+                if status.active_connections == 0 {
+                    info!(
+                        "Drain completed for backend {}: all connections closed after {:.1}s",
+                        backend_id,
+                        start.elapsed().as_secs_f64()
+                    );
+                    state.complete_drain(&backend_id).await;
+                    return;
+                }
+
+                // Check for timeout
+                if start.elapsed() >= timeout {
+                    warn!(
+                        "Drain timeout for backend {}: {} connections still active after {}s",
+                        backend_id, status.active_connections, timeout_secs
+                    );
+                    state.complete_drain(&backend_id).await;
+                    return;
+                }
+
+                debug!(
+                    "Drain in progress for {}: {} active connections, {:.0}s remaining",
+                    backend_id,
+                    status.active_connections,
+                    status.remaining_secs
+                );
+            }
+        }
+    }
+}
+
+/// Get drain status for a backend
+pub async fn get_drain_status(
+    state: Option<Arc<ProxyState>>,
+    backend_id: &str,
+) -> Response<Full<Bytes>> {
+    let state = match state {
+        Some(s) => s,
+        None => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Proxy state not available",
+            );
+        }
+    };
+
+    match state.get_drain_status(backend_id).await {
+        Some(status) => json_response(StatusCode::OK, json!(status)),
+        None => {
+            // Check if backend exists but is not draining
+            match state.get_backend(backend_id).await {
+                Some(_) => json_response(
+                    StatusCode::OK,
+                    json!({
+                        "backend_id": backend_id,
+                        "draining": false,
+                        "message": "Backend is not in drain mode"
+                    }),
+                ),
+                None => error_response(
+                    StatusCode::NOT_FOUND,
+                    &format!("Backend '{}' not found", backend_id),
+                ),
+            }
+        }
+    }
+}
+
+/// Cancel drain for a backend (restore to normal operation)
+pub async fn cancel_drain(
+    state: Option<Arc<ProxyState>>,
+    backend_id: &str,
+) -> Response<Full<Bytes>> {
+    let state = match state {
+        Some(s) => s,
+        None => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Proxy state not available",
+            );
+        }
+    };
+
+    // Check if backend exists and is draining
+    let backend = state.get_backend(backend_id).await;
+    match backend {
+        None => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                &format!("Backend '{}' not found", backend_id),
+            );
+        }
+        Some(b) if !b.draining => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                &format!("Backend '{}' is not in drain mode", backend_id),
+            );
+        }
+        _ => {}
+    }
+
+    let success = state.set_backend_draining(backend_id, false).await;
+    if success {
+        json_response(
+            StatusCode::OK,
+            json!(BackendControlResponse {
+                success: true,
+                message: format!("Drain cancelled for backend '{}'", backend_id),
+                backend: None,
+            }),
+        )
+    } else {
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to cancel drain",
+        )
+    }
 }
 
 /// Force a health check on a backend
@@ -505,6 +666,7 @@ mod tests {
                     },
                     health_check: HealthCheckConfig::default(),
                     connection: Default::default(),
+                    slow_start: None,
                 },
             ],
             routes: vec![],

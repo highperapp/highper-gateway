@@ -36,6 +36,8 @@ pub struct AdminServer {
     hostname_router: Option<Arc<crate::gateway::routing::HostnameRouter>>,
     auth_db: Option<Arc<crate::admin::auth::AuthDb>>,
     route_manager: Arc<crate::admin::RouteManager>,
+    upstream_manager: Arc<crate::admin::UpstreamManager>,
+    config_persistence: Arc<crate::admin::ConfigPersistence>,
 }
 
 impl AdminServer {
@@ -43,12 +45,14 @@ impl AdminServer {
     pub fn new(config: AdminConfig, proxy_config: Arc<RwLock<Config>>) -> Self {
         Self {
             config,
-            proxy_config,
+            proxy_config: proxy_config.clone(),
             proxy_state: None,
             reload_tx: None,
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::new(proxy_config)),
+            config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
 
@@ -60,12 +64,14 @@ impl AdminServer {
     ) -> Self {
         Self {
             config,
-            proxy_config,
-            proxy_state: Some(proxy_state),
+            proxy_config: proxy_config.clone(),
+            proxy_state: Some(proxy_state.clone()),
             reload_tx: None,
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(proxy_config, proxy_state)),
+            config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
 
@@ -77,12 +83,14 @@ impl AdminServer {
     ) -> Self {
         Self {
             config,
-            proxy_config,
+            proxy_config: proxy_config.clone(),
             proxy_state: None,
             reload_tx: Some(reload_tx),
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::new(proxy_config)),
+            config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
 
@@ -95,12 +103,14 @@ impl AdminServer {
     ) -> Self {
         Self {
             config,
-            proxy_config,
-            proxy_state: Some(proxy_state),
+            proxy_config: proxy_config.clone(),
+            proxy_state: Some(proxy_state.clone()),
             reload_tx: Some(reload_tx),
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(proxy_config, proxy_state)),
+            config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
 
@@ -113,6 +123,12 @@ impl AdminServer {
     /// Set the authentication database (builder pattern)
     pub fn with_auth_db(mut self, auth_db: Arc<crate::admin::auth::AuthDb>) -> Self {
         self.auth_db = Some(auth_db);
+        self
+    }
+
+    /// Set the configuration persistence (builder pattern)
+    pub fn with_config_persistence(mut self, persistence: Arc<crate::admin::ConfigPersistence>) -> Self {
+        self.config_persistence = persistence;
         self
     }
 
@@ -173,17 +189,23 @@ impl AdminServer {
             return Ok(self.handle_cors_preflight());
         }
 
-        // Skip authentication for login endpoint
+        // Skip authentication for login endpoint and dashboard
         let is_login_endpoint = method == Method::POST && path == "/api/auth/login";
+        let is_dashboard = method == Method::GET && (path == "/dashboard" || path == "/");
 
-        // Check authentication (skip for login endpoint)
-        if self.config.auth_enabled && !is_login_endpoint {
+        // Check authentication (skip for login endpoint and dashboard)
+        if self.config.auth_enabled && !is_login_endpoint && !is_dashboard {
             if let Err(response) = self.authenticate(&req) {
                 return Ok(response);
             }
         }
 
         let response = match (&method, path.as_str()) {
+            // Dashboard (no auth required for viewing)
+            (&Method::GET, "/dashboard") | (&Method::GET, "/") => {
+                return Ok(crate::admin::dashboard::serve_dashboard());
+            }
+
             // Authentication endpoints
             (&Method::POST, "/api/auth/login") => self.handle_login(req).await,
 
@@ -221,13 +243,43 @@ impl AdminServer {
                 self.delete_route(route_name).await
             }
 
-            // Upstreams (stub for now)
+            // Upstreams management
             (&Method::GET, "/api/upstreams") => self.list_upstreams().await,
+            (&Method::POST, "/api/upstreams") => self.create_upstream(req).await,
 
-            // Upstream health status (match paths with names)
+            // Upstream operations (GET, PUT, DELETE specific upstream)
             _ if method == Method::GET && path.starts_with("/api/upstreams/") && path.ends_with("/health") => {
                 self.handle_upstream_health(&path).await
             }
+            _ if method == Method::GET && path.starts_with("/api/upstreams/") && !path.contains("/servers") && !path.contains("/load-balancing") => {
+                self.handle_upstream_get(&path).await
+            }
+            _ if method == Method::PUT && path.starts_with("/api/upstreams/") && !path.contains("/load-balancing") => {
+                self.handle_upstream_update(&path, req).await
+            }
+            _ if method == Method::DELETE && path.starts_with("/api/upstreams/") && !path.contains("/servers") => {
+                self.handle_upstream_delete(&path).await
+            }
+
+            // Upstream server management
+            _ if method == Method::POST && path.starts_with("/api/upstreams/") && path.ends_with("/servers") => {
+                self.handle_add_server(&path, req).await
+            }
+            _ if method == Method::DELETE && path.starts_with("/api/upstreams/") && path.contains("/servers") => {
+                self.handle_remove_server(&path, req).await
+            }
+
+            // Upstream load balancing update
+            _ if method == Method::PUT && path.starts_with("/api/upstreams/") && path.ends_with("/load-balancing") => {
+                self.handle_update_load_balancing(&path, req).await
+            }
+
+            // Configuration persistence
+            (&Method::POST, "/api/config/save") => self.save_config().await,
+            (&Method::GET, "/api/config/export") => self.export_config().await,
+
+            // Upstream health status (match paths with names) - legacy location
+            // (moved above for better route matching)
 
             // Backend operations (match paths with IDs)
             _ if method == Method::GET && path.starts_with("/api/backends/") => {
@@ -739,7 +791,7 @@ impl AdminServer {
                 StatusCode::BAD_REQUEST,
                 json!({
                     "error": "Invalid request",
-                    "message": "Operation required. Use: /api/backends/{id}/{enable|disable|drain|health-check}"
+                    "message": "Operation required. Use: /api/backends/{id}/{enable|disable|drain|drain-status|cancel-drain|health-check}"
                 }),
             );
         }
@@ -815,11 +867,19 @@ impl AdminServer {
                 crate::admin::backends::force_health_check(self.proxy_config.clone(), backend_id)
                     .await
             }
+            "drain-status" => {
+                crate::admin::backends::get_drain_status(self.proxy_state.clone(), backend_id)
+                    .await
+            }
+            "cancel-drain" => {
+                crate::admin::backends::cancel_drain(self.proxy_state.clone(), backend_id)
+                    .await
+            }
             _ => json_response(
                 StatusCode::BAD_REQUEST,
                 json!({
                     "error": "Invalid operation",
-                    "message": format!("Unknown operation: {}. Valid operations: enable, disable, drain, health-check", operation)
+                    "message": format!("Unknown operation: {}. Valid operations: enable, disable, drain, drain-status, cancel-drain, health-check", operation)
                 }),
             ),
         }
@@ -1568,6 +1628,335 @@ impl AdminServer {
                 })
             )
         }
+    }
+
+    /// Create a new upstream
+    async fn create_upstream(&self, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let upstream: crate::admin::UpstreamDefinition = match serde_json::from_slice(&body_bytes) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid upstream definition: {}", e)
+                    }),
+                );
+            }
+        };
+
+        crate::admin::upstreams::create_upstream_handler(
+            self.upstream_manager.clone(),
+            upstream,
+        ).await
+    }
+
+    /// Get upstream details
+    async fn handle_upstream_get(&self, path: &str) -> Response<Full<Bytes>> {
+        // Parse path: /api/upstreams/{name}
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 4 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+        crate::admin::upstreams::get_upstream_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+        ).await
+    }
+
+    /// Update an upstream
+    async fn handle_upstream_update(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse path: /api/upstreams/{name}
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 4 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let upstream: crate::admin::UpstreamDefinition = match serde_json::from_slice(&body_bytes) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid upstream definition: {}", e)
+                    }),
+                );
+            }
+        };
+
+        crate::admin::upstreams::update_upstream_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+            upstream,
+        ).await
+    }
+
+    /// Delete an upstream
+    async fn handle_upstream_delete(&self, path: &str) -> Response<Full<Bytes>> {
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse path: /api/upstreams/{name}
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 4 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+        crate::admin::upstreams::delete_upstream_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+        ).await
+    }
+
+    /// Add a server to an upstream
+    async fn handle_add_server(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse path: /api/upstreams/{name}/servers
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 5 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let request: crate::admin::upstreams::AddServerRequest = match serde_json::from_slice(&body_bytes) {
+            Ok(request) => request,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid request: {}", e)
+                    }),
+                );
+            }
+        };
+
+        crate::admin::upstreams::add_server_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+            request,
+        ).await
+    }
+
+    /// Remove a server from an upstream
+    async fn handle_remove_server(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse path: /api/upstreams/{name}/servers
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 5 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let request: crate::admin::upstreams::RemoveServerRequest = match serde_json::from_slice(&body_bytes) {
+            Ok(request) => request,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid request: {}", e)
+                    }),
+                );
+            }
+        };
+
+        crate::admin::upstreams::remove_server_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+            request,
+        ).await
+    }
+
+    /// Update load balancing configuration
+    async fn handle_update_load_balancing(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+        use http_body_util::BodyExt;
+
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        // Parse path: /api/upstreams/{name}/load-balancing
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() < 5 {
+            return self.not_found();
+        }
+
+        let upstream_name = parts[3];
+
+        // Parse request body
+        let body_bytes = match req.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Failed to read request body: {}", e)
+                    }),
+                );
+            }
+        };
+
+        let request: crate::admin::upstreams::UpdateLoadBalancingRequest = match serde_json::from_slice(&body_bytes) {
+            Ok(request) => request,
+            Err(e) => {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    json!({
+                        "error": format!("Invalid request: {}", e)
+                    }),
+                );
+            }
+        };
+
+        crate::admin::upstreams::update_load_balancing_handler(
+            self.upstream_manager.clone(),
+            upstream_name,
+            request,
+        ).await
+    }
+
+    /// Save configuration to disk
+    async fn save_config(&self) -> Response<Full<Bytes>> {
+        // Check read-only mode
+        if self.config.read_only {
+            return json_response(
+                StatusCode::FORBIDDEN,
+                json!({
+                    "error": "Server is in read-only mode"
+                }),
+            );
+        }
+
+        crate::admin::config_persistence::save_config_handler(
+            self.config_persistence.clone(),
+            self.route_manager.clone(),
+            self.upstream_manager.clone(),
+        ).await
+    }
+
+    /// Export current configuration
+    async fn export_config(&self) -> Response<Full<Bytes>> {
+        crate::admin::config_persistence::export_config_handler(
+            self.route_manager.clone(),
+            self.upstream_manager.clone(),
+            self.config_persistence.clone(),
+        ).await
     }
 
     /// Add CORS headers to response

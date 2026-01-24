@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "highper-gateway.fullname" . }}-config
+  labels:
+    {{- include "highper-gateway.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Highper Gateway Configuration
+    # Use Case: {{ .Values.useCase }}
+    # Environment: {{ .Values.environment }}
+
+    server:
+      name: "{{ include "highper-gateway.fullname" . }}"
+
+    # io_uring configuration
+    io_uring:
+      entries: {{ .Values.iouring.entries }}
+      sq_poll: {{ .Values.iouring.sqPoll }}
+      {{- if .Values.iouring.sqPoll }}
+      sq_poll_cpu: {{ .Values.iouring.sqPollCpu }}
+      {{- end }}
+
+    # Logging
+    logging:
+      level: {{ .Values.logging.level }}
+      format: {{ .Values.logging.format }}
+      output: /var/log/highper-gateway/gateway.log
+
+    # Metrics
+    metrics:
+      enabled: {{ .Values.metrics.enabled }}
+      {{- if .Values.metrics.enabled }}
+      endpoint: {{ .Values.metrics.endpoint }}
+      port: {{ .Values.metrics.port }}
+      {{- end }}
+
+    # Health check
+    health:
+      enabled: {{ .Values.health.enabled }}
+      {{- if .Values.health.enabled }}
+      endpoint: {{ .Values.health.endpoint }}
+      port: {{ .Values.health.port }}
+      {{- end }}
+
+    {{- if .Values.tls.enabled }}
+    # TLS configuration
+    tls:
+      enabled: true
+      cert: /etc/highper-gateway/certs/tls.crt
+      key: /etc/highper-gateway/certs/tls.key
+      {{- if or .Values.tls.ca .Values.tls.secretName }}
+      ca: /etc/highper-gateway/certs/ca.crt
+      {{- end }}
+    {{- end }}
+
+    {{- with .Values.config.custom }}
+    # Custom configuration
+    {{- toYaml . | nindent 4 }}
+    {{- end }}

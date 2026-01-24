@@ -1,0 +1,47 @@
+---
+# Highper Gateway - Main Deployment Playbook
+# Usage: ansible-playbook -i inventory/hosts.yml playbooks/deploy.yml
+
+- name: Deploy Highper Gateway
+  hosts: gateway
+  become: true
+  gather_facts: true
+
+  vars:
+    highper_gateway_environment: "{{ environment | default('prod') }}"
+    highper_gateway_use_case: "{{ use_case | default('02') }}"
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          Deploying Highper Gateway:
+            - Environment: {{ highper_gateway_environment }}
+            - Use case: {{ highper_gateway_use_case }}
+            - Target hosts: {{ ansible_play_hosts | join(', ') }}
+
+    - name: Verify connectivity
+      ansible.builtin.ping:
+
+  roles:
+    - role: highper-gateway
+      tags: [highper-gateway]
+
+  post_tasks:
+    - name: Verify service is enabled
+      ansible.builtin.systemd:
+        name: highper-gateway
+        enabled: true
+      check_mode: true
+      register: service_status
+      changed_when: false
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          Deployment complete!
+            - Service enabled: {{ service_status.enabled | default(true) }}
+            - Config location: /etc/highper-gateway/config.yaml
+            - Log location: /var/log/highper-gateway/
+
+          Note: Install the Highper Gateway binary before starting the service.

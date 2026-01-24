@@ -356,6 +356,51 @@ pub struct UpstreamConfig {
     /// Health check configuration
     #[serde(default)]
     pub health_check: HealthCheckConfig,
+
+    /// Slow start configuration for newly added/recovered backends
+    #[serde(default)]
+    pub slow_start: Option<SlowStartConfig>,
+}
+
+/// Slow start configuration
+///
+/// Gradually increases traffic to newly added or recovered backends
+/// to prevent overwhelming them during startup.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SlowStartConfig {
+    /// Enable slow start
+    #[serde(default = "default_slow_start_enabled")]
+    pub enabled: bool,
+
+    /// Duration to reach full weight (in seconds)
+    #[serde(default = "default_slow_start_duration")]
+    pub duration_secs: u64,
+
+    /// Initial weight percentage (1-100)
+    #[serde(default = "default_slow_start_initial_weight")]
+    pub initial_weight_percent: u32,
+}
+
+fn default_slow_start_enabled() -> bool {
+    true
+}
+
+fn default_slow_start_duration() -> u64 {
+    60 // 60 seconds to reach full weight
+}
+
+fn default_slow_start_initial_weight() -> u32 {
+    10 // Start at 10% of full weight
+}
+
+impl Default for SlowStartConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_slow_start_enabled(),
+            duration_secs: default_slow_start_duration(),
+            initial_weight_percent: default_slow_start_initial_weight(),
+        }
+    }
 }
 
 /// Backend server definition
@@ -405,6 +450,7 @@ fn default_max_conns() -> usize {
 pub enum LoadBalancingAlgorithm {
     RoundRobin,
     LeastConn,
+    LeastResponseTime,
     Random,
     IpHash,
     ConsistentHash,
@@ -685,6 +731,190 @@ pub struct RouteConfig {
     /// Resource limits configuration
     #[serde(default)]
     pub limits: Option<ResourceLimits>,
+
+    /// Request/response validation configuration
+    #[serde(default)]
+    pub validation: Option<ValidationConfig>,
+
+    /// Response transformation configuration
+    #[serde(default)]
+    pub transform: Option<TransformConfig>,
+}
+
+/// Response transformation configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TransformConfig {
+    /// Response body transformation
+    #[serde(default)]
+    pub response: Option<ResponseTransform>,
+
+    /// Request body transformation (rarely used)
+    #[serde(default)]
+    pub request: Option<RequestTransform>,
+}
+
+/// Response body transformation rules
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ResponseTransform {
+    /// Rename fields (old_name -> new_name)
+    #[serde(default)]
+    pub rename: std::collections::HashMap<String, String>,
+
+    /// Remove fields by path
+    #[serde(default)]
+    pub remove: Vec<String>,
+
+    /// Add static fields (path -> value)
+    #[serde(default)]
+    pub add: std::collections::HashMap<String, serde_json::Value>,
+
+    /// Flatten nested objects (bring nested fields to root)
+    #[serde(default)]
+    pub flatten: Vec<String>,
+
+    /// Pick only specific fields (whitelist)
+    #[serde(default)]
+    pub pick: Vec<String>,
+
+    /// Content types to transform (default: ["application/json"])
+    #[serde(default = "default_transform_content_types")]
+    pub content_types: Vec<String>,
+
+    /// Apply transformation to array elements
+    #[serde(default)]
+    pub map_array: bool,
+
+    /// Extract a nested field as root
+    #[serde(default)]
+    pub extract: Option<String>,
+}
+
+impl Default for ResponseTransform {
+    fn default() -> Self {
+        Self {
+            rename: std::collections::HashMap::new(),
+            remove: Vec::new(),
+            add: std::collections::HashMap::new(),
+            flatten: Vec::new(),
+            pick: Vec::new(),
+            content_types: default_transform_content_types(),
+            map_array: false,
+            extract: None,
+        }
+    }
+}
+
+/// Request body transformation rules
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RequestTransform {
+    /// Rename fields
+    #[serde(default)]
+    pub rename: std::collections::HashMap<String, String>,
+
+    /// Remove fields
+    #[serde(default)]
+    pub remove: Vec<String>,
+
+    /// Add fields
+    #[serde(default)]
+    pub add: std::collections::HashMap<String, serde_json::Value>,
+
+    /// Content types to transform
+    #[serde(default = "default_transform_content_types")]
+    pub content_types: Vec<String>,
+}
+
+impl Default for RequestTransform {
+    fn default() -> Self {
+        Self {
+            rename: std::collections::HashMap::new(),
+            remove: Vec::new(),
+            add: std::collections::HashMap::new(),
+            content_types: default_transform_content_types(),
+        }
+    }
+}
+
+fn default_transform_content_types() -> Vec<String> {
+    vec!["application/json".to_string()]
+}
+
+/// Request/response validation configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ValidationConfig {
+    /// Request body validation
+    #[serde(default)]
+    pub request: Option<RequestValidation>,
+
+    /// Response body validation (for debugging/monitoring)
+    #[serde(default)]
+    pub response: Option<ResponseValidation>,
+}
+
+/// Request body validation settings
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RequestValidation {
+    /// Path to JSON Schema file
+    #[serde(default)]
+    pub schema_file: Option<String>,
+
+    /// Inline JSON Schema (alternative to schema_file)
+    #[serde(default)]
+    pub json_schema: Option<serde_json::Value>,
+
+    /// Content types to validate (default: ["application/json"])
+    #[serde(default = "default_validation_content_types")]
+    pub content_types: Vec<String>,
+
+    /// Action on validation failure: "reject" (400) or "warn" (log only)
+    #[serde(default = "default_validation_action")]
+    pub on_failure: ValidationAction,
+
+    /// Include validation errors in response body
+    #[serde(default = "default_include_errors")]
+    pub include_errors: bool,
+}
+
+/// Response body validation settings
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ResponseValidation {
+    /// Path to JSON Schema file
+    #[serde(default)]
+    pub schema_file: Option<String>,
+
+    /// Inline JSON Schema
+    #[serde(default)]
+    pub json_schema: Option<serde_json::Value>,
+
+    /// Action on validation failure: "warn" (default) or "reject" (502)
+    #[serde(default = "default_response_validation_action")]
+    pub on_failure: ValidationAction,
+}
+
+/// Action to take on validation failure
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ValidationAction {
+    /// Reject the request/response with error status
+    Reject,
+    /// Log warning but allow request/response to proceed
+    Warn,
+}
+
+fn default_validation_content_types() -> Vec<String> {
+    vec!["application/json".to_string()]
+}
+
+fn default_validation_action() -> ValidationAction {
+    ValidationAction::Reject
+}
+
+fn default_response_validation_action() -> ValidationAction {
+    ValidationAction::Warn
+}
+
+fn default_include_errors() -> bool {
+    true
 }
 
 /// Resource limits for route
@@ -979,11 +1209,19 @@ pub struct AcmeConfig {
     /// Contact email for ACME account
     pub email: String,
 
-    /// ACME directory URL
+    /// ACME directory URL (auto-set based on provider and staging flag)
     #[serde(default = "default_acme_directory")]
     pub directory_url: String,
 
-    /// Challenge type
+    /// Use staging/test environment (recommended for testing)
+    #[serde(default)]
+    pub staging: bool,
+
+    /// Domains to request certificates for (auto-detected from routes if empty)
+    #[serde(default)]
+    pub domains: Vec<String>,
+
+    /// Challenge type (http-01, dns-01, tls-alpn-01)
     #[serde(default = "default_challenge_type")]
     pub challenge_type: String,
 
@@ -998,6 +1236,26 @@ pub struct AcmeConfig {
     /// Check interval for renewal
     #[serde(default = "default_renew_check_interval", with = "humantime_serde")]
     pub renew_check_interval: Duration,
+}
+
+impl AcmeConfig {
+    /// Get the effective directory URL based on provider and staging flag
+    pub fn effective_directory_url(&self) -> String {
+        if !self.directory_url.is_empty() && self.directory_url != default_acme_directory() {
+            // Custom directory URL provided
+            return self.directory_url.clone();
+        }
+
+        // Auto-determine based on provider and staging flag
+        match (self.provider.as_str(), self.staging) {
+            ("letsencrypt", true) => "https://acme-staging-v02.api.letsencrypt.org/directory".to_string(),
+            ("letsencrypt", false) => "https://acme-v02.api.letsencrypt.org/directory".to_string(),
+            ("zerossl", _) => "https://acme.zerossl.com/v2/DV90".to_string(),
+            ("buypass", true) => "https://api.test4.buypass.no/acme/directory".to_string(),
+            ("buypass", false) => "https://api.buypass.com/acme/directory".to_string(),
+            _ => self.directory_url.clone(),
+        }
+    }
 }
 
 fn default_acme_provider() -> String {
@@ -1599,7 +1857,7 @@ pub struct TracingConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Exporter type: jaeger, zipkin, otlp
+    /// Exporter type: jaeger, otlp, stdout
     #[serde(default = "default_tracing_exporter")]
     pub exporter: String,
 
@@ -1618,6 +1876,10 @@ pub struct TracingConfig {
     /// Additional resource attributes
     #[serde(default)]
     pub resource_attributes: std::collections::HashMap<String, String>,
+
+    /// OTLP-specific configuration (used when exporter is "otlp")
+    #[serde(default)]
+    pub otlp: OtlpConfig,
 }
 
 impl Default for TracingConfig {
@@ -1629,8 +1891,53 @@ impl Default for TracingConfig {
             sample_rate: default_sample_rate(),
             service_name: default_service_name(),
             resource_attributes: std::collections::HashMap::new(),
+            otlp: OtlpConfig::default(),
         }
     }
+}
+
+/// OTLP (OpenTelemetry Protocol) specific configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OtlpConfig {
+    /// Enable OTLP metrics export (in addition to traces)
+    #[serde(default)]
+    pub metrics_enabled: bool,
+
+    /// OTLP metrics export interval in seconds
+    #[serde(default = "default_otlp_export_interval")]
+    pub export_interval_secs: u64,
+
+    /// Use gRPC compression (gzip)
+    #[serde(default)]
+    pub compression: bool,
+
+    /// Custom headers to include in OTLP requests (for authentication)
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+
+    /// Timeout for OTLP exports in seconds
+    #[serde(default = "default_otlp_timeout")]
+    pub timeout_secs: u64,
+}
+
+impl Default for OtlpConfig {
+    fn default() -> Self {
+        Self {
+            metrics_enabled: false,
+            export_interval_secs: default_otlp_export_interval(),
+            compression: false,
+            headers: std::collections::HashMap::new(),
+            timeout_secs: default_otlp_timeout(),
+        }
+    }
+}
+
+fn default_otlp_export_interval() -> u64 {
+    60 // Export metrics every 60 seconds
+}
+
+fn default_otlp_timeout() -> u64 {
+    30 // 30 second timeout for exports
 }
 
 fn default_tracing_exporter() -> String {

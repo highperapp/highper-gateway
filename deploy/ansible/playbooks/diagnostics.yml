@@ -1,0 +1,243 @@
+---
+# Highper Gateway - Diagnostics Playbook
+# Gather diagnostic information for troubleshooting
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/diagnostics.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/diagnostics.yml -e "save_report=true"
+
+- name: Highper Gateway Diagnostics
+  hosts: gateway
+  become: true
+  gather_facts: true
+
+  vars:
+    save_report: false
+    report_dir: /tmp/highper-gateway-diagnostics
+    check_backends: true
+    collect_logs: true
+    log_lines: 100
+
+  tasks:
+    - name: Create report directory
+      ansible.builtin.file:
+        path: "{{ report_dir }}/{{ inventory_hostname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      when: save_report
+
+    # System Information
+    - name: Gather system information
+      ansible.builtin.set_fact:
+        system_info:
+          hostname: "{{ ansible_hostname }}"
+          os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+          kernel: "{{ ansible_kernel }}"
+          architecture: "{{ ansible_architecture }}"
+          cpus: "{{ ansible_processor_vcpus }}"
+          memory_mb: "{{ ansible_memtotal_mb }}"
+          uptime_seconds: "{{ ansible_uptime_seconds }}"
+
+    - name: Display system information
+      ansible.builtin.debug:
+        var: system_info
+
+    # Service Status
+    - name: Get service status
+      ansible.builtin.systemd:
+        name: highper-gateway
+      register: service_status
+
+    - name: Get process details
+      ansible.builtin.command: ps -p {{ service_status.status.MainPID }} -o pid,ppid,user,%cpu,%mem,vsz,rss,stat,start,time,command
+      register: process_info
+      changed_when: false
+      failed_when: false
+      when: service_status.status.MainPID != '0'
+
+    - name: Display service status
+      ansible.builtin.debug:
+        msg: |
+          Service Status:
+            - Active: {{ service_status.status.ActiveState }}
+            - PID: {{ service_status.status.MainPID }}
+            - Memory: {{ service_status.status.MemoryCurrent | default('N/A') }}
+
+          Process Details:
+          {{ process_info.stdout | default('Service not running') }}
+
+    # Health Check
+    - name: Check health endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        return_content: true
+      register: health_check
+      failed_when: false
+
+    - name: Display health check result
+      ansible.builtin.debug:
+        msg: |
+          Health Check:
+            - Status: {{ health_check.status | default('FAILED') }}
+            - Response: {{ health_check.content | default('No response') }}
+
+    # Metrics
+    - name: Check metrics endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:9090/metrics"
+        return_content: true
+      register: metrics_check
+      failed_when: false
+
+    - name: Parse key metrics
+      ansible.builtin.set_fact:
+        key_metrics: |
+          {{ metrics_check.content | default('') | regex_findall('(highper_gateway_[a-z_]+)\s+([0-9.]+)') | join('\n') }}
+      when: metrics_check.status == 200
+
+    - name: Display key metrics
+      ansible.builtin.debug:
+        msg: |
+          Metrics Endpoint: {{ 'OK' if metrics_check.status == 200 else 'FAILED' }}
+          Sample metrics available at http://localhost:9090/metrics
+
+    # io_uring Status
+    - name: Check io_uring availability
+      ansible.builtin.command: cat /proc/sys/kernel/io_uring_disabled
+      register: iouring_disabled
+      changed_when: false
+      failed_when: false
+
+    - name: Check memlock limits
+      ansible.builtin.command: cat /proc/$(pgrep -f highper-gateway | head -1)/limits 2>/dev/null | grep -i memlock
+      register: memlock_limits
+      changed_when: false
+      failed_when: false
+
+    - name: Display io_uring status
+      ansible.builtin.debug:
+        msg: |
+          io_uring Status:
+            - Disabled: {{ iouring_disabled.stdout | default('unknown') }}
+            - Memlock Limits: {{ memlock_limits.stdout | default('N/A') }}
+
+    # Network Connections
+    - name: Get active connections
+      ansible.builtin.shell: ss -tnp | grep highper-gateway | wc -l
+      register: connection_count
+      changed_when: false
+
+    - name: Get listening ports
+      ansible.builtin.shell: ss -tlnp | grep highper-gateway
+      register: listening_ports
+      changed_when: false
+      failed_when: false
+
+    - name: Display network status
+      ansible.builtin.debug:
+        msg: |
+          Network Status:
+            - Active Connections: {{ connection_count.stdout }}
+            - Listening Ports:
+          {{ listening_ports.stdout | default('None') | indent(4) }}
+
+    # Configuration Check
+    - name: Validate configuration
+      ansible.builtin.command: /usr/bin/highper-gateway --config /etc/highper-gateway/config.yaml --validate
+      register: config_validation
+      changed_when: false
+      failed_when: false
+
+    - name: Display configuration validation
+      ansible.builtin.debug:
+        msg: |
+          Configuration Validation: {{ 'PASSED' if config_validation.rc == 0 else 'FAILED' }}
+          {{ config_validation.stderr | default('') }}
+
+    # Recent Logs
+    - name: Get recent error logs
+      ansible.builtin.command: tail -n {{ log_lines }} /var/log/highper-gateway/error.log
+      register: error_logs
+      changed_when: false
+      failed_when: false
+      when: collect_logs
+
+    - name: Get recent gateway logs
+      ansible.builtin.command: tail -n {{ log_lines }} /var/log/highper-gateway/gateway.log
+      register: gateway_logs
+      changed_when: false
+      failed_when: false
+      when: collect_logs
+
+    - name: Check for recent errors
+      ansible.builtin.set_fact:
+        recent_errors: "{{ error_logs.stdout_lines | default([]) | select('search', 'ERROR|WARN|FATAL') | list }}"
+      when: collect_logs
+
+    - name: Display log summary
+      ansible.builtin.debug:
+        msg: |
+          Recent Errors (last {{ log_lines }} lines):
+          {{ recent_errors | default([]) | join('\n') | default('No recent errors') }}
+      when: collect_logs
+
+    # Disk Usage
+    - name: Check disk usage
+      ansible.builtin.command: df -h /var/log/highper-gateway /etc/highper-gateway
+      register: disk_usage
+      changed_when: false
+
+    - name: Display disk usage
+      ansible.builtin.debug:
+        msg: |
+          Disk Usage:
+          {{ disk_usage.stdout }}
+
+    # Save Report
+    - name: Save diagnostic report
+      ansible.builtin.copy:
+        content: |
+          # Highper Gateway Diagnostic Report
+          # Host: {{ inventory_hostname }}
+          # Generated: {{ ansible_date_time.iso8601 }}
+
+          ## System Information
+          {{ system_info | to_nice_yaml }}
+
+          ## Service Status
+          Active: {{ service_status.status.ActiveState }}
+          PID: {{ service_status.status.MainPID }}
+
+          ## Health Check
+          Status: {{ health_check.status | default('FAILED') }}
+
+          ## Network
+          Active Connections: {{ connection_count.stdout }}
+          Listening:
+          {{ listening_ports.stdout | default('None') }}
+
+          ## Configuration
+          Valid: {{ 'Yes' if config_validation.rc == 0 else 'No' }}
+
+          ## Recent Errors
+          {{ recent_errors | default([]) | join('\n') }}
+
+          ## Disk Usage
+          {{ disk_usage.stdout }}
+        dest: "{{ report_dir }}/{{ inventory_hostname }}/report.md"
+      delegate_to: localhost
+      when: save_report
+
+    - name: Display summary
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          DIAGNOSTIC SUMMARY: {{ inventory_hostname }}
+          ========================================
+          Service: {{ service_status.status.ActiveState }}
+          Health: {{ 'OK' if health_check.status == 200 else 'FAILED' }}
+          Config: {{ 'Valid' if config_validation.rc == 0 else 'Invalid' }}
+          Connections: {{ connection_count.stdout }}
+          Errors: {{ recent_errors | default([]) | length }} recent
+          ========================================

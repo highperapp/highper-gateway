@@ -1,0 +1,7 @@
+[Unit]
+Description=Highper Gateway Instances
+Documentation=https://highper-gateway.io/docs
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

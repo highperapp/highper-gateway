@@ -1,0 +1,157 @@
+---
+# Highper Gateway - Configuration Update Playbook
+# Updates configuration with validation and graceful reload
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/config-update.yml \
+#     -e "config_file=configs/uc02-http-lb.yaml"
+#
+#   Or with inline changes:
+#   ansible-playbook -i inventory/hosts.yml playbooks/config-update.yml \
+#     -e '{"config_changes": {"logging": {"level": "debug"}}}'
+
+- name: Update Highper Gateway Configuration
+  hosts: gateway
+  become: true
+  serial: "{{ '1' if rolling | default(true) else '100%' }}"
+
+  vars:
+    rolling: true
+    backup_config: true
+    validate_before_apply: true
+    reload_service: true
+    config_dir: /etc/highper-gateway
+    backup_dir: /var/lib/highper-gateway/backups
+
+  pre_tasks:
+    - name: Display update info
+      ansible.builtin.debug:
+        msg: |
+          Updating configuration on {{ inventory_hostname }}
+          Rolling update: {{ rolling }}
+          Backup enabled: {{ backup_config }}
+
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0750"
+      when: backup_config
+
+    - name: Backup current configuration
+      ansible.builtin.archive:
+        path: "{{ config_dir }}"
+        dest: "{{ backup_dir }}/config-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
+        format: gz
+      when: backup_config
+
+  tasks:
+    # Option 1: Deploy config from file
+    - name: Deploy configuration from file
+      ansible.builtin.copy:
+        src: "{{ config_file }}"
+        dest: "{{ config_dir }}/config.yaml"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0640"
+        backup: true
+      when: config_file is defined
+      register: config_from_file
+
+    # Option 2: Apply inline config changes
+    - name: Read current configuration
+      ansible.builtin.slurp:
+        src: "{{ config_dir }}/config.yaml"
+      register: current_config_raw
+      when: config_changes is defined
+
+    - name: Parse current configuration
+      ansible.builtin.set_fact:
+        current_config: "{{ current_config_raw.content | b64decode | from_yaml }}"
+      when: config_changes is defined
+
+    - name: Merge configuration changes
+      ansible.builtin.set_fact:
+        merged_config: "{{ current_config | combine(config_changes, recursive=True) }}"
+      when: config_changes is defined
+
+    - name: Write merged configuration
+      ansible.builtin.copy:
+        content: "{{ merged_config | to_nice_yaml(indent=2) }}"
+        dest: "{{ config_dir }}/config.yaml"
+        owner: highper-gateway
+        group: highper-gateway
+        mode: "0640"
+        backup: true
+      when: config_changes is defined
+      register: config_from_merge
+
+    # Validation
+    - name: Validate configuration syntax
+      ansible.builtin.command: >
+        /usr/bin/highper-gateway --config {{ config_dir }}/config.yaml --validate
+      register: validation_result
+      changed_when: false
+      failed_when: validation_result.rc != 0
+      when: validate_before_apply
+
+    # Reload service
+    - name: Reload Highper Gateway
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: reloaded
+      when:
+        - reload_service
+        - config_from_file.changed or config_from_merge.changed | default(false)
+      register: reload_result
+
+    - name: Wait for service to be healthy
+      ansible.builtin.uri:
+        url: "http://localhost:8081/health"
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 30
+      delay: 2
+      when: reload_result.changed | default(false)
+
+  rescue:
+    - name: Configuration update failed
+      ansible.builtin.debug:
+        msg: "Configuration update failed, restoring backup..."
+
+    - name: Find latest backup
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns: "config-*.tar.gz"
+        file_type: file
+      register: backup_files
+
+    - name: Restore configuration from backup
+      ansible.builtin.unarchive:
+        src: "{{ (backup_files.files | sort(attribute='mtime') | last).path }}"
+        dest: /
+        remote_src: true
+      when: backup_files.matched > 0
+
+    - name: Reload service with restored config
+      ansible.builtin.systemd:
+        name: highper-gateway
+        state: reloaded
+
+    - name: Fail with error message
+      ansible.builtin.fail:
+        msg: "Configuration update failed on {{ inventory_hostname }}, restored from backup"
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: "Configuration updated successfully on {{ inventory_hostname }}"
+
+    - name: Clean up old backups (keep last 10)
+      ansible.builtin.shell: |
+        cd {{ backup_dir }} && ls -t config-*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm
+      changed_when: false
+      failed_when: false

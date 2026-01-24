@@ -168,10 +168,13 @@ mod tests {
             service_name: Some("test-service".to_string()),
             health_check_enabled: true,
             only_healthy: true,
+            static_backends: vec![],
+            static_health_check_interval: 10,
+            static_health_check_timeout: 3,
         };
 
         // This will fail if Consul is not running
-        let result = ServiceRegistry::new(config).await;
+        let _result = ServiceRegistry::new(config).await;
         // We don't assert since discovery backend may not be available
     }
 

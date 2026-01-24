@@ -3,6 +3,21 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Directory listing output format
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DirectoryListingFormat {
+    /// HTML format (default, human-readable)
+    #[default]
+    Html,
+    /// JSON format (machine-readable)
+    Json,
+}
+
+fn default_listing_format() -> DirectoryListingFormat {
+    DirectoryListingFormat::Html
+}
+
 /// Web server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebServerConfig {
@@ -20,6 +35,14 @@ pub struct WebServerConfig {
     /// Enable directory listing
     #[serde(default)]
     pub directory_listing: bool,
+
+    /// Directory listing format (html or json)
+    #[serde(default = "default_listing_format")]
+    pub directory_listing_format: DirectoryListingFormat,
+
+    /// Show hidden files in directory listings
+    #[serde(default)]
+    pub show_hidden_files: bool,
 
     /// Enable PHP-FPM support
     #[serde(default)]
@@ -55,6 +78,8 @@ impl Default for WebServerConfig {
             document_root: None,
             index_files: default_index_files(),
             directory_listing: false,
+            directory_listing_format: DirectoryListingFormat::Html,
+            show_hidden_files: false,
             enable_php_fpm: false,
             php_fpm: None,
             enable_range_requests: true,
@@ -228,6 +253,8 @@ mod tests {
             document_root: Some(PathBuf::from("/var/www/html")),
             index_files: vec!["index.html".to_string()],
             directory_listing: false,
+            directory_listing_format: DirectoryListingFormat::Html,
+            show_hidden_files: false,
             enable_php_fpm: true,
             php_fpm: Some(PhpFpmConfig::default()),
             enable_range_requests: true,

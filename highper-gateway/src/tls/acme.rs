@@ -227,6 +227,8 @@ mod tests {
             provider: "letsencrypt".to_string(),
             email: "test@example.com".to_string(),
             directory_url: "https://acme-staging-v02.api.letsencrypt.org/directory".to_string(),
+            staging: true,
+            domains: vec![],
             challenge_type: "http-01".to_string(),
             storage: StorageConfig::default(),
             renewal_days: 30,

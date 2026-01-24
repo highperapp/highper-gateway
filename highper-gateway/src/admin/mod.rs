@@ -13,21 +13,26 @@ pub mod server;
 pub mod routes;
 pub mod stats;
 pub mod backends;
+pub mod upstreams;
 pub mod cache;
 pub mod metrics;
 pub mod pool;
 pub mod request_metrics;
 pub mod auth;
+pub mod config_persistence;
+pub mod dashboard;
 
 pub use server::*;
 pub use routes::*;
 pub use stats::*;
 pub use backends::*;
+pub use upstreams::*;
 pub use cache::*;
 pub use metrics::*;
 pub use pool::*;
 pub use request_metrics as req_metrics;
 pub use auth::*;
+pub use config_persistence::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +69,7 @@ pub struct RouteDefinition {
 }
 
 /// Route matching criteria
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RouteMatcher {
     /// Path patterns
     #[serde(default)]

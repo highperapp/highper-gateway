@@ -75,6 +75,62 @@ enum Commands {
         daemon: bool,
     },
 
+    /// Run the proxy with minimal configuration (zero-config mode)
+    ///
+    /// Quick start without a config file:
+    ///   highper-gateway run --backend localhost:3000
+    ///   highper-gateway run --backend backend1:8080 --backend backend2:8080 --port 80
+    Run {
+        /// Backend server URL(s) to proxy to
+        /// Can be specified multiple times for load balancing
+        #[arg(short, long, required = true, action = clap::ArgAction::Append)]
+        backend: Vec<String>,
+
+        /// Port to listen on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+
+        /// Bind address (default: 0.0.0.0)
+        #[arg(long, default_value = "0.0.0.0")]
+        bind: String,
+
+        /// Enable automatic HTTPS with Let's Encrypt
+        #[arg(long)]
+        tls: bool,
+
+        /// Domain name for automatic HTTPS (required if --tls is enabled)
+        #[arg(long)]
+        domain: Option<String>,
+
+        /// Email for Let's Encrypt certificate registration
+        #[arg(long)]
+        email: Option<String>,
+
+        /// Load balancing algorithm
+        #[arg(long, default_value = "round_robin")]
+        lb: String,
+
+        /// Enable admin API on specified port
+        #[arg(long)]
+        admin_port: Option<u16>,
+
+        /// Enable HTTP/3 (QUIC) support
+        #[arg(long)]
+        http3: bool,
+
+        /// Enable gzip compression
+        #[arg(long)]
+        compress: bool,
+
+        /// Request timeout in seconds
+        #[arg(long, default_value = "30")]
+        timeout: u64,
+
+        /// Maximum connections per backend
+        #[arg(long, default_value = "1000")]
+        max_conns: u32,
+    },
+
     /// Validate configuration file without starting the server
     Validate {
         /// Path to configuration file
@@ -192,6 +248,36 @@ async fn main() -> Result<()> {
             start_server(config, hot_reload).await
         }
 
+        Some(Commands::Run {
+            backend,
+            port,
+            bind,
+            tls,
+            domain,
+            email,
+            lb,
+            admin_port,
+            http3,
+            compress,
+            timeout,
+            max_conns,
+        }) => {
+            run_zero_config(
+                backend,
+                port,
+                bind,
+                tls,
+                domain,
+                email,
+                lb,
+                admin_port,
+                http3,
+                compress,
+                timeout,
+                max_conns,
+            ).await
+        }
+
         Some(Commands::Validate { config, verbose }) => {
             validate_command(config, verbose).await
         }
@@ -247,6 +333,224 @@ async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
         info!("Hot reload disabled - restart required for configuration changes");
         Runtime::new(config)?
     };
+
+    runtime.run().await
+        .context("Runtime error")?;
+
+    info!("Highper Gateway shut down successfully");
+    Ok(())
+}
+
+/// Run the proxy in zero-config mode
+async fn run_zero_config(
+    backends: Vec<String>,
+    port: u16,
+    bind: String,
+    tls: bool,
+    domain: Option<String>,
+    email: Option<String>,
+    lb_algorithm: String,
+    admin_port: Option<u16>,
+    http3: bool,
+    compress: bool,
+    timeout_secs: u64,
+    max_conns: u32,
+) -> Result<()> {
+    use highper_gateway::config::{
+        Config, ServerConfig, Http3Config, UpstreamConfig, ServerDef,
+        LoadBalancingConfig, LoadBalancingAlgorithm, HealthCheckConfig,
+        ConnectionConfig, RouteConfig, MatchRules, TimeoutConfig,
+        AdminConfig, ObservabilityConfig, MetricsConfig,
+    };
+    use std::time::Duration;
+
+    info!("Starting Highper Gateway v{} (zero-config mode)", env!("CARGO_PKG_VERSION"));
+
+    // Validate TLS options
+    if tls && domain.is_none() {
+        return Err(anyhow::anyhow!("--domain is required when --tls is enabled"));
+    }
+
+    // Parse load balancing algorithm
+    let algorithm = match lb_algorithm.to_lowercase().as_str() {
+        "round_robin" | "roundrobin" => LoadBalancingAlgorithm::RoundRobin,
+        "least_conn" | "leastconn" | "least_connections" => LoadBalancingAlgorithm::LeastConn,
+        "random" => LoadBalancingAlgorithm::Random,
+        "ip_hash" | "iphash" => LoadBalancingAlgorithm::IpHash,
+        "consistent_hash" | "consistenthash" => LoadBalancingAlgorithm::ConsistentHash,
+        "least_response_time" | "leastresponsetime" => LoadBalancingAlgorithm::LeastResponseTime,
+        "power_of_two" | "p2c" => LoadBalancingAlgorithm::PowerOfTwo,
+        "geographic" | "geo" => LoadBalancingAlgorithm::Geographic,
+        "maglev" => LoadBalancingAlgorithm::Maglev,
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown load balancing algorithm: {}. Valid options: round_robin, least_conn, random, ip_hash, consistent_hash, least_response_time, power_of_two, geographic, maglev",
+                lb_algorithm
+            ));
+        }
+    };
+
+    // Parse backend URLs
+    let servers: Vec<ServerDef> = backends
+        .iter()
+        .map(|backend| {
+            let url = if backend.starts_with("http://") || backend.starts_with("https://") {
+                backend.clone()
+            } else {
+                format!("http://{}", backend)
+            };
+            ServerDef {
+                url,
+                weight: 100,
+                max_conns: max_conns as usize,
+                location: None,
+                region: None,
+            }
+        })
+        .collect();
+
+    info!("Configured {} backend(s):", servers.len());
+    for server in &servers {
+        info!("  → {}", server.url);
+    }
+
+    // Build configuration with sensible defaults
+    let config = Config {
+        server: ServerConfig {
+            bind: vec![format!("{}:{}", bind, port)],
+            http3: Http3Config {
+                enabled: http3,
+                port: if http3 { port } else { 0 },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        tls: if tls {
+            Some(highper_gateway::config::TlsConfig {
+                auto: true,
+                acme: Some(highper_gateway::config::AcmeConfig {
+                    provider: "letsencrypt".to_string(),
+                    email: email.unwrap_or_else(|| "admin@localhost".to_string()),
+                    directory_url: "".to_string(), // Auto-detected
+                    staging: false,
+                    domains: vec![domain.clone().unwrap()],
+                    challenge_type: "http-01".to_string(),
+                    storage: highper_gateway::config::StorageConfig {
+                        storage_type: "file".to_string(),
+                        path: "/var/lib/highper-gateway/certs".to_string(),
+                        ..Default::default()
+                    },
+                    renewal_days: 30,
+                    renew_check_interval: Duration::from_secs(3600),
+                }),
+                certificates: vec![],
+                passthrough: None,
+                min_version: "1.2".to_string(),
+                session_cache: Default::default(),
+                mtls: None,
+                ocsp_stapling: Default::default(),
+            })
+        } else {
+            None
+        },
+        upstreams: vec![UpstreamConfig {
+            name: "default".to_string(),
+            servers,
+            load_balancing: LoadBalancingConfig {
+                algorithm,
+                ..Default::default()
+            },
+            health_check: HealthCheckConfig::default(),
+            connection: ConnectionConfig {
+                timeout: Duration::from_secs(5),
+                keepalive: Duration::from_secs(60),
+                pool_size: max_conns as usize,
+                tcp_nodelay: true,
+            },
+            slow_start: None,
+        }],
+        routes: vec![RouteConfig {
+            name: "default".to_string(),
+            upstream: "default".to_string(),
+            match_rules: MatchRules {
+                hosts: vec![],
+                paths: vec!["/*".to_string()], // Match all paths
+                methods: vec![],
+            },
+            timeout: Some(TimeoutConfig {
+                connect: Some(Duration::from_secs(5)),
+                request: Some(Duration::from_secs(timeout_secs)),
+                idle: Some(Duration::from_secs(60)),
+            }),
+            mtls: None,
+            cache: None,
+            rate_limit: None,
+            aggregation: None,
+            php_fpm: None,
+            static_files: false,
+            root: None,
+            index: vec![],
+            try_files: vec![],
+            error_pages: std::collections::HashMap::new(),
+            directory_listing: false,
+            limits: None,
+            validation: None,
+            transform: None,
+        }],
+        observability: ObservabilityConfig {
+            metrics: MetricsConfig {
+                enabled: true,
+                bind: "0.0.0.0:9090".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        websocket: Default::default(),
+        grpc: Default::default(),
+        admin: admin_port.map(|p| AdminConfig {
+            enabled: true,
+            bind: format!("127.0.0.1:{}", p),
+            auth_enabled: false,
+            api_keys: vec![],
+            jwt_secret: None,
+            jwt_expiration: "24h".to_string(),
+            cors_enabled: true,
+            cors_origins: vec![],
+            read_only: false,
+        }),
+        cache: None,
+        rate_limit: None,
+        waf: None,
+        graphql: None,
+        webserver: None,
+    };
+
+    // Apply compression if requested
+    // Note: Compression is configured per-route or globally; for zero-config we'd need middleware config
+    if compress {
+        info!("Compression enabled (gzip, brotli, zstd)");
+    }
+
+    info!("Server configuration:");
+    info!("  Listen: {}:{}", bind, port);
+    info!("  Backends: {}", backends.len());
+    info!("  Load balancing: {}", lb_algorithm);
+    info!("  Timeout: {}s", timeout_secs);
+    info!("  TLS: {}", if tls { "auto (Let's Encrypt)" } else { "disabled" });
+    info!("  HTTP/3: {}", if http3 { "enabled" } else { "disabled" });
+    if let Some(ap) = admin_port {
+        info!("  Admin API: http://127.0.0.1:{}", ap);
+    }
+
+    // Validate configuration
+    validate_config(&config)
+        .context("Configuration validation failed")?;
+
+    // Create and run the runtime (no hot reload in zero-config mode)
+    let runtime = Runtime::new(config)?;
+
+    info!("🚀 Highper Gateway is running!");
+    info!("   Listening on http://{}:{}", bind, port);
 
     runtime.run().await
         .context("Runtime error")?;

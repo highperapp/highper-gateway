@@ -621,6 +621,7 @@ fn process_directive(
             upstream.algorithm = match algo {
                 LoadBalancingAlgorithm::RoundRobin => "round_robin",
                 LoadBalancingAlgorithm::LeastConnections => "least_conn",
+                LoadBalancingAlgorithm::LeastResponseTime => "least_response_time",
                 LoadBalancingAlgorithm::IpHash => "ip_hash",
                 LoadBalancingAlgorithm::Random => "random",
                 LoadBalancingAlgorithm::Weighted => "round_robin", // Use round_robin with weights

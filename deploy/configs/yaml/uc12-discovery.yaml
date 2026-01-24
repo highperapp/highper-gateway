@@ -1,0 +1,168 @@
+# Highper Gateway Configuration
+# Use Case 12: Microservices Service Discovery
+# Ports: 8080, 8500
+
+server:
+  name: "highper-gateway-discovery"
+
+io_uring:
+  entries: 4096
+  sq_poll: true
+  sq_poll_cpu: 0
+
+listeners:
+  - name: http-gateway
+    protocol: http
+    bind: "0.0.0.0:8080"
+    routes:
+      - match:
+          path_prefix: /users
+        backend: user-service
+      - match:
+          path_prefix: /products
+        backend: product-service
+      - match:
+          path_prefix: /orders
+        backend: order-service
+      - match:
+          path_prefix: /payments
+        backend: payment-service
+      - match:
+          path_prefix: /
+        backend: frontend-service
+
+  - name: consul-proxy
+    protocol: http
+    bind: "0.0.0.0:8500"
+    routes:
+      - match:
+          path_prefix: /
+        backend: consul-servers
+
+# Service discovery configuration
+discovery:
+  provider: consul
+  consul:
+    address: "consul.service.local:8500"
+    datacenter: dc1
+    token_env: CONSUL_TOKEN
+    refresh_interval: 10
+    health_check_filter: passing
+
+  # Alternative: Kubernetes
+  # provider: kubernetes
+  # kubernetes:
+  #   namespace: default
+  #   label_selector: app=highper-gateway
+  #   port_name: http
+
+# Dynamic backends from service discovery
+backends:
+  - name: user-service
+    discovery:
+      service: user-service
+      tags:
+        - production
+    strategy: round_robin
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: product-service
+    discovery:
+      service: product-service
+      tags:
+        - production
+    strategy: least_conn
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: order-service
+    discovery:
+      service: order-service
+      tags:
+        - production
+    strategy: round_robin
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 5
+
+  - name: payment-service
+    discovery:
+      service: payment-service
+      tags:
+        - production
+    strategy: round_robin
+    circuit_breaker:
+      enabled: true
+      threshold: 5
+      timeout: 30000
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 5
+
+  - name: frontend-service
+    discovery:
+      service: frontend-service
+      tags:
+        - production
+    strategy: round_robin
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 15
+
+  - name: consul-servers
+    strategy: round_robin
+    servers:
+      - address: "consul-1.service.local:8500"
+      - address: "consul-2.service.local:8500"
+      - address: "consul-3.service.local:8500"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /v1/status/leader
+      interval: 10
+
+# Service mesh features
+service_mesh:
+  tracing:
+    enabled: true
+    provider: jaeger
+    endpoint: "http://jaeger.monitoring.local:14268/api/traces"
+    sample_rate: 0.1
+
+  retry:
+    enabled: true
+    attempts: 3
+    per_try_timeout: 5000
+    retry_on:
+      - connection_error
+      - 502
+      - 503
+      - 504
+
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

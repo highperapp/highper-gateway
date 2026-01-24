@@ -207,6 +207,9 @@ pub enum LoadBalancingAlgorithm {
     /// Least connections
     LeastConnections,
 
+    /// Least response time (route to fastest backend)
+    LeastResponseTime,
+
     /// Consistent hashing (IP-based)
     ConsistentHash,
 

@@ -43,6 +43,9 @@ pub struct OAuth2Config {
     /// Manual token URL (if not using discovery)
     pub token_url: Option<String>,
 
+    /// Manual revocation URL (for token revocation)
+    pub revocation_url: Option<String>,
+
     /// Token validation enabled
     #[serde(default = "default_true")]
     pub validate_token: bool,
@@ -50,6 +53,18 @@ pub struct OAuth2Config {
     /// Required claims for validation
     #[serde(default)]
     pub required_claims: HashMap<String, serde_json::Value>,
+
+    /// Enable automatic token refresh
+    #[serde(default = "default_true")]
+    pub auto_refresh_enabled: bool,
+
+    /// Token refresh threshold in seconds (refresh this many seconds before expiry)
+    #[serde(default = "default_refresh_threshold")]
+    pub refresh_threshold_secs: u64,
+}
+
+fn default_refresh_threshold() -> u64 {
+    300 // 5 minutes
 }
 
 fn default_true() -> bool {
@@ -67,8 +82,11 @@ impl Default for OAuth2Config {
             issuer_url: None,
             auth_url: None,
             token_url: None,
+            revocation_url: None,
             validate_token: true,
             required_claims: HashMap::new(),
+            auto_refresh_enabled: true,
+            refresh_threshold_secs: 300,
         }
     }
 }
@@ -217,6 +235,89 @@ impl OAuth2Handler {
         })
     }
 
+    /// Refresh access token using refresh token
+    ///
+    /// This allows getting a new access token without requiring the user to re-authenticate.
+    pub async fn refresh_token(&self, refresh_token: String) -> Result<TokenResult> {
+        info!("Refreshing access token");
+
+        use oauth2::reqwest::async_http_client;
+        use oauth2::RefreshToken;
+
+        let token_response = self
+            .oauth_client
+            .exchange_refresh_token(&RefreshToken::new(refresh_token))
+            .request_async(async_http_client)
+            .await
+            .context("Token refresh failed")?;
+
+        debug!("Token refresh successful");
+
+        let access_token = token_response.access_token().secret().clone();
+        let refresh_token = token_response
+            .refresh_token()
+            .map(|t| t.secret().clone());
+        let expires_in = token_response.expires_in().map(|d| d.as_secs());
+
+        Ok(TokenResult {
+            access_token,
+            refresh_token,
+            expires_in,
+            id_token: None,
+        })
+    }
+
+    /// Check if a token is expired or about to expire
+    ///
+    /// Returns true if the token should be refreshed.
+    /// Threshold is 5 minutes (300 seconds) before expiry by default.
+    pub fn should_refresh_token(&self, expires_at: u64, threshold_secs: u64) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Refresh if token expires within threshold
+        expires_at <= now + threshold_secs
+    }
+
+    /// Revoke a token (access or refresh token)
+    ///
+    /// Not all providers support token revocation. Returns Ok even if revocation fails
+    /// (following RFC 7009 recommendations for client-side behavior).
+    pub async fn revoke_token(&self, token: String, token_type_hint: Option<String>) -> Result<()> {
+        info!("Revoking token");
+
+        // Check if provider supports revocation
+        let revocation_url = self.config.revocation_url.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Token revocation not supported by this provider (no revocation_url configured)"))?;
+
+        // Make HTTP POST request to revocation endpoint
+        let client = reqwest::Client::new();
+
+        let mut params = vec![("token", token)];
+        if let Some(hint) = token_type_hint {
+            params.push(("token_type_hint", hint));
+        }
+
+        let response = client
+            .post(revocation_url)
+            .form(&params)
+            .basic_auth(&self.config.client_id, Some(&self.config.client_secret))
+            .send()
+            .await
+            .context("Token revocation request failed")?;
+
+        if response.status().is_success() || response.status().as_u16() == 200 {
+            info!("Token revoked successfully");
+            Ok(())
+        } else {
+            // Per RFC 7009, the client should not fail on revocation errors
+            debug!("Token revocation returned status: {}", response.status());
+            Ok(())
+        }
+    }
+
     /// Validate OIDC ID token
     ///
     /// TODO: Full OIDC ID token validation
@@ -272,8 +373,11 @@ mod tests {
             issuer_url: None,
             auth_url: Some("https://provider.com/auth".to_string()),
             token_url: Some("https://provider.com/token".to_string()),
+            revocation_url: None,
             validate_token: true,
             required_claims: HashMap::new(),
+            auto_refresh_enabled: true,
+            refresh_threshold_secs: 300,
         }
     }
 
@@ -302,6 +406,49 @@ mod tests {
         let config = OAuth2Config::default();
         assert_eq!(config.provider, "custom");
         assert_eq!(config.validate_token, true);
+        assert_eq!(config.auto_refresh_enabled, true);
+        assert_eq!(config.refresh_threshold_secs, 300);
         assert!(config.scopes.contains(&"openid".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_should_refresh_token() {
+        let config = create_test_config();
+        let handler = OAuth2Handler::new(config).await.unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Token expires in 10 minutes (600 seconds)
+        let expires_at_future = now + 600;
+        // Should not refresh (expires in 10 minutes, threshold is 5 minutes)
+        assert!(!handler.should_refresh_token(expires_at_future, 300));
+
+        // Token expires in 4 minutes (240 seconds)
+        let expires_at_soon = now + 240;
+        // Should refresh (expires in 4 minutes, threshold is 5 minutes)
+        assert!(handler.should_refresh_token(expires_at_soon, 300));
+
+        // Token already expired
+        let expires_at_past = now - 10;
+        // Should definitely refresh
+        assert!(handler.should_refresh_token(expires_at_past, 300));
+    }
+
+    #[test]
+    fn test_token_result_structure() {
+        let token_result = TokenResult {
+            access_token: "test_access_token".to_string(),
+            refresh_token: Some("test_refresh_token".to_string()),
+            expires_in: Some(3600),
+            id_token: Some("test_id_token".to_string()),
+        };
+
+        assert_eq!(token_result.access_token, "test_access_token");
+        assert_eq!(token_result.refresh_token, Some("test_refresh_token".to_string()));
+        assert_eq!(token_result.expires_in, Some(3600));
+        assert_eq!(token_result.id_token, Some("test_id_token".to_string()));
     }
 }

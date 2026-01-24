@@ -1,0 +1,27 @@
+# Highper Gateway - Default Container Configuration
+
+server:
+  name: "highper-gateway"
+
+# io_uring configuration
+io_uring:
+  entries: 4096
+  sq_poll: false  # Disabled by default in containers
+
+# Logging
+logging:
+  level: info
+  format: json
+  output: stdout
+
+# Metrics
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+# Health check
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

@@ -1,0 +1,278 @@
+# Highper Gateway Helm Chart Values
+
+# Number of replicas
+replicaCount: 2
+
+# Container image
+image:
+  repository: highpergateway/highper-gateway
+  pullPolicy: IfNotPresent
+  tag: ""  # Defaults to chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Use case configuration (01-15)
+useCase: "02"
+
+# Environment
+environment: prod
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod annotations and labels
+podAnnotations: {}
+podLabels: {}
+
+# Security context for io_uring support
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    add:
+      - NET_BIND_SERVICE
+      - IPC_LOCK
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service configuration
+service:
+  type: LoadBalancer
+  annotations: {}
+  # Use case port mappings
+  ports:
+    "01":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+      - name: mysql
+        port: 3306
+        targetPort: 3306
+      - name: postgres
+        port: 5432
+        targetPort: 5432
+    "02":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: http-alt
+        port: 8080
+        targetPort: 8080
+    "03":
+      - name: https
+        port: 443
+        targetPort: 443
+      - name: https-alt
+        port: 8443
+        targetPort: 8443
+    "04":
+      - name: http
+        port: 8080
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 443
+    "05":
+      - name: https
+        port: 443
+        targetPort: 443
+        protocol: TCP
+      - name: quic
+        port: 443
+        targetPort: 443
+        protocol: UDP
+    "06":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+      - name: ws
+        port: 8080
+        targetPort: 8080
+    "07":
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+      - name: https
+        port: 443
+        targetPort: 443
+    "08":
+      - name: mysql
+        port: 3306
+        targetPort: 3306
+      - name: postgres
+        port: 5432
+        targetPort: 5432
+      - name: redis
+        port: 6379
+        targetPort: 6379
+    "09":
+      - name: https
+        port: 443
+        targetPort: 443
+    "10":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+      - name: http-alt
+        port: 8080
+        targetPort: 8080
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+    "11":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+    "12":
+      - name: http
+        port: 8080
+        targetPort: 8080
+      - name: consul
+        port: 8500
+        targetPort: 8500
+    "13":
+      - name: graphql
+        port: 4000
+        targetPort: 4000
+      - name: https
+        port: 443
+        targetPort: 443
+    "14":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+    "15":
+      - name: http
+        port: 80
+        targetPort: 80
+      - name: https
+        port: 443
+        targetPort: 443
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: gateway.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Resource limits
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# io_uring configuration
+iouring:
+  entries: 4096
+  sqPoll: true
+  sqPollCpu: 0
+
+# Logging
+logging:
+  level: info
+  format: json
+
+# Metrics
+metrics:
+  enabled: true
+  port: 9090
+  endpoint: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# Health probes
+health:
+  enabled: true
+  port: 8081
+  endpoint: /health
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# TLS configuration
+tls:
+  enabled: false
+  secretName: ""
+  # Or provide cert/key directly (will create a secret)
+  cert: ""
+  key: ""
+  ca: ""
+
+# Additional configuration
+config:
+  # Custom configuration to merge into config.yaml
+  custom: {}
+
+# Extra environment variables
+extraEnv: []
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []

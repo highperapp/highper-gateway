@@ -1,0 +1,52 @@
+[Unit]
+Description=Highper Gateway Instance %i
+Documentation=https://highper-gateway.io/docs
+After=network-online.target
+Wants=network-online.target
+PartOf=highper-gateway.target
+
+[Service]
+Type=exec
+User=highper-gateway
+Group=highper-gateway
+ExecStart=/usr/bin/highper-gateway --config /etc/highper-gateway/instances/%i.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Capabilities
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_IPC_LOCK
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_IPC_LOCK
+
+# Resource limits
+LimitMEMLOCK=infinity
+LimitNOFILE=1048576
+LimitNPROC=infinity
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Read-write paths
+ReadWritePaths=/var/log/highper-gateway
+ReadWritePaths=/var/lib/highper-gateway/%i
+
+# Logging
+StandardOutput=append:/var/log/highper-gateway/%i.log
+StandardError=append:/var/log/highper-gateway/%i-error.log
+
+# Working directory
+WorkingDirectory=/var/lib/highper-gateway/%i
+
+# Environment
+Environment=RUST_LOG=info
+Environment=RUST_BACKTRACE=1
+Environment=INSTANCE_NAME=%i
+
+[Install]
+WantedBy=highper-gateway.target

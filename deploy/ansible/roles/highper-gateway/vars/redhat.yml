@@ -1,0 +1,10 @@
+---
+# RHEL/CentOS/Rocky/Alma specific variables
+
+highper_gateway_packages:
+  - curl
+  - wget
+  - ca-certificates
+  - liburing
+  - liburing-devel
+  - jq

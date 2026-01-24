@@ -5,6 +5,10 @@
 pub mod jwt;
 pub mod api_key;
 pub mod oauth2;
+pub mod oauth2_providers;
+
+// Re-export OAuth2Config for oauth2_providers module
+pub use oauth2::OAuth2Config;
 
 /// Authentication result
 #[derive(Debug, Clone, PartialEq, Eq)]

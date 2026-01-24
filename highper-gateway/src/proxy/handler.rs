@@ -7,7 +7,7 @@ use crate::middleware::{MiddlewareChain, compression_middleware::CompressionMidd
 use crate::middleware::waf::WafMiddleware;
 use crate::observability::metrics::{record_request, record_upstream_request};
 use crate::proxy::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
-use crate::proxy::{Client, LoadBalancer};
+use crate::proxy::{BackendServer, Client, LoadBalancer};
 use crate::state::ProxyState;
 use crate::tls::ChallengeStore;
 use crate::websocket::handler as ws_handler;
@@ -95,6 +95,11 @@ impl Upstream {
             .map(|backend| backend.server.url.clone())
     }
 
+    /// Select next backend server and return the Arc<BackendServer> for response time tracking
+    fn select_backend_with_tracking(&self, client_ip: Option<&str>) -> Option<Arc<BackendServer>> {
+        self.load_balancer.select(client_ip, None)
+    }
+
     /// Select backend for gRPC request using gRPC-specific load balancing
     fn select_backend_grpc(
         &self,
@@ -109,6 +114,20 @@ impl Upstream {
         self.load_balancer
             .select_grpc(policy, Some(&metadata_map), affinity_key)
             .map(|backend| backend.server.url.clone())
+    }
+
+    /// Select backend for gRPC request and return the Arc<BackendServer> for response time tracking
+    fn select_backend_grpc_with_tracking(
+        &self,
+        policy: crate::grpc::GrpcLoadBalancingPolicy,
+        metadata: &[(String, String)],
+        affinity_key: Option<&str>,
+    ) -> Option<Arc<BackendServer>> {
+        // Convert Vec<(String, String)> to HashMap for select_grpc
+        let metadata_map: std::collections::HashMap<String, String> =
+            metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        self.load_balancer.select_grpc(policy, Some(&metadata_map), affinity_key)
     }
 
     /// Get circuit breaker for this upstream
@@ -1006,22 +1025,27 @@ impl Handler {
 
                     // Select backend server using load balancing algorithm
                     // Use gRPC-specific load balancing for gRPC requests
-                    let backend_url = if let Some(ref grpc_req) = grpc_request_info {
+                    // We use _with_tracking variants to get the BackendServer for response time tracking
+                    let selected_backend = if let Some(ref grpc_req) = grpc_request_info {
                         // Use gRPC-specific load balancing
                         let grpc_config = &self.config.grpc.load_balancing;
                         let affinity_key = grpc_config.affinity_key.as_deref();
-                        upstream.select_backend_grpc(
+                        upstream.select_backend_grpc_with_tracking(
                             grpc_config.policy,
                             &grpc_req.metadata,
                             affinity_key,
                         )
                     } else {
                         // Use standard load balancing
-                        upstream.select_backend(client_ip.as_deref())
+                        upstream.select_backend_with_tracking(client_ip.as_deref())
                     };
 
-                    if let Some(backend_url) = backend_url {
+                    if let Some(backend) = selected_backend {
+                        let backend_url = backend.server.url.clone();
                         debug!("Selected backend: {}", backend_url);
+
+                        // Track request start time for response time measurement
+                        let backend_request_start = Instant::now();
 
                         // Check if this is a gRPC request that needs special handling
                         if let Some(ref grpc_req) = grpc_request_info {
@@ -1037,6 +1061,9 @@ impl Handler {
 
                             match result {
                                 Ok(response) => {
+                                    // Record response time for load balancing
+                                    backend.record_response_time(backend_request_start.elapsed());
+
                                     // For gRPC, return streaming response directly (preserve trailers)
                                     let status = response.status();
 
@@ -1077,6 +1104,9 @@ impl Handler {
                                     Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
                                 }
                                 Err(CircuitBreakerError::Failure(e)) => {
+                                    // Record response time even on failure (helps detect slow failing backends)
+                                    backend.record_response_time(backend_request_start.elapsed());
+
                                     error!("gRPC backend request failed: {}", e);
                                     let duration = start.elapsed().as_secs_f64();
                                     record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);
@@ -1128,6 +1158,9 @@ impl Handler {
 
                         match result {
                             Ok(response) => {
+                                // Record response time for load balancing
+                                backend.record_response_time(backend_request_start.elapsed());
+
                                 // Circuit breaker records success automatically
                                 // Convert response body using BufferPool for efficient memory reuse
                                 let status = response.status();
@@ -1269,6 +1302,9 @@ impl Handler {
                                 )
                             }
                             Err(CircuitBreakerError::Failure(e)) => {
+                                // Record response time even on failure (helps detect slow failing backends)
+                                backend.record_response_time(backend_request_start.elapsed());
+
                                 error!("Failed to forward request: {}", e);
                                 let duration = start.elapsed().as_secs_f64();
                                 record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);

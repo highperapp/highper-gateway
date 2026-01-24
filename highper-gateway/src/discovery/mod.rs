@@ -7,6 +7,8 @@ pub mod consul;
 #[cfg(feature = "etcd-client")]
 pub mod etcd;
 pub mod registry;
+#[path = "static.rs"]
+pub mod static_discovery;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -19,6 +21,7 @@ pub use consul::ConsulDiscovery;
 #[cfg(feature = "etcd-client")]
 pub use etcd::EtcdDiscovery;
 pub use registry::ServiceRegistry;
+pub use static_discovery::{StaticBackend, StaticDiscovery, StaticDiscoveryConfig};
 
 /// Service instance information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +75,8 @@ pub struct DiscoveryConfig {
     #[serde(rename = "type")]
     pub backend_type: DiscoveryBackend,
 
-    /// Backend addresses
+    /// Backend addresses (for Consul/etcd)
+    #[serde(default)]
     pub addresses: Vec<String>,
 
     /// Refresh interval in seconds
@@ -89,6 +93,26 @@ pub struct DiscoveryConfig {
     /// Only return healthy instances
     #[serde(default = "default_true")]
     pub only_healthy: bool,
+
+    /// Static backends (for static discovery)
+    #[serde(default)]
+    pub static_backends: Vec<StaticBackend>,
+
+    /// Health check interval for static discovery (seconds)
+    #[serde(default = "default_health_check_interval")]
+    pub static_health_check_interval: u64,
+
+    /// Health check timeout for static discovery (seconds)
+    #[serde(default = "default_health_check_timeout")]
+    pub static_health_check_timeout: u64,
+}
+
+fn default_health_check_interval() -> u64 {
+    10
+}
+
+fn default_health_check_timeout() -> u64 {
+    3
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +174,22 @@ pub async fn create_discovery(config: DiscoveryConfig) -> Result<Arc<dyn Service
             Err(anyhow::anyhow!("etcd support not enabled. Enable the 'etcd-client' feature to use etcd discovery."))
         }
         DiscoveryBackend::Static => {
-            Err(anyhow::anyhow!("Static discovery not yet implemented"))
+            if config.static_backends.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Static discovery requires at least one backend configured. \
+                    Add backends using the 'static_backends' configuration field."
+                ));
+            }
+
+            let static_config = StaticDiscoveryConfig {
+                backends: config.static_backends.clone(),
+                health_check_enabled: config.health_check_enabled,
+                health_check_interval: config.static_health_check_interval,
+                health_check_timeout: config.static_health_check_timeout,
+            };
+
+            let discovery = StaticDiscovery::new(static_config).await?;
+            Ok(Arc::new(discovery) as Arc<dyn ServiceDiscovery>)
         }
     }
 }

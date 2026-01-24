@@ -1,0 +1,41 @@
+---
+# Highper Gateway - Ansible Inventory Example
+# Copy to hosts.yml and customize for your environment
+
+all:
+  children:
+    gateway:
+      hosts:
+        gateway-1:
+          ansible_host: 10.0.1.10
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+        gateway-2:
+          ansible_host: 10.0.1.11
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+      vars:
+        # Common variables for all gateway hosts
+        highper_gateway_environment: prod
+        highper_gateway_use_case: "02"
+        highper_gateway_service_started: false
+
+    # Optional: separate groups for different use cases
+    api_gateways:
+      hosts:
+        api-gw-1:
+          ansible_host: 10.0.2.10
+      vars:
+        highper_gateway_use_case: "04"
+        highper_gateway_metrics_enabled: true
+
+    load_balancers:
+      hosts:
+        lb-1:
+          ansible_host: 10.0.3.10
+      vars:
+        highper_gateway_use_case: "02"
+
+  vars:
+    # Global variables
+    ansible_python_interpreter: /usr/bin/python3

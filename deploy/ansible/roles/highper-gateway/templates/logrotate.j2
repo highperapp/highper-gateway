@@ -1,0 +1,13 @@
+{{ highper_gateway_log_dir }}/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 {{ highper_gateway_user }} {{ highper_gateway_group }}
+    sharedscripts
+    postrotate
+        systemctl reload highper-gateway > /dev/null 2>&1 || true
+    endscript
+}

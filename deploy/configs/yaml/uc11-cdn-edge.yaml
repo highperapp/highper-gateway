@@ -1,0 +1,179 @@
+# Highper Gateway Configuration
+# Use Case 11: CDN Edge Caching
+# Ports: 80, 443
+
+server:
+  name: "highper-gateway-cdn-edge"
+
+io_uring:
+  entries: 8192
+  sq_poll: true
+  sq_poll_cpu: 0
+
+tls:
+  default:
+    cert: /etc/highper-gateway/certs/server.crt
+    key: /etc/highper-gateway/certs/server.key
+    session_cache: shared
+    session_tickets: true
+
+listeners:
+  - name: http-edge
+    protocol: http
+    bind: "0.0.0.0:80"
+    routes:
+      - match:
+          path_prefix: /
+        redirect:
+          to: https
+          code: 301
+
+  - name: https-edge
+    protocol: https
+    bind: "0.0.0.0:443"
+    tls: default
+    http2:
+      enabled: true
+    routes:
+      - match:
+          path_prefix: /static
+        backend: origin-static
+        cache:
+          enabled: true
+          ttl: 86400
+          stale_while_revalidate: 3600
+      - match:
+          path_prefix: /assets
+        backend: origin-assets
+        cache:
+          enabled: true
+          ttl: 604800
+      - match:
+          path_prefix: /api
+        backend: origin-api
+        cache:
+          enabled: false
+      - match:
+          path_prefix: /
+        backend: origin-dynamic
+        cache:
+          enabled: true
+          ttl: 300
+          vary:
+            - Accept-Encoding
+            - Accept-Language
+
+backends:
+  - name: origin-static
+    strategy: round_robin
+    servers:
+      - address: "origin-1.cdn.local:8080"
+      - address: "origin-2.cdn.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 30
+
+  - name: origin-assets
+    strategy: round_robin
+    servers:
+      - address: "assets-origin.cdn.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 60
+
+  - name: origin-api
+    strategy: least_conn
+    servers:
+      - address: "api-origin-1.cdn.local:8080"
+      - address: "api-origin-2.cdn.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: origin-dynamic
+    strategy: round_robin
+    servers:
+      - address: "dynamic-origin.cdn.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 15
+
+# Cache configuration
+cache:
+  enabled: true
+  storage:
+    type: memory
+    size: 1073741824  # 1GB
+  default_ttl: 3600
+  max_object_size: 10485760  # 10MB
+  stale_if_error: 86400
+  stale_while_revalidate: 60
+  bypass_headers:
+    - Authorization
+    - Cookie
+  cacheable_methods:
+    - GET
+    - HEAD
+  respect_cache_control: true
+  respect_vary: true
+
+# Compression
+compression:
+  enabled: true
+  algorithms:
+    - br
+    - gzip
+  min_size: 1024
+  types:
+    - text/html
+    - text/css
+    - text/javascript
+    - application/javascript
+    - application/json
+    - image/svg+xml
+
+# Headers
+headers:
+  response:
+    add:
+      - name: X-Cache-Status
+        value: "$cache_status"
+      - name: X-Edge-Location
+        value: "$edge_location"
+    remove:
+      - X-Powered-By
+      - Server
+
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+  access_log:
+    enabled: true
+    output: /var/log/highper-gateway/access.log
+    fields:
+      - timestamp
+      - method
+      - path
+      - status
+      - response_time
+      - cache_status
+      - bytes_sent
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

@@ -1,0 +1,192 @@
+# Highper Gateway Configuration
+# Use Case 10: Hybrid Multi-Protocol Gateway
+# Ports: 80, 443, 8080, 9090
+
+server:
+  name: "highper-gateway-hybrid"
+
+io_uring:
+  entries: 8192
+  sq_poll: true
+  sq_poll_cpu: 0
+
+tls:
+  default:
+    cert: /etc/highper-gateway/certs/server.crt
+    key: /etc/highper-gateway/certs/server.key
+
+listeners:
+  # HTTP traffic
+  - name: http-main
+    protocol: http
+    bind: "0.0.0.0:80"
+    routes:
+      - match:
+          path_prefix: /api
+        backend: api-servers
+      - match:
+          path_prefix: /ws
+          headers:
+            - name: Upgrade
+              value: websocket
+        backend: ws-servers
+      - match:
+          path_prefix: /
+        redirect:
+          to: https
+          code: 301
+
+  # HTTPS traffic
+  - name: https-main
+    protocol: https
+    bind: "0.0.0.0:443"
+    tls: default
+    http2:
+      enabled: true
+    websocket:
+      enabled: true
+    routes:
+      - match:
+          path_prefix: /api/v1
+        backend: api-v1-servers
+        rate_limit:
+          requests_per_second: 100
+      - match:
+          path_prefix: /api/v2
+        backend: api-v2-servers
+        rate_limit:
+          requests_per_second: 200
+      - match:
+          path_prefix: /ws
+        backend: ws-servers
+      - match:
+          path_prefix: /graphql
+        backend: graphql-servers
+      - match:
+          path_prefix: /
+        backend: web-servers
+
+  # Internal HTTP API
+  - name: http-internal
+    protocol: http
+    bind: "0.0.0.0:8080"
+    routes:
+      - match:
+          path_prefix: /internal
+        backend: internal-servers
+      - match:
+          path_prefix: /
+        backend: api-servers
+
+  # gRPC traffic
+  - name: grpc-main
+    protocol: grpc
+    bind: "0.0.0.0:9090"
+    routes:
+      - match:
+          service: "*"
+        backend: grpc-servers
+
+backends:
+  - name: web-servers
+    strategy: round_robin
+    servers:
+      - address: "web-1.app.local:8080"
+      - address: "web-2.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: api-v1-servers
+    strategy: least_conn
+    servers:
+      - address: "api-v1-1.app.local:8080"
+      - address: "api-v1-2.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 5
+
+  - name: api-v2-servers
+    strategy: least_conn
+    servers:
+      - address: "api-v2-1.app.local:8080"
+      - address: "api-v2-2.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 5
+
+  - name: api-servers
+    strategy: round_robin
+    servers:
+      - address: "api-1.app.local:8080"
+      - address: "api-2.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: ws-servers
+    strategy: ip_hash
+    servers:
+      - address: "ws-1.app.local:8080"
+      - address: "ws-2.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: graphql-servers
+    strategy: round_robin
+    servers:
+      - address: "graphql-1.app.local:4000"
+      - address: "graphql-2.app.local:4000"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: grpc-servers
+    strategy: round_robin
+    protocol: grpc
+    servers:
+      - address: "grpc-1.app.local:9090"
+      - address: "grpc-2.app.local:9090"
+    health_check:
+      enabled: true
+      protocol: grpc
+      service: grpc.health.v1.Health
+      interval: 10
+
+  - name: internal-servers
+    strategy: round_robin
+    servers:
+      - address: "internal-1.app.local:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 30
+
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9091
+
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081

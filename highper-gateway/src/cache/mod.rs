@@ -2,9 +2,11 @@
 //!
 //! Provides a unified caching interface that supports multiple backends:
 //! - In-memory cache (local, fast)
+//! - Disk cache (persistent, survives restarts)
 //! - Redis (distributed, persistent)
 //! - Memcached (distributed, simple)
 //! - Multi-tier (combines local + distributed)
+//! - Tiered (memory hot + disk warm)
 //!
 //! ## Architecture
 //!
@@ -18,9 +20,11 @@
 //! ├──────────────────────────────────────┤
 //! │  Backend Implementations:            │
 //! │  - InMemoryBackend                   │
+//! │  - DiskBackend (new!)                │
 //! │  - RedisBackend                      │
 //! │  - MemcachedBackend                  │
 //! │  - MultiTierBackend                  │
+//! │  - TieredBackend (memory + disk)     │
 //! └──────────────────────────────────────┘
 //! ```
 //!
@@ -32,9 +36,13 @@
 //! // Create in-memory cache
 //! let cache = CacheManager::new(CacheBackendType::InMemory).await?;
 //!
-//! // Or create Redis cache
+//! // Create tiered cache (memory hot + disk warm)
 //! let cache = CacheManager::new(
-//!     CacheBackendType::Redis("redis://localhost:6379".to_string())
+//!     CacheBackendType::Tiered {
+//!         disk_path: "/var/cache/highper-gateway".into(),
+//!         disk_size: 10 * 1024 * 1024 * 1024, // 10GB
+//!         hot_max_size: 1024 * 1024, // 1MB per entry in hot tier
+//!     }
 //! ).await?;
 //!
 //! // Use cache
@@ -45,7 +53,9 @@
 pub mod backend;
 pub mod manager;
 pub mod backends;
+pub mod disk;
 
 pub use backend::{CacheBackend, CacheEntry, CacheError, CacheStats};
 pub use manager::{CacheManager, CacheBackendType};
 pub use backends::*;
+pub use disk::{DiskBackend, DiskCacheConfig, TieredBackend};

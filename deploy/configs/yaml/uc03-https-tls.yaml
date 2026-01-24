@@ -1,0 +1,107 @@
+# Highper Gateway Configuration
+# Use Case 03: HTTPS/TLS Termination
+# Ports: 443, 8443
+
+server:
+  name: "highper-gateway-https"
+
+io_uring:
+  entries: 4096
+  sq_poll: true
+  sq_poll_cpu: 0
+
+# TLS configuration
+tls:
+  default:
+    cert: /etc/highper-gateway/certs/server.crt
+    key: /etc/highper-gateway/certs/server.key
+    protocols:
+      - TLSv1.2
+      - TLSv1.3
+    ciphers:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+      - ECDHE-ECDSA-AES256-GCM-SHA384
+      - ECDHE-RSA-AES256-GCM-SHA384
+    prefer_server_ciphers: true
+    session_cache: shared
+    session_timeout: 3600
+    ocsp_stapling: true
+
+listeners:
+  - name: https-main
+    protocol: https
+    bind: "0.0.0.0:443"
+    tls: default
+    routes:
+      - match:
+          path_prefix: /api
+        backend: api-servers
+      - match:
+          path_prefix: /
+        backend: web-servers
+
+  - name: https-alt
+    protocol: https
+    bind: "0.0.0.0:8443"
+    tls: default
+    routes:
+      - match:
+          path_prefix: /
+        backend: internal-servers
+
+backends:
+  - name: web-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 10
+
+  - name: api-servers
+    strategy: least_conn
+    servers:
+      - address: "10.0.2.10:8080"
+      - address: "10.0.2.11:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /api/health
+      interval: 5
+
+  - name: internal-servers
+    strategy: round_robin
+    servers:
+      - address: "10.0.3.10:8080"
+    health_check:
+      enabled: true
+      protocol: http
+      path: /health
+      interval: 30
+
+# HSTS configuration
+hsts:
+  enabled: true
+  max_age: 31536000
+  include_subdomains: true
+  preload: true
+
+logging:
+  level: info
+  format: json
+  output: /var/log/highper-gateway/gateway.log
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  port: 9090
+
+health:
+  enabled: true
+  endpoint: /health
+  port: 8081
