@@ -1,7 +1,7 @@
 # Highper Gateway - Known Limitations
 
-**Version:** 1.0.0
-**Last Updated:** January 10, 2026
+**Version:** 1.1.0
+**Last Updated:** January 24, 2026
 **Repository:** https://github.com/highperapp/highper-gateway
 
 ---
@@ -28,56 +28,60 @@ This document provides a comprehensive list of known limitations, incomplete fea
 
 ## Summary
 
-| Category | P1 | P2 | P3 | P4 | Total |
-|----------|----|----|----|----|-------|
-| **Service Discovery** | 0 | 0 | 1 | 0 | 1 |
-| **Web Server** | 0 | 0 | 1 | 0 | 1 |
-| **Authentication** | 0 | 2 | 0 | 0 | 2 |
-| **TLS/Security** | 0 | 3 | 0 | 0 | 3 |
-| **Middleware** | 0 | 0 | 0 | 1 | 1 |
-| **Infrastructure** | 0 | 1 | 1 | 0 | 2 |
-| **Documentation** | 1 | 0 | 0 | 1 | 2 |
-| **Total** | **1** | **6** | **3** | **2** | **12** |
+| Category | P1 | P2 | P3 | P4 | Total | Fixed in v1.1.0 |
+|----------|----|----|----|----|-------|-----------------|
+| **Service Discovery** | 0 | 0 | 0 | 0 | 0 | ✅ Static Discovery |
+| **Web Server** | 0 | 0 | 1 | 0 | 1 | |
+| **Authentication** | 0 | 0 | 0 | 0 | 0 | ✅ OAuth2 Complete |
+| **TLS/Security** | 0 | 2 | 0 | 0 | 2 | ✅ OCSP Hardened |
+| **Middleware** | 0 | 0 | 0 | 1 | 1 | |
+| **Infrastructure** | 0 | 0 | 1 | 0 | 1 | ✅ Cloud Cleanup |
+| **Documentation** | 0 | 0 | 0 | 1 | 1 | ✅ Centralized Docs |
+| **Total** | **0** | **2** | **2** | **2** | **6** | **5 Fixed** |
+
+### Fixes in v1.1.0
+
+- ✅ **Static Service Discovery** - Now fully implemented with health checks
+- ✅ **OAuth2 Implementation** - Token refresh, PKCE, revocation, 9 providers
+- ✅ **OCSP Fetcher Hardened** - Exponential backoff, multiple responders, stale fallback
+- ✅ **Cloud Test Cleanup** - Automatic trap handlers for all exit scenarios
+- ✅ **Documentation Centralized** - This document now the single source of truth
 
 ---
 
 ## Code-Level Limitations
 
-### 1. Static Service Discovery Not Implemented
+### 1. ~~Static Service Discovery Not Implemented~~ ✅ FIXED in v1.1.0
 
-**Priority:** P3 (Medium)
-**Impact:** LOW
-**Location:** `highper-gateway/src/discovery/mod.rs`
+**Status:** ✅ **FIXED**
+**Location:** `highper-gateway/src/discovery/static.rs`
 
 **Description:**
-Static service discovery (hardcoded list of backend addresses) returns "Static discovery not yet implemented" error.
+Static service discovery is now fully implemented with:
+- Hardcoded list of backend addresses
+- Automatic TCP health checking with configurable intervals
+- Dynamic backend registration/deregistration
+- Comprehensive unit tests (12 tests)
 
-**Current Behavior:**
-```rust
-DiscoveryBackend::Static => {
-    Err(anyhow!("Static discovery not yet implemented"))
-}
-```
-
-**Workaround:**
-Use Consul or etcd for service discovery, which are fully functional and production-ready.
-
-**Planned Fix:**
-Add static backend configuration support in v1.1.0.
-
-**Configuration Example (Future):**
+**Configuration Example:**
 ```toml
 [discovery]
 type = "static"
-backends = [
-    "192.168.1.10:8080",
-    "192.168.1.11:8080",
-    "192.168.1.12:8080"
-]
+health_check_enabled = true
+static_health_check_interval = 10
+static_health_check_timeout = 3
+
+[[discovery.static_backends]]
+id = "backend-1"
+service_name = "my-service"
+address = "192.168.1.10"
+port = 8080
+metadata = { zone = "us-east-1a", version = "v1.2.0" }
 ```
 
-**Environment Variable (Future):**
+**Environment Variable:**
 ```bash
+export HIGHPER_DISCOVERY_TYPE=static
 export HIGHPER_DISCOVERY_STATIC_BACKENDS="192.168.1.10:8080,192.168.1.11:8080"
 ```
 
@@ -117,97 +121,84 @@ export HIGHPER_WEBSERVER_DIRECTORY_LISTING_FORMAT=html
 
 ---
 
-### 3. OAuth2 Implementation Incomplete
+### 3. ~~OAuth2 Implementation Incomplete~~ ✅ FIXED in v1.1.0
 
-**Priority:** P2 (High)
-**Impact:** MEDIUM
-**Location:** `highper-gateway/src/gateway/auth/oauth2.rs`
+**Status:** ✅ **FIXED**
+**Location:** `highper-gateway/src/gateway/auth/oauth2.rs`, `oauth2_providers.rs`
 
 **Description:**
-OAuth2 authentication module has 5 TODOs related to:
-- Token validation edge cases
-- Token refresh logic
-- PKCE flow support
-- Multi-provider support
-- Token revocation
+OAuth2 authentication is now fully implemented with:
+- ✅ Basic OAuth2 authorization code flow
+- ✅ Token validation (JWT)
+- ✅ Token refresh with automatic expiry checking
+- ✅ PKCE flow support (SHA-256)
+- ✅ Token revocation (RFC 7009)
+- ✅ Multi-provider support (9 providers)
 
-**Current Status:**
-- ✅ Basic OAuth2 authorization code flow works
-- ✅ Token validation (JWT) works
-- ⚠️ Token refresh needs enhancement
-- ⚠️ PKCE flow not yet supported
-- ⚠️ Token revocation not implemented
+**Supported Providers:**
+| Provider | Auth URL | Token URL | Revocation | Default Scopes |
+|----------|----------|-----------|------------|----------------|
+| Google | ✅ | ✅ | ✅ | openid, email, profile |
+| GitHub | ✅ | ✅ | ✅ | user, user:email |
+| Microsoft | ✅ | ✅ | ✅ | openid, profile, email |
+| GitLab | ✅ | ✅ | ✅ | read_user, email |
+| Discord | ✅ | ✅ | ✅ | identify, email |
+| Facebook | ✅ | ✅ | ❌ | public_profile, email |
+| Twitter | ✅ | ✅ | ✅ | tweet.read, users.read |
+| Okta | ✅ | ✅ | ✅ | openid, profile, email |
+| Auth0 | ✅ | ✅ | ✅ | openid, profile, email |
 
-**Workaround:**
-- Use basic authorization code flow (fully functional)
-- Implement token refresh in application layer
-- Use short-lived tokens (< 1 hour)
-
-**Planned Fix:**
-Complete OAuth2 implementation in v1.1.0.
-
-**Current Configuration:**
+**Configuration Example:**
 ```toml
 [gateway.auth]
 type = "oauth2"
-provider = "generic"
+provider = "google"  # Auto-configures URLs and scopes
 client_id = "your-client-id"
 client_secret = "your-client-secret"
 redirect_uri = "https://your-domain.com/callback"
-```
+revocation_url = "https://oauth2.googleapis.com/revoke"
 
-**Environment Variables:**
-```bash
-export HIGHPER_AUTH_OAUTH2_PROVIDER=generic
-export HIGHPER_AUTH_OAUTH2_CLIENT_ID=your-client-id
-export HIGHPER_AUTH_OAUTH2_CLIENT_SECRET=your-client-secret
-export HIGHPER_AUTH_OAUTH2_REDIRECT_URI=https://your-domain.com/callback
+# Token refresh settings
+auto_refresh_enabled = true
+refresh_threshold_secs = 300  # Refresh 5 minutes before expiry
 ```
 
 ---
 
-### 4. OCSP Fetcher Needs Production Hardening
+### 4. ~~OCSP Fetcher Needs Production Hardening~~ ✅ FIXED in v1.1.0
 
-**Priority:** P2 (High)
-**Impact:** LOW
+**Status:** ✅ **FIXED**
 **Location:** `highper-gateway/src/tls/ocsp_fetcher.rs`
 
 **Description:**
-OCSP fetcher has 6 TODOs related to:
-- Advanced error handling
-- Retry logic with exponential backoff
-- OCSP stapling failure recovery
-- Caching strategy optimization
-- Multiple OCSP responder support
-
-**Current Status:**
-- ✅ OCSP fetching works
-- ✅ Basic caching implemented
-- ⚠️ Retry logic basic (needs improvement)
-- ⚠️ Error handling could be more robust
-
-**Workaround:**
-OCSP stapling works reliably in most cases. For production critical systems, monitor OCSP fetch failures and have alerting in place.
-
-**Planned Fix:**
-Enhance OCSP fetcher robustness in v1.0.1 (patch release).
+OCSP fetcher is now production-hardened with:
+- ✅ Exponential backoff retry (configurable initial delay, max delay, multiplier)
+- ✅ Multiple OCSP responder support (fallback URLs)
+- ✅ Graceful degradation with stale response fallback
+- ✅ Configurable timeouts and retry limits
+- ✅ Comprehensive unit tests (9 tests)
 
 **Configuration:**
 ```toml
 [tls.ocsp]
-enabled = true
-cache_duration = 3600  # seconds
-retry_count = 3
-retry_delay = 5  # seconds
+timeout_secs = 10
+max_retries = 3
+initial_retry_delay_ms = 500
+max_retry_delay_ms = 30000
+retry_multiplier = 2.0
+fallback_responder_urls = [
+    "http://ocsp.example.com",
+    "http://ocsp2.example.com"
+]
+allow_stale_responses = true
+max_stale_age_secs = 86400  # 24 hours
 ```
 
-**Environment Variables:**
-```bash
-export HIGHPER_TLS_OCSP_ENABLED=true
-export HIGHPER_TLS_OCSP_CACHE_DURATION=3600
-export HIGHPER_TLS_OCSP_RETRY_COUNT=3
-export HIGHPER_TLS_OCSP_RETRY_DELAY=5
-```
+**Behavior:**
+1. Tries primary OCSP responder (from cert AIA) with exponential backoff
+2. Falls back to configured `fallback_responder_urls` if primary fails
+3. If all responders fail and `allow_stale_responses` is true, returns cached stale response
+4. Stale responses are used only if within `max_stale_age_secs`
 
 ---
 
@@ -283,36 +274,32 @@ Update documentation example in v1.0.1.
 
 ## Infrastructure Limitations
 
-### 8. Cloud Load Test Cleanup Not Automated
+### 8. ~~Cloud Load Test Cleanup Not Automated~~ ✅ FIXED in v1.1.0
 
-**Priority:** P2 (High)
-**Impact:** MEDIUM
-**Location:** `highper-gateway/tests/load/`
+**Status:** ✅ **FIXED**
+**Location:** `highper-gateway/tests/load/lib/cloud-cleanup.sh`
 
 **Description:**
-Cloud load testing framework requires manual cleanup of cloud instances after test completion. Automatic cleanup on error or interruption is not fully implemented.
+Cloud load testing framework now has automatic cleanup:
+- ✅ Trap handlers for EXIT, INT, TERM, ERR signals
+- ✅ Automatic instance tracking and cleanup
+- ✅ Multi-provider support (Vultr, AWS, DigitalOcean)
+- ✅ Resource cleanup (volumes, IPs, etc.)
+- ✅ SKIP_CLEANUP option for debugging
 
-**Current Status:**
-- ✅ Local testing fully automated
-- ✅ Cloud provisioning automated
-- ⚠️ Cloud cleanup requires `--cleanup` flag
-- ⚠️ Interrupted tests may leave instances running
+**Behavior:**
+- Instances are automatically tracked when created
+- Cleanup runs on ANY exit (success, error, Ctrl+C, kill signal)
+- Failed cleanups are logged but don't prevent other cleanups
 
-**Risk:**
-Interrupted cloud tests may leave instances running, incurring costs.
+**Usage:**
+```bash
+# Run cloud test (cleanup happens automatically)
+./cloud-test-runner.sh vultr 02
 
-**Workaround:**
-- Always use `--cleanup` flag
-- Monitor cloud provider dashboard after tests
-- Use provider CLI to manually remove orphaned instances:
-  ```bash
-  # Vultr example
-  vultr-cli instance list
-  vultr-cli instance delete <instance-id>
-  ```
-
-**Planned Fix:**
-Add trap handlers and automatic cleanup in v1.0.1.
+# Keep instances for debugging
+SKIP_CLEANUP=true ./cloud-test-runner.sh vultr 02
+```
 
 **Configuration:**
 ```bash
@@ -493,6 +480,23 @@ Configuration is only needed to override these intelligent defaults.
 
 ---
 
+## Feature Improvement Roadmap
+
+For a comprehensive comparison with industry leaders and planned improvements, see:
+
+- **Feature Comparison Matrix:** [deploy/docs/FEATURE_COMPARISON_MATRIX.md](deploy/docs/FEATURE_COMPARISON_MATRIX.md)
+- **Feature Improvement Roadmap:** [docs/FEATURE_IMPROVEMENT_ROADMAP.md](docs/FEATURE_IMPROVEMENT_ROADMAP.md)
+
+### Key Planned Improvements
+
+| Phase | Features | Timeline |
+|-------|----------|----------|
+| **Phase 1** | Automatic HTTPS (ACME), API-based Config, Least Response Time LB, Connection Draining, Zero-Config Mode, OpenTelemetry | 6-8 weeks |
+| **Phase 2** | Slow Start, Disk Cache, Status Dashboard, Request Validation, etcd Discovery, JSON Config, Stick Tables | 8-12 weeks |
+| **Phase 3** | Response Aggregation, BFF Pattern, Database Protocol Awareness | 6-8 weeks |
+
+---
+
 ## Support & Contact
 
 - **Documentation:** https://github.com/highperapp/highper-gateway/tree/main/docs
@@ -501,5 +505,5 @@ Configuration is only needed to override these intelligent defaults.
 
 ---
 
-**Last Updated:** January 10, 2026
-**Next Review:** February 10, 2026 (monthly)
+**Last Updated:** January 24, 2026
+**Next Review:** February 24, 2026 (monthly)
