@@ -31,20 +31,28 @@ This document provides a comprehensive list of known limitations, incomplete fea
 | Category | P1 | P2 | P3 | P4 | Total | Fixed in v1.1.0 |
 |----------|----|----|----|----|-------|-----------------|
 | **Service Discovery** | 0 | 0 | 0 | 0 | 0 | ✅ Static Discovery |
-| **Web Server** | 0 | 0 | 1 | 0 | 1 | |
+| **Web Server** | 0 | 0 | 0 | 0 | 0 | ✅ Directory Listing |
 | **Authentication** | 0 | 0 | 0 | 0 | 0 | ✅ OAuth2 Complete |
-| **TLS/Security** | 0 | 2 | 0 | 0 | 2 | ✅ OCSP Hardened |
+| **TLS/Security** | 0 | 0 | 0 | 0 | 0 | ✅ OCSP, CRL, Cert Val |
 | **Middleware** | 0 | 0 | 0 | 1 | 1 | |
-| **Infrastructure** | 0 | 0 | 1 | 0 | 1 | ✅ Cloud Cleanup |
+| **Infrastructure** | 0 | 0 | 0 | 0 | 0 | ✅ Cloud Cleanup |
 | **Documentation** | 0 | 0 | 0 | 1 | 1 | ✅ Centralized Docs |
-| **Total** | **0** | **2** | **2** | **2** | **6** | **5 Fixed** |
+| **Total** | **0** | **0** | **0** | **2** | **2** | **9 Fixed** |
 
 ### Fixes in v1.1.0
 
-- ✅ **Static Service Discovery** - Now fully implemented with health checks
+**Phase 1 (Critical):**
+- ✅ **Static Service Discovery** - Fully implemented with health checks
 - ✅ **OAuth2 Implementation** - Token refresh, PKCE, revocation, 9 providers
 - ✅ **OCSP Fetcher Hardened** - Exponential backoff, multiple responders, stale fallback
 - ✅ **Cloud Test Cleanup** - Automatic trap handlers for all exit scenarios
+
+**Phase 2 (Quality):**
+- ✅ **Directory Listing** - HTML/JSON formats, hidden file filtering
+- ✅ **Certificate Validation** - Partial chains, cross-signed certs, AIA fetching
+- ✅ **CRL Checker Enhanced** - Delta CRL, LRU cache, fallback URLs
+
+**Documentation:**
 - ✅ **Documentation Centralized** - This document now the single source of truth
 
 ---
@@ -87,36 +95,35 @@ export HIGHPER_DISCOVERY_STATIC_BACKENDS="192.168.1.10:8080,192.168.1.11:8080"
 
 ---
 
-### 2. Directory Listing Not Implemented
+### 2. ~~Directory Listing Not Implemented~~ ✅ FIXED in v1.1.0
 
-**Priority:** P3 (Medium)
-**Impact:** LOW
+**Status:** ✅ **FIXED**
 **Location:** `highper-gateway/src/webserver/static_files.rs`
 
 **Description:**
-Automatic directory listing (like Apache's `autoindex`) is not implemented.
+Directory listing is now fully implemented with:
+- ✅ HTML format with modern styled layout and icons
+- ✅ JSON format for machine consumption
+- ✅ Hidden files filtering (`show_hidden_files` config)
+- ✅ Parent directory navigation
+- ✅ File size and modification time display
+- ✅ Comprehensive unit tests (8 tests)
 
-**Current Behavior:**
-Attempting to access a directory without an index file returns "Directory listing not yet implemented" error.
-
-**Workaround:**
-- Always provide `index.html`, `index.htm`, or `index.php` files
-- Use explicit file URLs instead of directory URLs
-
-**Planned Fix:**
-Add directory listing feature in v1.2.0 with configuration option.
-
-**Configuration Example (Future):**
+**Configuration Example:**
 ```toml
 [webserver]
+enable_static_files = true
+document_root = "/var/www/html"
 directory_listing = true
 directory_listing_format = "html"  # or "json"
+show_hidden_files = false
 ```
 
-**Environment Variable (Future):**
+**Environment Variable:**
 ```bash
 export HIGHPER_WEBSERVER_DIRECTORY_LISTING=true
 export HIGHPER_WEBSERVER_DIRECTORY_LISTING_FORMAT=html
+export HIGHPER_WEBSERVER_SHOW_HIDDEN_FILES=false
 ```
 
 ---
@@ -202,51 +209,69 @@ max_stale_age_secs = 86400  # 24 hours
 
 ---
 
-### 5. Certificate Validation Edge Cases
+### 5. ~~Certificate Validation Edge Cases~~ ✅ FIXED in v1.1.0
 
-**Priority:** P2 (High)
-**Impact:** LOW
+**Status:** ✅ **FIXED**
 **Location:** `highper-gateway/src/tls/cert_validator.rs`
 
 **Description:**
-Certificate validator has 2 TODOs for edge cases:
-- Partial certificate chain validation
-- Cross-signed certificate handling
+Certificate validator now handles all edge cases:
+- ✅ Partial chain handling (auto-builds from AIA)
+- ✅ Cross-signed certificate support
+- ✅ Self-signed certificate option
+- ✅ Configurable max chain depth
+- ✅ Expiration warnings
+- ✅ Comprehensive unit tests
 
-**Current Status:**
-- ✅ Standard certificate validation works
-- ✅ mTLS client certificate validation works
-- ⚠️ Complex certificate chains may need manual verification
+**Configuration:**
+```toml
+[tls.cert_validation]
+max_chain_depth = 10
+allow_partial_chains = true
+expiry_warning_days = 30
+allow_self_signed = false
+fetch_timeout_secs = 10
+```
 
-**Workaround:**
-Use standard certificate chains from trusted CAs (Let's Encrypt, DigiCert, etc.). Avoid complex cross-signed certificate scenarios.
-
-**Planned Fix:**
-Enhance certificate validation in v1.0.2.
+**Features:**
+- Automatically fetches intermediate certificates from AIA extension
+- Validates chain relationships (issuer matches subject)
+- Warns when certificates expire soon
+- Supports loop detection in certificate chains
 
 ---
 
-### 6. CRL Checker Enhancement Needed
+### 6. ~~CRL Checker Enhancement Needed~~ ✅ FIXED in v1.1.0
 
-**Priority:** P2 (High)
-**Impact:** LOW
+**Status:** ✅ **FIXED**
 **Location:** `highper-gateway/src/tls/crl_checker.rs`
 
 **Description:**
-Certificate Revocation List (CRL) checker has 2 TODOs:
-- Delta CRL support
-- CRL caching improvements
+CRL checker is now production-ready with:
+- ✅ Delta CRL support (merge with base CRL)
+- ✅ LRU cache with configurable max entries
+- ✅ Multiple CRL distribution points (fallback URLs)
+- ✅ Exponential backoff retry
+- ✅ Graceful degradation with stale fallback
+- ✅ Hard/soft fail modes
+- ✅ Per-issuer CRL caching
+- ✅ Comprehensive unit tests
 
-**Current Status:**
-- ✅ Basic CRL checking works
-- ⚠️ Delta CRLs not supported (use full CRLs)
-- ⚠️ CRL caching could be more efficient
-
-**Workaround:**
-Use OCSP instead of CRL for better performance. OCSP is fully functional and preferred.
-
-**Planned Fix:**
-Enhance CRL checker in v1.1.0.
+**Configuration:**
+```toml
+[tls.crl]
+crl_url = "http://crl.example.com/ca.crl"
+fallback_urls = ["http://crl2.example.com/ca.crl"]
+refresh_interval_secs = 3600
+timeout_secs = 10
+max_retries = 3
+initial_retry_delay_ms = 500
+max_cache_entries = 100
+enable_delta_crl = true
+allow_stale_crl = true
+max_stale_age_secs = 86400
+hard_fail = false
+```
 
 ---
 
