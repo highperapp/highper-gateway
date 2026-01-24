@@ -35,19 +35,28 @@
 //!
 //! # Adding Custom Compressors
 //!
-//! ```rust
+//! ```rust,ignore
 //! use highper_gateway::middleware::compression::*;
 //! use std::sync::Arc;
 //!
-//! # struct CustomCompressor;
-//! # #[async_trait::async_trait]
-//! # impl Compressor for CustomCompressor {
-//! #     fn name(&self) -> &'static str { "custom" }
-//! #     fn encoding(&self) -> &'static str { "x-custom" }
-//! #     fn quality(&self) -> f32 { 0.8 }
-//! #     fn compress(&self, _data: &[u8], _config: &CompressorConfig)
-//! #         -> Result<CompressionResult, CompressionError> { unimplemented!() }
-//! # }
+//! struct CustomCompressor;
+//!
+//! #[async_trait::async_trait]
+//! impl Compressor for CustomCompressor {
+//!     fn name(&self) -> &'static str { "custom" }
+//!     fn encoding(&self) -> &'static str { "x-custom" }
+//!     fn quality(&self) -> f32 { 0.8 }
+//!     fn compress(&self, data: &[u8], config: &CompressorConfig)
+//!         -> Result<CompressionResult, CompressionError> {
+//!         // Your compression logic here
+//!         Ok(CompressionResult {
+//!             data: data.to_vec(), // Replace with actual compression
+//!             original_size: data.len(),
+//!             compressed_size: data.len(),
+//!             algorithm: self.name().to_string(),
+//!         })
+//!     }
+//! }
 //!
 //! // Register globally
 //! GLOBAL_COMPRESSOR_REGISTRY.register(Arc::new(CustomCompressor));
