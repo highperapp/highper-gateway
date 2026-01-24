@@ -11,6 +11,7 @@ pub mod retry;
 pub mod circuit_breaker;
 pub mod connection_pool;
 pub mod database_pool;
+pub mod stick_table;
 
 pub use server::*;
 pub use client::*;
@@ -22,3 +23,4 @@ pub use connection_pool::{ConnectionPoolManager, PoolConfig, PoolStats};
 pub use database_pool::{
     DatabaseConnectionPoolManager, DatabasePoolConfig, DatabasePoolStats, DatabaseProtocol
 };
+pub use stick_table::{StickTable, StickTableConfig, StickTableManager, StickEntry, StickTableType};
