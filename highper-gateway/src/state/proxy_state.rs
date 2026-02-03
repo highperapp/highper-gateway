@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 use crate::gateway::cache::LocalCache;
+use crate::gateway::cache::distributed::DistributedCache;
 use crate::proxy::ConnectionPoolMetrics;
 use crate::state::request_metrics::RequestMetrics;
 
@@ -181,6 +182,9 @@ pub struct ProxyState {
     /// Local cache instance (optional)
     local_cache: Option<Arc<LocalCache>>,
 
+    /// Distributed cache instance (optional, requires Redis)
+    distributed_cache: Option<Arc<RwLock<DistributedCache>>>,
+
     /// Basic metrics tracking
     metrics: Arc<MetricsState>,
 
@@ -197,6 +201,7 @@ impl ProxyState {
         Self {
             backends: Arc::new(RwLock::new(HashMap::new())),
             local_cache: None,
+            distributed_cache: None,
             metrics: Arc::new(MetricsState::new()),
             pool_metrics: None,
             request_metrics: None,
@@ -208,6 +213,7 @@ impl ProxyState {
         Self {
             backends: Arc::new(RwLock::new(HashMap::new())),
             local_cache: Some(cache),
+            distributed_cache: None,
             metrics: Arc::new(MetricsState::new()),
             pool_metrics: None,
             request_metrics: None,
@@ -222,6 +228,16 @@ impl ProxyState {
     /// Get the local cache instance
     pub fn local_cache(&self) -> Option<Arc<LocalCache>> {
         self.local_cache.clone()
+    }
+
+    /// Set the distributed cache instance
+    pub fn set_distributed_cache(&mut self, cache: Arc<RwLock<DistributedCache>>) {
+        self.distributed_cache = Some(cache);
+    }
+
+    /// Get the distributed cache instance
+    pub fn distributed_cache(&self) -> Option<Arc<RwLock<DistributedCache>>> {
+        self.distributed_cache.clone()
     }
 
     /// Get the metrics instance
