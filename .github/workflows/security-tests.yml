@@ -1,0 +1,144 @@
+# Security Testing Workflow
+# Runs security tests on pull requests and scheduled basis
+
+name: Security Tests
+
+on:
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run weekly security scan on Sundays at midnight
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - scenario
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Quick security checks (runs on every PR)
+  quick-security:
+    name: Quick Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit || true
+          cargo install cargo-deny || true
+
+      - name: Dependency audit
+        run: cargo audit
+        continue-on-error: true
+
+      - name: License and advisory check
+        run: cargo deny check
+        continue-on-error: true
+        working-directory: highper-gateway
+
+      - name: Security unit tests
+        run: cargo test --test security_pentest
+        working-directory: highper-gateway
+
+      - name: Clippy security lints
+        run: |
+          cargo clippy --all-features -- \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -W clippy::panic
+        working-directory: highper-gateway
+        continue-on-error: true
+
+  # Full security test suite (runs on schedule and manual trigger)
+  full-security:
+    name: Full Security Suite
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.test_level == 'full'
+    needs: quick-security
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build gateway
+        run: cargo build --release
+        working-directory: highper-gateway
+
+      - name: Run security audit tests
+        run: |
+          cargo test --test security_pentest security_audit -- --ignored --nocapture
+        working-directory: highper-gateway
+
+      - name: Generate security report
+        run: |
+          mkdir -p security-reports
+          echo "# Security Test Report" > security-reports/report.md
+          echo "Generated: $(date)" >> security-reports/report.md
+          echo "" >> security-reports/report.md
+          cargo test --test security_pentest -- 2>&1 | tee -a security-reports/report.md
+        working-directory: highper-gateway
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: highper-gateway/security-reports/
+
+  # Scenario-specific tests (manual trigger)
+  scenario-tests:
+    name: Scenario Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_level == 'scenario'
+    strategy:
+      matrix:
+        scenario: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run scenario ${{ matrix.scenario }} tests
+        run: |
+          cargo test --test security_pentest scenario_${{ matrix.scenario }} -- --ignored --nocapture
+        working-directory: highper-gateway
+        continue-on-error: true

