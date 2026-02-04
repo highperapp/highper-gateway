@@ -98,10 +98,9 @@ impl CorsMiddleware {
 
         // Add Access-Control-Allow-Origin
         let allowed_origin = self.get_allowed_origin(origin);
-        headers.insert(
-            header::ACCESS_CONTROL_ALLOW_ORIGIN,
-            allowed_origin.parse().unwrap(),
-        );
+        if let Ok(val) = allowed_origin.parse() {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
+        }
 
         // Add Access-Control-Allow-Methods
         let methods = self
@@ -111,36 +110,36 @@ impl CorsMiddleware {
             .map(|m| m.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, methods.parse().unwrap());
+        if let Ok(val) = methods.parse() {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, val);
+        }
 
         // Add Access-Control-Allow-Headers
         if !self.config.allowed_headers.is_empty() {
             let allowed_headers = self.config.allowed_headers.join(", ");
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_HEADERS,
-                allowed_headers.parse().unwrap(),
-            );
+            if let Ok(val) = allowed_headers.parse() {
+                headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, val);
+            }
         }
 
         // Add Access-Control-Expose-Headers
         if !self.config.exposed_headers.is_empty() {
             let exposed_headers = self.config.exposed_headers.join(", ");
-            headers.insert(
-                header::ACCESS_CONTROL_EXPOSE_HEADERS,
-                exposed_headers.parse().unwrap(),
-            );
+            if let Ok(val) = exposed_headers.parse() {
+                headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, val);
+            }
         }
 
         // Add Access-Control-Allow-Credentials
         if self.config.allow_credentials {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true".parse().unwrap());
+            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true".parse().expect("static header value"));
         }
 
         // Add Access-Control-Max-Age
         if let Some(max_age) = self.config.max_age {
             headers.insert(
                 header::ACCESS_CONTROL_MAX_AGE,
-                max_age.to_string().parse().unwrap(),
+                max_age.to_string().parse().expect("numeric header value"),
             );
         }
     }

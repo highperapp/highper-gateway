@@ -94,7 +94,7 @@ impl SecurityAuditEvent {
         Self {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis() as u64,
             event_type,
             severity,

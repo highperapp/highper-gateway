@@ -94,7 +94,7 @@ impl Default for MetricsSnapshot {
         Self {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             http: HttpMetrics {
                 total_requests: 0,

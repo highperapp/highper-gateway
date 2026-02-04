@@ -38,7 +38,7 @@ impl CacheValue {
         let expires_at = ttl.map(|duration| {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis()
                 + duration.as_millis()
         });
@@ -50,7 +50,7 @@ impl CacheValue {
         if let Some(expires_at) = self.expires_at {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis();
 
             now >= expires_at

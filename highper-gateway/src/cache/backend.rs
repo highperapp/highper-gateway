@@ -29,7 +29,7 @@ impl<T> CacheEntry<T> {
             ttl,
             created_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
         }
     }
@@ -39,7 +39,7 @@ impl<T> CacheEntry<T> {
         if let Some(ttl) = self.ttl {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs();
 
             now > self.created_at + ttl.as_secs()

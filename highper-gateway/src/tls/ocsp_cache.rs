@@ -147,7 +147,7 @@ impl OcspCache {
             "OCSP response will be valid until: {:?}",
             valid_until
                 .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs()
         );
 

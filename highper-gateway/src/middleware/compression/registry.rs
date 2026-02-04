@@ -57,7 +57,7 @@ impl CompressorRegistry {
             warn!(
                 "Overwriting existing compressor for encoding '{}' (was: {})",
                 encoding,
-                compressors.get(&encoding).unwrap().name()
+                compressors.get(&encoding).map(|c| c.name()).unwrap_or("unknown")
             );
         }
 

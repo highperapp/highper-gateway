@@ -219,7 +219,8 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name).unwrap();
+        let upstream = upstreams.get_mut(upstream_name)
+            .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
 
         // Check if server already exists
         if upstream.servers.iter().any(|s| s.url == server.url) {
@@ -247,7 +248,8 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name).unwrap();
+        let upstream = upstreams.get_mut(upstream_name)
+            .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
 
         let initial_len = upstream.servers.len();
         upstream.servers.retain(|s| s.url != server_url);
@@ -276,7 +278,8 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name).unwrap();
+        let upstream = upstreams.get_mut(upstream_name)
+            .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
         upstream.load_balancing = lb_config;
 
         info!("Updated load balancing for upstream {}", upstream_name);
@@ -379,7 +382,10 @@ pub async fn get_upstream_handler(
     name: &str,
 ) -> Response<Full<Bytes>> {
     match manager.get_upstream(name).await {
-        Some(upstream) => json_response(StatusCode::OK, serde_json::to_value(upstream).unwrap()),
+        Some(upstream) => match serde_json::to_value(upstream) {
+            Ok(value) => json_response(StatusCode::OK, value),
+            Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, json!({"error": e.to_string()})),
+        },
         None => json_response(
             StatusCode::NOT_FOUND,
             json!({
@@ -544,7 +550,7 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<B
         .status(status)
         .header(hyper::header::CONTENT_TYPE, "application/json")
         .body(Full::new(Bytes::from(body.to_string())))
-        .unwrap()
+        .expect("response builder with valid status and content-type header")
 }
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ impl From<&CacheEntry> for SerializableCacheEntry {
     fn from(entry: &CacheEntry) -> Self {
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         Self {
@@ -41,7 +41,7 @@ impl SerializableCacheEntry {
     fn to_cache_entry(&self) -> CacheEntry {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         // Calculate creation time based on current time and original creation

@@ -152,7 +152,7 @@ impl BufferedRequest {
         let len = self.body.len();
         self.request.headers_mut().insert(
             hyper::header::CONTENT_LENGTH,
-            len.to_string().parse().unwrap(),
+            len.to_string().parse().expect("numeric content-length is valid"),
         );
     }
 }

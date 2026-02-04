@@ -82,7 +82,7 @@ impl EntryMetadata {
         if let Some(expires_at) = self.expires_at {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis();
             now >= expires_at
         } else {
@@ -419,7 +419,7 @@ impl CacheBackend for DiskBackend {
                 if let Some(mut entry) = self.index.get_mut(key) {
                     entry.last_access = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_millis();
                 }
 
@@ -472,7 +472,7 @@ impl CacheBackend for DiskBackend {
         // Create metadata
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis();
 
         let meta = EntryMetadata {

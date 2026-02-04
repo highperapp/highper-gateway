@@ -122,12 +122,12 @@ impl RegisteredBufferGuard {
 
     /// Get a reference to the underlying buffer
     pub fn buffer(&self) -> &RegisteredBuffer {
-        self.buffer.as_ref().unwrap()
+        self.buffer.as_ref().expect("buffer is only None after Drop")
     }
 
     /// Get a mutable reference to the underlying buffer
     pub fn buffer_mut(&mut self) -> &mut RegisteredBuffer {
-        self.buffer.as_mut().unwrap()
+        self.buffer.as_mut().expect("buffer is only None after Drop")
     }
 
     /// Get the buffer ID for io_uring operations

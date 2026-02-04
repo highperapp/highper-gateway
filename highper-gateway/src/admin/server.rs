@@ -1192,15 +1192,14 @@ impl AdminServer {
                     .parse()
                     .unwrap(),
             );
-            headers.insert(header::ACCESS_CONTROL_MAX_AGE, "86400".parse().unwrap());
+            headers.insert(header::ACCESS_CONTROL_MAX_AGE, "86400".parse().expect("static header value"));
 
             if !self.config.cors_origins.is_empty() {
-                headers.insert(
-                    header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                    self.config.cors_origins[0].parse().unwrap(),
-                );
+                if let Ok(val) = self.config.cors_origins[0].parse() {
+                    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
+                }
             } else {
-                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().expect("static header value"));
             }
         }
 
@@ -1970,17 +1969,16 @@ impl AdminServer {
         let headers = response.headers_mut();
 
         if !self.config.cors_origins.is_empty() {
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                self.config.cors_origins[0].parse().unwrap(),
-            );
+            if let Ok(val) = self.config.cors_origins[0].parse() {
+                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
+            }
         } else {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().expect("static header value"));
         }
 
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-            "true".parse().unwrap(),
+            "true".parse().expect("static header value"),
         );
 
         response

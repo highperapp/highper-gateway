@@ -221,7 +221,7 @@ impl HealthChecker {
 
         // Prepare headers
         let mut headers = HeaderMap::new();
-        headers.insert("user-agent", "highper-gateway-health-checker/0.1.0".parse().unwrap());
+        headers.insert("user-agent", "highper-gateway-health-checker/0.1.0".parse().expect("static header value is valid"));
 
         // Perform health check with timeout
         let result = tokio::time::timeout(

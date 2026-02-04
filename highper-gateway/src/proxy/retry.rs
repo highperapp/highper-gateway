@@ -169,7 +169,7 @@ impl RetryExecutor {
         // Use system time as pseudo-random seed
         let seed = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos() as u64;
 
         let jitter = (seed % (jitter_range * 2)).saturating_sub(jitter_range);

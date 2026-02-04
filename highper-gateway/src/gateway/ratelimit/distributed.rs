@@ -182,7 +182,7 @@ impl DistributedTokenBucketLimiter {
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs_f64();
 
         let result: Vec<i64> = redis::Script::new(script)

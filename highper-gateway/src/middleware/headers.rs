@@ -5,7 +5,7 @@ use crate::http::ResponseBody;
 use hyper::{header, Response};
 use std::future::Future;
 use std::pin::Pin;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Security headers configuration
 #[derive(Debug, Clone)]
@@ -179,76 +179,112 @@ impl Middleware for SecurityHeadersMiddleware {
 
             // X-Content-Type-Options
             if config.x_content_type_options {
-                headers.insert("x-content-type-options", "nosniff".parse().unwrap());
+                headers.insert("x-content-type-options", "nosniff".parse().expect("static header value"));
             }
 
             // X-Frame-Options
             if let Some(value) = &config.x_frame_options {
-                headers.insert("x-frame-options", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("x-frame-options", v); }
+                    Err(e) => warn!("Invalid x-frame-options header value '{}': {}", value, e),
+                }
             }
 
             // X-XSS-Protection
             if let Some(value) = &config.x_xss_protection {
-                headers.insert("x-xss-protection", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("x-xss-protection", v); }
+                    Err(e) => warn!("Invalid x-xss-protection header value '{}': {}", value, e),
+                }
             }
 
             // Strict-Transport-Security (HSTS)
             if let Some(value) = &config.hsts {
-                headers.insert(header::STRICT_TRANSPORT_SECURITY, value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert(header::STRICT_TRANSPORT_SECURITY, v); }
+                    Err(e) => warn!("Invalid HSTS header value '{}': {}", value, e),
+                }
             }
 
             // Content-Security-Policy
             if let Some(value) = &config.csp {
-                headers.insert("content-security-policy", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("content-security-policy", v); }
+                    Err(e) => warn!("Invalid CSP header value '{}': {}", value, e),
+                }
             }
 
             // Referrer-Policy
             if let Some(value) = &config.referrer_policy {
-                headers.insert(header::REFERRER_POLICY, value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert(header::REFERRER_POLICY, v); }
+                    Err(e) => warn!("Invalid referrer-policy header value '{}': {}", value, e),
+                }
             }
 
             // Permissions-Policy
             if let Some(value) = &config.permissions_policy {
-                headers.insert("permissions-policy", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("permissions-policy", v); }
+                    Err(e) => warn!("Invalid permissions-policy header value '{}': {}", value, e),
+                }
             }
 
             // Cross-Origin-Embedder-Policy (COEP)
             if let Some(value) = &config.cross_origin_embedder_policy {
-                headers.insert("cross-origin-embedder-policy", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("cross-origin-embedder-policy", v); }
+                    Err(e) => warn!("Invalid COEP header value '{}': {}", value, e),
+                }
             }
 
             // Cross-Origin-Opener-Policy (COOP)
             if let Some(value) = &config.cross_origin_opener_policy {
-                headers.insert("cross-origin-opener-policy", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("cross-origin-opener-policy", v); }
+                    Err(e) => warn!("Invalid COOP header value '{}': {}", value, e),
+                }
             }
 
             // Cross-Origin-Resource-Policy (CORP)
             if let Some(value) = &config.cross_origin_resource_policy {
-                headers.insert("cross-origin-resource-policy", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("cross-origin-resource-policy", v); }
+                    Err(e) => warn!("Invalid CORP header value '{}': {}", value, e),
+                }
             }
 
             // X-Download-Options
             if let Some(value) = &config.x_download_options {
-                headers.insert("x-download-options", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("x-download-options", v); }
+                    Err(e) => warn!("Invalid x-download-options header value '{}': {}", value, e),
+                }
             }
 
             // X-Permitted-Cross-Domain-Policies
             if let Some(value) = &config.x_permitted_cross_domain_policies {
-                headers.insert("x-permitted-cross-domain-policies", value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert("x-permitted-cross-domain-policies", v); }
+                    Err(e) => warn!("Invalid x-permitted-cross-domain-policies header value '{}': {}", value, e),
+                }
             }
 
             // Server header handling
             if config.remove_server_header {
                 headers.remove(header::SERVER);
             } else if let Some(value) = &config.custom_server_header {
-                headers.insert(header::SERVER, value.parse().unwrap());
+                match value.parse() {
+                    Ok(v) => { headers.insert(header::SERVER, v); }
+                    Err(e) => warn!("Invalid server header value '{}': {}", value, e),
+                }
             }
 
             // X-Powered-By header handling
             if config.remove_powered_by {
                 headers.remove("x-powered-by");
             } else {
-                headers.insert("x-powered-by", "highper-gateway/0.1.0".parse().unwrap());
+                headers.insert("x-powered-by", "highper-gateway/0.1.0".parse().expect("static header value"));
             }
 
             Ok(response)

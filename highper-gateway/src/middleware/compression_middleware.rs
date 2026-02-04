@@ -219,13 +219,13 @@ impl Middleware for CompressionMiddleware {
                         // Add Content-Encoding header
                         new_response.headers_mut().insert(
                             header::CONTENT_ENCODING,
-                            compressor.encoding().parse().unwrap(),
+                            compressor.encoding().parse().expect("encoding name is valid header value"),
                         );
 
                         // Update Content-Length
                         new_response.headers_mut().insert(
                             header::CONTENT_LENGTH,
-                            result.compressed_size.to_string().parse().unwrap(),
+                            result.compressed_size.to_string().parse().expect("numeric content-length is valid"),
                         );
 
                         Ok(new_response)
