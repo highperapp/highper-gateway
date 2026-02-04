@@ -17,13 +17,22 @@ deploy/
 │   └── inventory/      # Inventory templates
 ├── helm/               # Kubernetes Deployment
 │   └── highper-gateway/
+├── kubernetes/          # Additional K8s Manifests
+│   ├── base/           # Base manifests
+│   └── overlays/       # Kustomize overlays
 ├── docker/             # Container Deployment
 │   ├── Dockerfile
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   ├── docker-compose.production.yml
+│   └── alternatives/   # Alternative Dockerfiles
+├── monitoring/          # Observability Stack
+│   ├── prometheus/     # Prometheus configs
+│   └── grafana/        # Grafana dashboards
 ├── configs/            # Configuration Templates
 │   ├── yaml/           # YAML configs per use case
 │   └── dsl/            # HCL/DSL configs
 ├── systemd/            # Systemd Service Files
+├── scripts/            # Deployment Scripts
 └── DEPLOYMENT_STRATEGY.md
 ```
 
