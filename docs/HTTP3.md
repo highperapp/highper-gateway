@@ -402,7 +402,7 @@ QUIC includes built-in protection:
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/yourusername/rust-proxy/issues
+- GitHub Issues: https://github.com/highperapp/highper-gateway/issues
 - Documentation: https://docs.rust-proxy.dev
 
 ---

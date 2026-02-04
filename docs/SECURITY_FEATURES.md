@@ -838,6 +838,123 @@ For healthcare data:
 
 ---
 
+## Cookie Security
+
+Highper Gateway supports secure cookie handling to protect session data and prevent common cookie-based attacks.
+
+### SameSite Attribute
+
+The `SameSite` attribute controls when cookies are sent with cross-site requests, providing CSRF protection.
+
+**Values:**
+- `Strict`: Cookie only sent with same-site requests (most secure)
+- `Lax`: Cookie sent with same-site + top-level navigation (recommended default)
+- `None`: Cookie sent with all requests (requires `Secure` flag)
+
+**Configuration Example:**
+```yaml
+middleware:
+  cookies:
+    samesite: "Lax"          # Lax, Strict, or None
+    secure: true              # Only send over HTTPS
+    httponly: true            # Prevent JavaScript access
+    path: "/"
+```
+
+### Secure Cookie Best Practices
+
+1. **Always use `Secure` flag** in production (HTTPS only)
+2. **Use `HttpOnly`** for session cookies (prevents XSS theft)
+3. **Set `SameSite=Lax`** as minimum (prevents most CSRF)
+4. **Use `SameSite=Strict`** for sensitive operations
+5. **Set appropriate `Path`** to limit cookie scope
+6. **Use `__Host-` prefix** for tightest security
+
+**Example Secure Session Cookie:**
+```
+Set-Cookie: __Host-session=abc123; Secure; HttpOnly; SameSite=Strict; Path=/
+```
+
+---
+
+## CSRF Protection
+
+Cross-Site Request Forgery (CSRF) attacks trick authenticated users into performing unwanted actions.
+
+### Protection Mechanisms
+
+Highper Gateway provides multiple layers of CSRF protection:
+
+#### 1. SameSite Cookies (Primary Defense)
+```yaml
+middleware:
+  cookies:
+    samesite: "Strict"  # Prevents cookie from being sent cross-site
+```
+
+#### 2. Origin/Referer Validation
+```yaml
+middleware:
+  csrf:
+    enabled: true
+    check_origin: true           # Validate Origin header
+    check_referer: true          # Validate Referer header
+    allowed_origins:
+      - "https://example.com"
+      - "https://api.example.com"
+```
+
+#### 3. Double Submit Cookie
+```yaml
+middleware:
+  csrf:
+    double_submit: true
+    cookie_name: "_csrf"
+    header_name: "X-CSRF-Token"
+```
+
+#### 4. Custom Token Validation
+```yaml
+middleware:
+  csrf:
+    token_validation: true
+    token_header: "X-CSRF-Token"
+    token_length: 32
+```
+
+### Backend CSRF Considerations
+
+When Highper Gateway proxies to backend services:
+
+1. **Preserve CSRF Headers**: Ensure `X-CSRF-Token` is forwarded
+2. **Validate at Gateway**: Perform CSRF checks before forwarding
+3. **Trusted Backend**: If backends trust the gateway, CSRF can be gateway-only
+4. **End-to-End CSRF**: For maximum security, validate at both layers
+
+**Configuration for Header Forwarding:**
+```yaml
+routes:
+  - path: "/api/*"
+    upstream: "backend"
+    headers:
+      forward:
+        - "X-CSRF-Token"
+        - "Cookie"
+        - "Origin"
+        - "Referer"
+```
+
+### CSRF Protection Matrix
+
+| Scenario | SameSite | Origin Check | Token | Security Level |
+|----------|----------|--------------|-------|----------------|
+| Public API | None | No | No | Low |
+| Session-based Web | Lax | Yes | Optional | Medium |
+| Banking/Critical | Strict | Yes | Yes | High |
+| Single-Page App | Lax | Yes | Yes | High |
+
+---
+
 ## Additional Resources
 
 ### Documentation
@@ -865,8 +982,8 @@ For healthcare data:
 
 For security-related questions or to report vulnerabilities:
 
-- **Documentation**: https://github.com/yourusername/highper-gateway/docs
-- **Issues**: https://github.com/yourusername/highper-gateway/issues
+- **Documentation**: https://github.com/highperapp/highper-gateway/docs
+- **Issues**: https://github.com/highperapp/highper-gateway/issues
 - **Security**: security@yourcompany.com (PGP key available)
 
 **Responsible Disclosure**: Please report security vulnerabilities privately to allow time for fixes before public disclosure.

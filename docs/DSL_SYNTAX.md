@@ -1115,10 +1115,10 @@ highper-gateway version
 
 ## Resources
 
-- **GitHub**: https://github.com/yourusername/highper-gateway
+- **GitHub**: https://github.com/highperapp/highper-gateway
 - **Documentation**: https://docs.highper-gateway.dev
 - **Examples**: `/examples/*.proxy` in the repository
-- **Support**: https://github.com/yourusername/highper-gateway/issues
+- **Support**: https://github.com/highperapp/highper-gateway/issues
 
 ---
 

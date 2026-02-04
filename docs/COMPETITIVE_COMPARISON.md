@@ -456,7 +456,7 @@ route / {
 
 ## 10. References
 
-- Highper Gateway Docs: https://github.com/yourusername/highper-gateway
+- Highper Gateway Docs: https://github.com/highperapp/highper-gateway
 - NGINX: https://www.nginx.com
 - HAProxy: https://www.haproxy.org
 - Envoy: https://www.envoyproxy.io
