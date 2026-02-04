@@ -568,7 +568,7 @@ impl Handler {
 
                 // Extract bytes from Full<Bytes> body
                 use http_body_util::BodyExt;
-                let body_bytes = body.collect().await.unwrap().to_bytes();
+                let body_bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
 
                 // Reconstruct response with ResponseBody
                 let final_response = Response::from_parts(parts, ResponseBody::buffered(body_bytes));
@@ -968,8 +968,8 @@ impl Handler {
                 debug!("Matched route to upstream: {}", upstream_name);
 
                 // Check cache for GET requests (only cache safe, idempotent requests)
-                if method == Method::GET && self.cache.is_some() {
-                    let cache = self.cache.as_ref().unwrap();
+                if method == Method::GET {
+                if let Some(cache) = self.cache.as_ref() {
 
                     // Generate cache key from method and URI
                     let cache_key = crate::gateway::cache::LocalCache::generate_key(
@@ -1007,7 +1007,7 @@ impl Handler {
                     } else {
                         debug!("Cache MISS for {}", uri);
                     }
-                }
+                }}
 
                 // Get upstream
                 if let Some(upstream) = self.upstreams.get(&upstream_name) {
@@ -1100,7 +1100,7 @@ impl Handler {
                                     // Convert Full<Bytes> body to ResponseBody
                                     let (parts, body) = grpc_error.into_parts();
                                     use http_body_util::BodyExt as _;
-                                    let bytes = body.collect().await.unwrap().to_bytes();
+                                    let bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
                                     Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
                                 }
                                 Err(CircuitBreakerError::Failure(e)) => {
@@ -1119,7 +1119,7 @@ impl Handler {
                                     // Convert Full<Bytes> body to ResponseBody
                                     let (parts, body) = grpc_error.into_parts();
                                     use http_body_util::BodyExt as _;
-                                    let bytes = body.collect().await.unwrap().to_bytes();
+                                    let bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
                                     Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
                                 }
                             }
@@ -1202,8 +1202,8 @@ impl Handler {
                                         let response = resp.body(ResponseBody::buffered(body_bytes.clone()))?;
 
                                         // Store in cache for GET requests with successful status
-                                        if method == Method::GET && self.cache.is_some() && status.is_success() {
-                                            let cache = self.cache.as_ref().unwrap();
+                                        if method == Method::GET && status.is_success() {
+                                        if let Some(cache) = self.cache.as_ref() {
 
                                             // Check Cache-Control header to respect caching directives
                                             let should_cache = if let Some(cache_control) = headers.get("cache-control") {
@@ -1252,7 +1252,7 @@ impl Handler {
                                                 cache.set(cache_key.clone(), cache_entry);
                                                 debug!("Cached response for {} (key: {})", uri, cache_key);
                                             }
-                                        }
+                                        }}
 
                                         // Apply middleware chain (compression, etc.)
                                         let mut response = match self.middleware_chain.process_response(response).await {

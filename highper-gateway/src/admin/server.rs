@@ -231,15 +231,15 @@ impl AdminServer {
             (&Method::GET, "/api/routes") => self.list_routes().await,
             (&Method::POST, "/api/routes") => self.create_route(req).await,
             _ if method == Method::GET && path.starts_with("/api/routes/") && !path.contains("/metrics") => {
-                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                let route_name = path.strip_prefix("/api/routes/").unwrap_or_default();
                 self.get_route(route_name).await
             }
             _ if method == Method::PUT && path.starts_with("/api/routes/") => {
-                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                let route_name = path.strip_prefix("/api/routes/").unwrap_or_default();
                 self.update_route(route_name, req).await
             }
             _ if method == Method::DELETE && path.starts_with("/api/routes/") => {
-                let route_name = path.strip_prefix("/api/routes/").unwrap();
+                let route_name = path.strip_prefix("/api/routes/").unwrap_or_default();
                 self.delete_route(route_name).await
             }
 
@@ -1035,7 +1035,10 @@ impl AdminServer {
 
         // Attempt login
         match auth_db.login(login_request).await {
-            Ok(response) => json_response(StatusCode::OK, serde_json::to_value(response).unwrap()),
+            Ok(response) => match serde_json::to_value(response) {
+                Ok(value) => json_response(StatusCode::OK, value),
+                Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"error": e.to_string()})),
+            },
             Err(e) => e.into(),
         }
     }
@@ -1109,7 +1112,10 @@ impl AdminServer {
         };
 
         match auth_db.create_user(create_request).await {
-            Ok(user) => json_response(StatusCode::CREATED, serde_json::to_value(user).unwrap()),
+            Ok(user) => match serde_json::to_value(user) {
+                Ok(value) => json_response(StatusCode::CREATED, value),
+                Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"error": e.to_string()})),
+            },
             Err(e) => e.into(),
         }
     }
