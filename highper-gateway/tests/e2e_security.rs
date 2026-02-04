@@ -9,8 +9,12 @@
 //!
 //! Run with: cargo test --test e2e_security -- --ignored --test-threads=1
 
-use hyper::{body::Buf, Body, Client, Method, Request, StatusCode};
-use hyper::header::{HeaderValue, CONTENT_LENGTH};
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::header::CONTENT_LENGTH;
+use hyper::{Method, Request, StatusCode};
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -59,10 +63,7 @@ impl SecurityTestHarness {
 
         // Start proxy process
         let proxy_process = Command::new("cargo")
-            .args([
-                "run", "--release", "--",
-                "--config", &config_path,
-            ])
+            .args(["run", "--release", "--", "--config", &config_path])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -178,11 +179,12 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
     // Make HTTP request
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let response = client
         .get(harness.url("/test").parse().unwrap())
         .await
@@ -192,7 +194,9 @@ upstream = "test-backend"
     let headers = response.headers();
 
     assert_eq!(
-        headers.get("x-content-type-options").and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
         Some("nosniff"),
         "X-Content-Type-Options should be present"
     );
@@ -204,7 +208,9 @@ upstream = "test-backend"
     );
 
     assert_eq!(
-        headers.get("x-xss-protection").and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-xss-protection")
+            .and_then(|v| v.to_str().ok()),
         Some("1; mode=block"),
         "X-XSS-Protection should be present"
     );
@@ -246,10 +252,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let response = client
         .get(harness.url("/test").parse().unwrap())
         .await
@@ -258,12 +265,19 @@ upstream = "test-backend"
     let headers = response.headers();
 
     // Verify strict HSTS (2 years with preload)
-    let hsts = headers.get("strict-transport-security")
+    let hsts = headers
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok())
         .expect("HSTS should be present");
 
-    assert!(hsts.contains("max-age=63072000"), "HSTS should have 2-year max-age");
-    assert!(hsts.contains("includeSubDomains"), "HSTS should include subdomains");
+    assert!(
+        hsts.contains("max-age=63072000"),
+        "HSTS should have 2-year max-age"
+    );
+    assert!(
+        hsts.contains("includeSubDomains"),
+        "HSTS should include subdomains"
+    );
     assert!(hsts.contains("preload"), "HSTS should have preload");
 
     // Verify CSP is present
@@ -312,10 +326,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let response = client
         .get(harness.url("/test").parse().unwrap())
         .await
@@ -324,12 +339,19 @@ upstream = "test-backend"
     let headers = response.headers();
 
     // Verify custom CSP
-    let csp = headers.get("content-security-policy")
+    let csp = headers
+        .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("CSP should be present");
 
-    assert!(csp.contains("cdn.example.com"), "Custom CSP should contain trusted CDN");
-    assert!(csp.contains("script-src"), "CSP should have script-src directive");
+    assert!(
+        csp.contains("cdn.example.com"),
+        "Custom CSP should contain trusted CDN"
+    );
+    assert!(
+        csp.contains("script-src"),
+        "CSP should have script-src directive"
+    );
 
     println!("✅ Custom CSP test passed");
 }
@@ -357,10 +379,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let response = client
         .get(harness.url("/test").parse().unwrap())
         .await
@@ -406,10 +429,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
     // Test 1: Request within limit should succeed
     let small_body = vec![b'x'; 512]; // 512 bytes
@@ -417,7 +441,7 @@ upstream = "test-backend"
         .method(Method::POST)
         .uri(harness.url("/test"))
         .header(CONTENT_LENGTH, small_body.len())
-        .body(Body::from(small_body))
+        .body(Full::new(Bytes::from(small_body)))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -433,7 +457,7 @@ upstream = "test-backend"
         .method(Method::POST)
         .uri(harness.url("/test"))
         .header(CONTENT_LENGTH, large_body.len())
-        .body(Body::from(large_body))
+        .body(Full::new(Bytes::from(large_body)))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -470,10 +494,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
     // Send large request
     let large_body = vec![b'x'; 1024]; // 1 KB (exceeds 512 byte limit)
@@ -481,7 +506,7 @@ upstream = "test-backend"
         .method(Method::POST)
         .uri(harness.url("/test"))
         .header(CONTENT_LENGTH, large_body.len())
-        .body(Body::from(large_body))
+        .body(Full::new(Bytes::from(large_body)))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -489,9 +514,8 @@ upstream = "test-backend"
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 
     // Read response body to verify custom error message
-    let body_bytes = hyper::body::to_bytes(response.into_body())
-        .await
-        .expect("Failed to read body");
+    let body_bytes = response.into_body().collect().await
+        .expect("Failed to read body").to_bytes();
     let body_text = String::from_utf8_lossy(&body_bytes);
 
     assert!(
@@ -536,10 +560,11 @@ enabled = true
 max_body_size = 10240  # 10 KB
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
     // Test 1: Large request to /api should be rejected
     let large_body = vec![b'x'; 1024]; // 1 KB (exceeds 512 byte limit)
@@ -547,7 +572,7 @@ max_body_size = 10240  # 10 KB
         .method(Method::POST)
         .uri(harness.url("/api/test"))
         .header(CONTENT_LENGTH, large_body.len())
-        .body(Body::from(large_body.clone()))
+        .body(Full::new(Bytes::from(large_body.clone())))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -562,7 +587,7 @@ max_body_size = 10240  # 10 KB
         .method(Method::POST)
         .uri(harness.url("/upload/file"))
         .header(CONTENT_LENGTH, large_body.len())
-        .body(Body::from(large_body))
+        .body(Full::new(Bytes::from(large_body)))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -598,10 +623,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
     let response = client
         .get(harness.url("/test").parse().unwrap())
         .await
@@ -647,10 +673,11 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = SecurityTestHarness::new(config).await
+    let harness = SecurityTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http::<Full<Bytes>>();
 
     // Send very large request (should not be rejected when disabled)
     let large_body = vec![b'x'; 100_000]; // 100 KB
@@ -658,7 +685,7 @@ upstream = "test-backend"
         .method(Method::POST)
         .uri(harness.url("/test"))
         .header(CONTENT_LENGTH, large_body.len())
-        .body(Body::from(large_body))
+        .body(Full::new(Bytes::from(large_body)))
         .unwrap();
 
     let response = client.request(request).await.expect("Request failed");
@@ -673,25 +700,5 @@ upstream = "test-backend"
     println!("✅ Disabled size limit test passed");
 }
 
-/// Integration test runner helper
-#[cfg(test)]
-mod test_helpers {
-    use super::*;
-
-    /// Run all E2E security tests
-    pub async fn run_all_security_tests() {
-        println!("\n🔒 Running E2E Security Tests...\n");
-
-        test_e2e_default_security_headers().await;
-        test_e2e_strict_security_headers().await;
-        test_e2e_custom_csp().await;
-        test_e2e_security_headers_on_errors().await;
-        test_e2e_request_size_limit().await;
-        test_e2e_request_size_limit_custom_error().await;
-        test_e2e_per_route_size_limits().await;
-        test_e2e_headers_preservation().await;
-        test_e2e_disabled_size_limit().await;
-
-        println!("\n✅ All E2E Security Tests Passed!\n");
-    }
-}
+// E2E tests are run individually with:
+// cargo test --test e2e_security -- --ignored --test-threads=1

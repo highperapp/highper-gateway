@@ -2,10 +2,10 @@
 //!
 //! These tests verify that plugins can be loaded, executed, and unloaded correctly.
 
+use bytes::Bytes;
 use highper_gateway::plugin::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use bytes::Bytes;
 
 #[tokio::test]
 async fn test_plugin_manager_creation() {
@@ -270,7 +270,10 @@ async fn test_plugin_request_serialization() {
 
     assert_eq!(request.method, "POST");
     assert_eq!(request.uri, "/api/users");
-    assert_eq!(request.headers.get("content-type").unwrap(), "application/json");
+    assert_eq!(
+        request.headers.get("content-type").unwrap(),
+        "application/json"
+    );
     assert!(request.body.is_some());
 }
 
@@ -297,9 +300,8 @@ async fn test_multiple_plugins_execution() {
 
     // Register multiple plugins
     for i in 1..=5 {
-        let plugin: BoxedPlugin = std::sync::Arc::new(
-            trait_def::NoOpPlugin::new(&format!("plugin-{}", i))
-        );
+        let plugin: BoxedPlugin =
+            std::sync::Arc::new(trait_def::NoOpPlugin::new(&format!("plugin-{}", i)));
         registry.register(plugin, i * 10).unwrap();
     }
 
@@ -393,9 +395,8 @@ async fn test_registry_clear() {
 
     // Register multiple plugins
     for i in 1..=3 {
-        let plugin: BoxedPlugin = std::sync::Arc::new(
-            trait_def::NoOpPlugin::new(&format!("plugin-{}", i))
-        );
+        let plugin: BoxedPlugin =
+            std::sync::Arc::new(trait_def::NoOpPlugin::new(&format!("plugin-{}", i)));
         registry.register(plugin, i * 10).unwrap();
     }
 

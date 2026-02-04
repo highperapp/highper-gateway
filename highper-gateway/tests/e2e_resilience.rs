@@ -11,7 +11,7 @@
 
 use hyper::{Body, Client, StatusCode};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -54,10 +54,7 @@ impl ResilienceTestHarness {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let proxy_process = Command::new("cargo")
-            .args([
-                "run", "--release", "--",
-                "--config", &config_path,
-            ])
+            .args(["run", "--release", "--", "--config", &config_path])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -98,10 +95,7 @@ impl ResilienceTestHarness {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let proxy_process = Command::new("cargo")
-            .args([
-                "run", "--release", "--",
-                "--config", &config_path,
-            ])
+            .args(["run", "--release", "--", "--config", &config_path])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -291,7 +285,8 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = ResilienceTestHarness::new(config).await
+    let harness = ResilienceTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
     let client = Client::new();
@@ -326,8 +321,10 @@ upstream = "test-backend"
         success_count
     );
 
-    println!("✅ Rate limiting test passed: {} success, {} rate-limited",
-             success_count, rate_limited_count);
+    println!(
+        "✅ Rate limiting test passed: {} success, {} rate-limited",
+        success_count, rate_limited_count
+    );
 }
 
 /// Test circuit breaker opens after failures
@@ -361,7 +358,9 @@ upstream = "test-backend"
     let harness = ResilienceTestHarness::with_backend(config, {
         let should_fail = Arc::clone(&should_fail);
         move |port| run_failing_backend(port, should_fail)
-    }).await.expect("Failed to start test harness");
+    })
+    .await
+    .expect("Failed to start test harness");
 
     let client = Client::new();
 
@@ -407,7 +406,8 @@ async fn test_e2e_health_check_failover() {
     let backend1_port = get_next_port();
     let backend2_port = get_next_port();
 
-    let config = format!(r#"
+    let config = format!(
+        r#"
 [server]
 host = "127.0.0.1"
 port = {{{{PROXY_PORT}}}}
@@ -430,7 +430,9 @@ healthy_threshold = 1
 [[routes]]
 path = "/"
 upstream = "test-backend"
-"#, backend1_port, backend2_port);
+"#,
+        backend1_port, backend2_port
+    );
 
     // Start only second backend (first is down)
     let backend2_task = tokio::spawn(async move {
@@ -443,14 +445,10 @@ upstream = "test-backend"
     let config_path = format!("/tmp/e2e_health_test_{}.toml", proxy_port);
     let final_config = config.replace("{{PROXY_PORT}}", &proxy_port.to_string());
 
-    std::fs::write(&config_path, final_config)
-        .expect("Failed to write config");
+    std::fs::write(&config_path, final_config).expect("Failed to write config");
 
     let proxy_process = Command::new("cargo")
-        .args([
-            "run", "--release", "--",
-            "--config", &config_path,
-        ])
+        .args(["run", "--release", "--", "--config", &config_path])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -503,9 +501,9 @@ upstream = "test-backend"
 "#;
 
     // Backend that takes 5 seconds to respond (exceeds 2 second timeout)
-    let harness = ResilienceTestHarness::with_backend(config, |port| {
-        run_slow_backend(port, 5000)
-    }).await.expect("Failed to start test harness");
+    let harness = ResilienceTestHarness::with_backend(config, |port| run_slow_backend(port, 5000))
+        .await
+        .expect("Failed to start test harness");
 
     let client = Client::new();
 
@@ -556,7 +554,8 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = ResilienceTestHarness::new(config).await
+    let harness = ResilienceTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
     let client = Client::new();
@@ -581,7 +580,10 @@ upstream = "test-backend"
         duration
     );
 
-    println!("✅ Connection pooling test passed: 10 requests in {:?}", duration);
+    println!(
+        "✅ Connection pooling test passed: 10 requests in {:?}",
+        duration
+    );
 }
 
 /// Test per-route rate limiting
@@ -620,7 +622,8 @@ requests_per_second = 2
 burst = 1
 "#;
 
-    let harness = ResilienceTestHarness::new(config).await
+    let harness = ResilienceTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
     let client = Client::new();
@@ -666,8 +669,10 @@ burst = 1
         admin_limited
     );
 
-    println!("✅ Per-route rate limiting test passed: API {} success, Admin {} success / {} limited",
-             api_success, admin_success, admin_limited);
+    println!(
+        "✅ Per-route rate limiting test passed: API {} success, Admin {} success / {} limited",
+        api_success, admin_success, admin_limited
+    );
 }
 
 /// Test concurrent requests handling
@@ -690,7 +695,8 @@ path = "/"
 upstream = "test-backend"
 "#;
 
-    let harness = ResilienceTestHarness::new(config).await
+    let harness = ResilienceTestHarness::new(config)
+        .await
         .expect("Failed to start test harness");
 
     let client = Client::new();
@@ -704,12 +710,8 @@ upstream = "test-backend"
         let client = client.clone();
         let url = url.clone();
 
-        let task = tokio::spawn(async move {
-            client
-                .get(url.parse().unwrap())
-                .await
-                .map(|r| r.status())
-        });
+        let task =
+            tokio::spawn(async move { client.get(url.parse().unwrap()).await.map(|r| r.status()) });
 
         tasks.push(task);
     }
@@ -732,5 +734,8 @@ upstream = "test-backend"
         "50 concurrent requests should complete quickly"
     );
 
-    println!("✅ Concurrent requests test passed: 50 requests in {:?}", duration);
+    println!(
+        "✅ Concurrent requests test passed: 50 requests in {:?}",
+        duration
+    );
 }

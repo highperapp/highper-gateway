@@ -18,7 +18,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{Semaphore, Notify};
 use tracing::{debug, info, warn, error};
 
-use crate::observability::tcp_logger::{TcpConnectionId, TcpConnectionContext};
+use crate::observability::tcp_logger::TcpConnectionId;
 use crate::observability::tcp_metrics;
 
 /// Database protocol type

@@ -32,13 +32,30 @@ impl MaxMindAdapter {
 
 impl GeoIpAdapter for MaxMindAdapter {
     fn lookup(&self, ip: IpAddr) -> Option<GeoLocationResult> {
-        match self.reader.lookup::<maxminddb::geoip2::City>(ip) {
-            Ok(city) => {
-                let location = city.location.as_ref()?;
-                Some(GeoLocationResult {
-                    latitude: location.latitude?,
-                    longitude: location.longitude?,
-                })
+        // MaxMindDB 0.27+ uses two-step lookup: first lookup, then decode
+        match self.reader.lookup(ip) {
+            Ok(lookup_result) => {
+                // Decode the result into a City struct
+                match lookup_result.decode::<maxminddb::geoip2::City>() {
+                    Ok(Some(city)) => {
+                        // In maxminddb 0.27+, location is directly accessible (not Option)
+                        // but latitude/longitude fields are still Option<f64>
+                        let latitude = city.location.latitude?;
+                        let longitude = city.location.longitude?;
+                        Some(GeoLocationResult {
+                            latitude,
+                            longitude,
+                        })
+                    }
+                    Ok(None) => {
+                        debug!("MaxMind GeoIP lookup returned no data for {}", ip);
+                        None
+                    }
+                    Err(e) => {
+                        debug!("MaxMind GeoIP decode failed for {}: {}", ip, e);
+                        None
+                    }
+                }
             }
             Err(e) => {
                 debug!("MaxMind GeoIP lookup failed for {}: {}", ip, e);

@@ -12,8 +12,8 @@ fn main() {
     println!("Testing PHP-FPM DSL Integration...\n");
 
     // Read test DSL file
-    let dsl_content = fs::read_to_string("test/simple-php-test.dsl")
-        .expect("Failed to read test DSL file");
+    let dsl_content =
+        fs::read_to_string("test/simple-php-test.dsl").expect("Failed to read test DSL file");
 
     println!("DSL Content:");
     println!("{}\n", dsl_content);

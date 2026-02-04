@@ -934,7 +934,7 @@ fn parse_cache_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive>
 }
 
 fn parse_waf_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
-    use crate::config::dsl_ast::{WafMode, WafConfig, ModSecurityConfig, AwsWafConfig, CorazaConfig, WafRule, WafRuleType, WafRuleAction};
+    use crate::config::dsl_ast::{WafMode, WafConfig};
 
     let mut config = WafConfig {
         enabled: false,
@@ -1104,7 +1104,7 @@ fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut cr
 }
 
 fn parse_graphql_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
-    use crate::config::dsl_ast::{GraphQLConfig, GraphQLBackend};
+    use crate::config::dsl_ast::GraphQLConfig;
 
     let mut config = GraphQLConfig::default();
 

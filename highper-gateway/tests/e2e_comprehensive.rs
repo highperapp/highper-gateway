@@ -51,10 +51,7 @@ impl ProxyTestHarness {
 
         // Start proxy process
         let proxy_process = Command::new("cargo")
-            .args([
-                "run", "--release", "--",
-                "--config", &config_path,
-            ])
+            .args(["run", "--release", "--", "--config", &config_path])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -230,7 +227,8 @@ async fn test_e2e_basic_http_proxying() {
     let proxy_port = get_next_port();
 
     // Create proxy configuration
-    let config = format!(r#"
+    let config = format!(
+        r#"
 [server]
 bind = ["127.0.0.1:{}"]
 workers = "auto"
@@ -253,7 +251,10 @@ paths = ["/"]
 [observability]
 log_level = "warn"
 access_log = false
-"#, proxy_port, backend.url());
+"#,
+        proxy_port,
+        backend.url()
+    );
 
     // Write config
     let config_path = format!("/tmp/e2e_test_{}.toml", proxy_port);
@@ -292,7 +293,8 @@ async fn test_e2e_load_balancing_round_robin() {
     let backend3 = TestBackend::start().await;
     let proxy_port = get_next_port();
 
-    let config = format!(r#"
+    let config = format!(
+        r#"
 [server]
 bind = ["127.0.0.1:{}"]
 
@@ -320,7 +322,12 @@ paths = ["/"]
 [observability]
 log_level = "warn"
 access_log = false
-"#, proxy_port, backend1.url(), backend2.url(), backend3.url());
+"#,
+        proxy_port,
+        backend1.url(),
+        backend2.url(),
+        backend3.url()
+    );
 
     let config_path = format!("/tmp/e2e_test_lb_{}.toml", proxy_port);
     std::fs::write(&config_path, &config).unwrap();
@@ -334,9 +341,21 @@ access_log = false
     }
 
     // Verify each backend received exactly 1 request
-    assert_eq!(backend1.count(), 1, "Backend 1 should have received 1 request");
-    assert_eq!(backend2.count(), 1, "Backend 2 should have received 1 request");
-    assert_eq!(backend3.count(), 1, "Backend 3 should have received 1 request");
+    assert_eq!(
+        backend1.count(),
+        1,
+        "Backend 1 should have received 1 request"
+    );
+    assert_eq!(
+        backend2.count(),
+        1,
+        "Backend 2 should have received 1 request"
+    );
+    assert_eq!(
+        backend3.count(),
+        1,
+        "Backend 3 should have received 1 request"
+    );
 
     std::fs::remove_file(&config_path).unwrap();
     println!("Load balancing test - config validated, all backends functional");
@@ -625,7 +644,9 @@ servers = [{ url = "http://127.0.0.1:9011", weight = 1 }]
         let handle = tokio::spawn(async move {
             let result = timeout(
                 Duration::from_secs(30),
-                client.get(format!("http://127.0.0.1:8088/req-{}", i)).send(),
+                client
+                    .get(format!("http://127.0.0.1:8088/req-{}", i))
+                    .send(),
             )
             .await;
 
@@ -692,7 +713,10 @@ async fn test_e2e_http_methods() {
     let _ = client.head(format!("{}/test", base_url)).send().await;
 
     // Test OPTIONS
-    let _ = client.request(reqwest::Method::OPTIONS, format!("{}/test", base_url)).send().await;
+    let _ = client
+        .request(reqwest::Method::OPTIONS, format!("{}/test", base_url))
+        .send()
+        .await;
 
     println!("HTTP methods test completed");
 }
@@ -730,7 +754,9 @@ mod integration_helpers {
 
     /// Helper to check if a port is available
     pub async fn port_available(port: u16) -> bool {
-        TcpListener::bind(format!("127.0.0.1:{}", port)).await.is_ok()
+        TcpListener::bind(format!("127.0.0.1:{}", port))
+            .await
+            .is_ok()
     }
 
     /// Helper to wait for a server to be ready

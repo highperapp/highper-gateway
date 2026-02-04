@@ -77,7 +77,11 @@ fn test_custom_engine_xss() {
     let engine = CustomWafEngine::with_defaults();
 
     let xss_contexts = vec![
-        create_context("GET", "/comment", Some("text=<script>alert('XSS')</script>")),
+        create_context(
+            "GET",
+            "/comment",
+            Some("text=<script>alert('XSS')</script>"),
+        ),
         create_context("GET", "/post", Some("content=javascript:alert(1)")),
         create_context("GET", "/input", Some("val=<img onerror=alert(1)>")),
     ];
@@ -105,7 +109,10 @@ fn test_custom_engine_path_traversal() {
     for ctx in traversal_contexts {
         match engine.check_request(&ctx) {
             WafDecision::Block { .. } => {}
-            other => panic!("Expected Block decision for path traversal, got {:?}", other),
+            other => panic!(
+                "Expected Block decision for path traversal, got {:?}",
+                other
+            ),
         }
     }
 }
@@ -171,7 +178,11 @@ fn test_coraza_engine_sql_injection() {
     let engine = CorazaWafEngine::with_defaults();
 
     let sql_contexts = vec![
-        create_context("GET", "/api", Some("id=1' UNION SELECT password FROM users--")),
+        create_context(
+            "GET",
+            "/api",
+            Some("id=1' UNION SELECT password FROM users--"),
+        ),
         create_context("GET", "/search", Some("q=' OR 1=1--")),
         create_context("GET", "/data", Some("filter=1'; DROP TABLE accounts; --")),
     ];
@@ -180,7 +191,10 @@ fn test_coraza_engine_sql_injection() {
         match engine.check_request(&ctx) {
             WafDecision::Block { severity, .. } => {
                 // Coraza engine returns Medium severity for SQL injection by default
-                assert!(matches!(severity, WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical));
+                assert!(matches!(
+                    severity,
+                    WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical
+                ));
             }
             other => panic!("Expected Block decision, got {:?}", other),
         }
@@ -201,7 +215,10 @@ fn test_coraza_engine_xss() {
         match engine.check_request(&ctx) {
             WafDecision::Block { severity, .. } => {
                 // Coraza engine returns Medium or higher for XSS
-                assert!(matches!(severity, WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical));
+                assert!(matches!(
+                    severity,
+                    WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical
+                ));
             }
             WafDecision::Log { .. } => {
                 // Coraza may log instead of block if anomaly score threshold not reached
@@ -226,7 +243,10 @@ fn test_coraza_engine_rce() {
         match engine.check_request(&ctx) {
             WafDecision::Block { severity, .. } => {
                 // Coraza engine returns Medium or higher for RCE
-                assert!(matches!(severity, WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical));
+                assert!(matches!(
+                    severity,
+                    WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical
+                ));
             }
             other => panic!("Expected Block decision for RCE, got {:?}", other),
         }
@@ -247,7 +267,10 @@ fn test_coraza_engine_lfi() {
         match engine.check_request(&ctx) {
             WafDecision::Block { severity, .. } => {
                 // Coraza engine returns Medium or higher for LFI
-                assert!(matches!(severity, WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical));
+                assert!(matches!(
+                    severity,
+                    WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical
+                ));
             }
             other => panic!("Expected Block decision for LFI, got {:?}", other),
         }
@@ -324,15 +347,24 @@ fn test_modsecurity_engine_sql_injection() {
     let engine = ModSecurityEngine::with_defaults();
 
     let sql_contexts = vec![
-        create_context("GET", "/api", Some("id=1 UNION SELECT username FROM accounts")),
+        create_context(
+            "GET",
+            "/api",
+            Some("id=1 UNION SELECT username FROM accounts"),
+        ),
         create_context("GET", "/search", Some("q=1' OR '1'='1")),
     ];
 
     for ctx in sql_contexts {
         match engine.check_request(&ctx) {
-            WafDecision::Block { reason, severity, .. } => {
+            WafDecision::Block {
+                reason, severity, ..
+            } => {
                 assert!(reason.contains("SQL Injection"));
-                assert!(matches!(severity, WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical));
+                assert!(matches!(
+                    severity,
+                    WafSeverity::Medium | WafSeverity::High | WafSeverity::Critical
+                ));
             }
             WafDecision::Allow => {
                 // ModSecurity engine may allow if default rules aren't strict enough
@@ -351,7 +383,9 @@ fn test_modsecurity_engine_xss() {
     let engine = ModSecurityEngine::with_defaults();
 
     match engine.check_request(&ctx) {
-        WafDecision::Block { reason, severity, .. } => {
+        WafDecision::Block {
+            reason, severity, ..
+        } => {
             assert!(reason.contains("XSS"));
             assert_eq!(severity, WafSeverity::High);
         }
@@ -390,7 +424,10 @@ fn test_modsecurity_detection_only_mode() {
             // ModSecurity engine may allow if default rules aren't strict enough
             // This is acceptable for DetectionOnly mode with default configuration
         }
-        other => panic!("Expected Log or Allow decision in DetectionOnly mode, got {:?}", other),
+        other => panic!(
+            "Expected Log or Allow decision in DetectionOnly mode, got {:?}",
+            other
+        ),
     }
 }
 
@@ -438,9 +475,8 @@ fn test_aws_waf_not_available_without_config() {
 fn test_aws_waf_with_web_acl() {
     let mut config = AwsWafConfig::default();
     config.enabled = true;
-    config.web_acl_arn = Some(
-        "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/a1234567".to_string(),
-    );
+    config.web_acl_arn =
+        Some("arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/a1234567".to_string());
     config.fallback_action = FallbackAction::Allow;
 
     let engine = AwsWafEngine::new(config).unwrap();

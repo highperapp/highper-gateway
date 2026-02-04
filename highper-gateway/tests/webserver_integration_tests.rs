@@ -255,7 +255,11 @@ fn test_mime_type_detection() {
     for (filename, _expected_mime) in test_cases {
         let path = PathBuf::from(filename);
         let ext = path.extension().and_then(|e| e.to_str());
-        assert!(ext.is_some(), "Failed to extract extension from {}", filename);
+        assert!(
+            ext.is_some(),
+            "Failed to extract extension from {}",
+            filename
+        );
     }
 }
 

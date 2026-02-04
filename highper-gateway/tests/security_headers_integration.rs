@@ -3,12 +3,12 @@
 //! These tests verify that security headers are properly applied to HTTP responses
 //! across different configurations and scenarios.
 
-use hyper::{Response, StatusCode};
 use highper_gateway::http::ResponseBody;
 use highper_gateway::middleware::{
     headers::{SecurityHeadersConfig, SecurityHeadersMiddleware},
     Middleware,
 };
+use hyper::{Response, StatusCode};
 
 /// Helper to create a basic response for testing
 fn create_test_response() -> Response<ResponseBody> {
@@ -32,7 +32,9 @@ async fn test_default_security_headers() {
 
     // Verify X-Content-Type-Options
     assert_eq!(
-        headers.get("x-content-type-options").and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
         Some("nosniff"),
         "X-Content-Type-Options should be nosniff"
     );
@@ -46,16 +48,22 @@ async fn test_default_security_headers() {
 
     // Verify X-XSS-Protection
     assert_eq!(
-        headers.get("x-xss-protection").and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-xss-protection")
+            .and_then(|v| v.to_str().ok()),
         Some("1; mode=block"),
         "X-XSS-Protection should be enabled"
     );
 
     // Verify HSTS
-    let hsts = headers.get("strict-transport-security")
+    let hsts = headers
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok());
     assert!(hsts.is_some(), "HSTS header should be present");
-    assert!(hsts.unwrap().contains("max-age="), "HSTS should have max-age");
+    assert!(
+        hsts.unwrap().contains("max-age="),
+        "HSTS should have max-age"
+    );
 
     // Verify Referrer-Policy
     assert_eq!(
@@ -65,10 +73,15 @@ async fn test_default_security_headers() {
     );
 
     // Verify X-Powered-By (branding)
-    let powered_by = headers.get("x-powered-by")
-        .and_then(|v| v.to_str().ok());
-    assert!(powered_by.is_some(), "X-Powered-By header should be present");
-    assert!(powered_by.unwrap().contains("highper-gateway"), "Should contain project name");
+    let powered_by = headers.get("x-powered-by").and_then(|v| v.to_str().ok());
+    assert!(
+        powered_by.is_some(),
+        "X-Powered-By header should be present"
+    );
+    assert!(
+        powered_by.unwrap().contains("highper-gateway"),
+        "Should contain project name"
+    );
 }
 
 /// Test strict security headers configuration
@@ -84,18 +97,26 @@ async fn test_strict_security_headers() {
     let headers = response.headers();
 
     // Verify strict HSTS (2 years with preload)
-    let hsts = headers.get("strict-transport-security")
+    let hsts = headers
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok())
         .expect("HSTS should be present");
     assert!(hsts.contains("max-age=63072000"), "HSTS should be 2 years");
-    assert!(hsts.contains("includeSubDomains"), "HSTS should include subdomains");
+    assert!(
+        hsts.contains("includeSubDomains"),
+        "HSTS should include subdomains"
+    );
     assert!(hsts.contains("preload"), "HSTS should have preload");
 
     // Verify CSP is present in strict mode
-    let csp = headers.get("content-security-policy")
+    let csp = headers
+        .get("content-security-policy")
         .and_then(|v| v.to_str().ok());
     assert!(csp.is_some(), "CSP should be present in strict mode");
-    assert!(csp.unwrap().contains("default-src"), "CSP should have default-src");
+    assert!(
+        csp.unwrap().contains("default-src"),
+        "CSP should have default-src"
+    );
 
     // Verify strict referrer policy
     assert_eq!(
@@ -105,9 +126,13 @@ async fn test_strict_security_headers() {
     );
 
     // Verify Permissions-Policy is present
-    let perms = headers.get("permissions-policy")
+    let perms = headers
+        .get("permissions-policy")
         .and_then(|v| v.to_str().ok());
-    assert!(perms.is_some(), "Permissions-Policy should be present in strict mode");
+    assert!(
+        perms.is_some(),
+        "Permissions-Policy should be present in strict mode"
+    );
 }
 
 /// Test relaxed security headers configuration
@@ -139,7 +164,9 @@ async fn test_relaxed_security_headers() {
 
     // Basic headers should still be present
     assert_eq!(
-        headers.get("x-content-type-options").and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
         Some("nosniff"),
         "X-Content-Type-Options should always be set"
     );
@@ -151,11 +178,12 @@ async fn test_custom_security_headers() {
     let config = SecurityHeadersConfig {
         x_content_type_options: true,
         x_frame_options: Some("SAMEORIGIN".to_string()),
-        x_xss_protection: None, // Disabled
+        x_xss_protection: None,                     // Disabled
         hsts: Some("max-age=15552000".to_string()), // 6 months
         csp: Some("default-src 'self'; script-src 'self' https://cdn.example.com".to_string()),
         referrer_policy: Some("same-origin".to_string()),
         permissions_policy: Some("geolocation=(), camera=()".to_string()),
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
@@ -182,16 +210,22 @@ async fn test_custom_security_headers() {
 
     // Verify custom HSTS
     assert_eq!(
-        headers.get("strict-transport-security").and_then(|v| v.to_str().ok()),
+        headers
+            .get("strict-transport-security")
+            .and_then(|v| v.to_str().ok()),
         Some("max-age=15552000"),
         "Custom HSTS should be applied"
     );
 
     // Verify custom CSP
-    let csp = headers.get("content-security-policy")
+    let csp = headers
+        .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("CSP should be present");
-    assert!(csp.contains("cdn.example.com"), "Custom CSP should be applied");
+    assert!(
+        csp.contains("cdn.example.com"),
+        "Custom CSP should be applied"
+    );
 
     // Verify custom Referrer-Policy
     assert_eq!(
@@ -201,10 +235,14 @@ async fn test_custom_security_headers() {
     );
 
     // Verify custom Permissions-Policy
-    let perms = headers.get("permissions-policy")
+    let perms = headers
+        .get("permissions-policy")
         .and_then(|v| v.to_str().ok())
         .expect("Permissions-Policy should be present");
-    assert!(perms.contains("geolocation=()"), "Custom Permissions-Policy should be applied");
+    assert!(
+        perms.contains("geolocation=()"),
+        "Custom Permissions-Policy should be applied"
+    );
 }
 
 /// Test that security headers don't interfere with existing headers
@@ -267,8 +305,10 @@ async fn test_security_headers_with_error_responses() {
     let result = middleware.process_response(response).await;
     assert!(result.is_ok(), "Processing should succeed");
     let response = result.unwrap();
-    assert!(response.headers().get("x-content-type-options").is_some(),
-            "Security headers should be added to 404 responses");
+    assert!(
+        response.headers().get("x-content-type-options").is_some(),
+        "Security headers should be added to 404 responses"
+    );
 
     // Test with 500 Internal Server Error
     let response = Response::builder()
@@ -280,8 +320,10 @@ async fn test_security_headers_with_error_responses() {
     let result = middleware.process_response(response).await;
     assert!(result.is_ok(), "Processing should succeed");
     let response = result.unwrap();
-    assert!(response.headers().get("x-frame-options").is_some(),
-            "Security headers should be added to 500 responses");
+    assert!(
+        response.headers().get("x-frame-options").is_some(),
+        "Security headers should be added to 500 responses"
+    );
 
     // Test with 204 No Content
     let response = Response::builder()
@@ -293,8 +335,13 @@ async fn test_security_headers_with_error_responses() {
     let result = middleware.process_response(response).await;
     assert!(result.is_ok(), "Processing should succeed");
     let response = result.unwrap();
-    assert!(response.headers().get("strict-transport-security").is_some(),
-            "Security headers should be added to 204 responses");
+    assert!(
+        response
+            .headers()
+            .get("strict-transport-security")
+            .is_some(),
+        "Security headers should be added to 204 responses"
+    );
 }
 
 /// Test HSTS header variations
@@ -309,13 +356,16 @@ async fn test_hsts_configurations() {
         csp: None,
         referrer_policy: None,
         permissions_policy: None,
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
     let response = create_test_response();
     let result = middleware.process_response(response).await.unwrap();
 
-    let hsts = result.headers().get("strict-transport-security")
+    let hsts = result
+        .headers()
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok())
         .expect("HSTS should be present");
     assert_eq!(hsts, "max-age=31536000");
@@ -329,13 +379,16 @@ async fn test_hsts_configurations() {
         csp: None,
         referrer_policy: None,
         permissions_policy: None,
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
     let response = create_test_response();
     let result = middleware.process_response(response).await.unwrap();
 
-    let hsts = result.headers().get("strict-transport-security")
+    let hsts = result
+        .headers()
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok())
         .expect("HSTS should be present");
     assert!(hsts.contains("includeSubDomains"));
@@ -349,13 +402,16 @@ async fn test_hsts_configurations() {
         csp: None,
         referrer_policy: None,
         permissions_policy: None,
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
     let response = create_test_response();
     let result = middleware.process_response(response).await.unwrap();
 
-    let hsts = result.headers().get("strict-transport-security")
+    let hsts = result
+        .headers()
+        .get("strict-transport-security")
         .and_then(|v| v.to_str().ok())
         .expect("HSTS should be present");
     assert!(hsts.contains("preload"));
@@ -373,13 +429,16 @@ async fn test_csp_configurations() {
         csp: Some("default-src 'self'".to_string()),
         referrer_policy: None,
         permissions_policy: None,
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
     let response = create_test_response();
     let result = middleware.process_response(response).await.unwrap();
 
-    let csp = result.headers().get("content-security-policy")
+    let csp = result
+        .headers()
+        .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("CSP should be present");
     assert_eq!(csp, "default-src 'self'");
@@ -394,13 +453,16 @@ async fn test_csp_configurations() {
         csp: Some(csp_value.to_string()),
         referrer_policy: None,
         permissions_policy: None,
+        ..Default::default()
     };
 
     let middleware = SecurityHeadersMiddleware::new(config);
     let response = create_test_response();
     let result = middleware.process_response(response).await.unwrap();
 
-    let csp = result.headers().get("content-security-policy")
+    let csp = result
+        .headers()
+        .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("CSP should be present");
     assert!(csp.contains("script-src"));
@@ -434,6 +496,8 @@ async fn test_security_headers_performance() {
     println!("Average time per request: {:?}", per_request);
 
     // Should be very fast (< 1ms per request)
-    assert!(per_request.as_micros() < 1000,
-            "Security headers should add minimal overhead");
+    assert!(
+        per_request.as_micros() < 1000,
+        "Security headers should add minimal overhead"
+    );
 }

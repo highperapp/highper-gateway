@@ -2,7 +2,7 @@
 //!
 //! Benchmarks for Stage 0 and Stage 1 compression system
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use highper_gateway::middleware::compression::*;
 
 // Benchmark individual compressor performance
@@ -120,7 +120,9 @@ fn benchmark_content_negotiation(c: &mut Criterion) {
 
     c.bench_function("parse_accept_encoding_with_quality", |b| {
         b.iter(|| {
-            black_box(parse_accept_encoding("gzip;q=1.0, deflate;q=0.8, br;q=0.9, zstd;q=0.85"));
+            black_box(parse_accept_encoding(
+                "gzip;q=1.0, deflate;q=0.8, br;q=0.9, zstd;q=0.85",
+            ));
         });
     });
 

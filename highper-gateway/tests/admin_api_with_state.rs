@@ -3,8 +3,8 @@
 //! Tests the Admin API endpoints with actual state to verify
 //! full integration between API and runtime components.
 
-use hyper::StatusCode;
 use http_body_util::BodyExt;
+use hyper::StatusCode;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,7 +12,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_backend_list_with_state() {
     use highper_gateway::config::Config;
-    use highper_gateway::state::{ProxyState, BackendState, HealthStatus};
+    use highper_gateway::state::{BackendState, HealthStatus, ProxyState};
     use tokio::sync::RwLock;
 
     let config = Arc::new(RwLock::new(Config {
@@ -39,6 +39,7 @@ async fn test_backend_list_with_state() {
             load_balancing: Default::default(),
             health_check: Default::default(),
             connection: Default::default(),
+            slow_start: None,
         }],
         routes: vec![],
         observability: Default::default(),
@@ -48,32 +49,44 @@ async fn test_backend_list_with_state() {
         cache: None,
         rate_limit: None,
         waf: None,
+        graphql: None,
+        webserver: None,
     }));
 
     // Create state and register backends
     let state = Arc::new(ProxyState::new());
 
-    state.register_backend(BackendState {
-        id: "api_backend_0".to_string(),
-        upstream: "api_backend".to_string(),
-        url: "http://localhost:8080".to_string(),
-        enabled: true,
-        draining: false,
-        reason: None,
-        active_connections: 5,
-        health_status: HealthStatus::Healthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "api_backend_0".to_string(),
+            upstream: "api_backend".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 5,
+            health_status: HealthStatus::Healthy,
+        })
+        .await;
 
-    state.register_backend(BackendState {
-        id: "api_backend_1".to_string(),
-        upstream: "api_backend".to_string(),
-        url: "http://localhost:8081".to_string(),
-        enabled: false,
-        draining: false,
-        reason: Some("Maintenance".to_string()),
-        active_connections: 0,
-        health_status: HealthStatus::Unhealthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "api_backend_1".to_string(),
+            upstream: "api_backend".to_string(),
+            url: "http://localhost:8081".to_string(),
+            enabled: false,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: Some("Maintenance".to_string()),
+            active_connections: 0,
+            health_status: HealthStatus::Unhealthy,
+        })
+        .await;
 
     let response = highper_gateway::admin::backends::list_backends(config, Some(state)).await;
 
@@ -103,9 +116,9 @@ async fn test_backend_list_with_state() {
 
 #[tokio::test]
 async fn test_backend_enable_disable_with_state() {
-    use highper_gateway::config::Config;
-    use highper_gateway::state::{ProxyState, BackendState, HealthStatus};
     use highper_gateway::admin::backends::BackendControlRequest;
+    use highper_gateway::config::Config;
+    use highper_gateway::state::{BackendState, HealthStatus, ProxyState};
     use tokio::sync::RwLock;
 
     let config = Arc::new(RwLock::new(Config {
@@ -123,6 +136,7 @@ async fn test_backend_enable_disable_with_state() {
             load_balancing: Default::default(),
             health_check: Default::default(),
             connection: Default::default(),
+            slow_start: None,
         }],
         routes: vec![],
         observability: Default::default(),
@@ -132,20 +146,27 @@ async fn test_backend_enable_disable_with_state() {
         cache: None,
         rate_limit: None,
         waf: None,
+        graphql: None,
+        webserver: None,
     }));
 
     let state = Arc::new(ProxyState::new());
 
-    state.register_backend(BackendState {
-        id: "test_upstream_0".to_string(),
-        upstream: "test_upstream".to_string(),
-        url: "http://localhost:8080".to_string(),
-        enabled: true,
-        draining: false,
-        reason: None,
-        active_connections: 10,
-        health_status: HealthStatus::Healthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "test_upstream_0".to_string(),
+            upstream: "test_upstream".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 10,
+            health_status: HealthStatus::Healthy,
+        })
+        .await;
 
     // Disable the backend
     let disable_request = BackendControlRequest {
@@ -158,7 +179,8 @@ async fn test_backend_enable_disable_with_state() {
         Some(state.clone()),
         "test_upstream_0",
         disable_request,
-    ).await;
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -178,7 +200,8 @@ async fn test_backend_enable_disable_with_state() {
         Some(state.clone()),
         "test_upstream_0",
         enable_request,
-    ).await;
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -190,38 +213,47 @@ async fn test_backend_enable_disable_with_state() {
 
 #[tokio::test]
 async fn test_cache_operations_with_state() {
-    use highper_gateway::state::ProxyState;
-    use highper_gateway::gateway::cache::{LocalCache, CacheEntry};
-    use highper_gateway::admin::cache::{ClearCacheRequest, InvalidateCacheRequest};
     use bytes::Bytes;
+    use highper_gateway::admin::cache::{ClearCacheRequest, InvalidateCacheRequest};
+    use highper_gateway::gateway::cache::{CacheEntry, LocalCache};
+    use highper_gateway::state::ProxyState;
     use std::time::Instant;
 
     // Create cache and add entries
     let cache = Arc::new(LocalCache::default_cache());
 
-    cache.set("key1".to_string(), CacheEntry {
-        body: Bytes::from("value1"),
-        status: 200,
-        headers: vec![],
-        created_at: Instant::now(),
-        ttl: Duration::from_secs(300),
-    });
+    cache.set(
+        "key1".to_string(),
+        CacheEntry {
+            body: Bytes::from("value1"),
+            status: 200,
+            headers: vec![],
+            created_at: Instant::now(),
+            ttl: Duration::from_secs(300),
+        },
+    );
 
-    cache.set("key2".to_string(), CacheEntry {
-        body: Bytes::from("value2"),
-        status: 200,
-        headers: vec![],
-        created_at: Instant::now(),
-        ttl: Duration::from_secs(300),
-    });
+    cache.set(
+        "key2".to_string(),
+        CacheEntry {
+            body: Bytes::from("value2"),
+            status: 200,
+            headers: vec![],
+            created_at: Instant::now(),
+            ttl: Duration::from_secs(300),
+        },
+    );
 
-    cache.set("api_key1".to_string(), CacheEntry {
-        body: Bytes::from("api_value1"),
-        status: 200,
-        headers: vec![],
-        created_at: Instant::now(),
-        ttl: Duration::from_secs(300),
-    });
+    cache.set(
+        "api_key1".to_string(),
+        CacheEntry {
+            body: Bytes::from("api_value1"),
+            status: 200,
+            headers: vec![],
+            created_at: Instant::now(),
+            ttl: Duration::from_secs(300),
+        },
+    );
 
     let state = Arc::new(ProxyState::with_cache(cache));
 
@@ -237,10 +269,7 @@ async fn test_cache_operations_with_state() {
     assert_eq!(json["local"]["enabled"], true);
 
     // Test list cache keys
-    let response = highper_gateway::admin::cache::list_cache_keys(
-        Some(state.clone()),
-        None,
-    ).await;
+    let response = highper_gateway::admin::cache::list_cache_keys(Some(state.clone()), None).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -253,7 +282,8 @@ async fn test_cache_operations_with_state() {
     let response = highper_gateway::admin::cache::list_cache_keys(
         Some(state.clone()),
         Some("api".to_string()),
-    ).await;
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -271,7 +301,8 @@ async fn test_cache_operations_with_state() {
     let response = highper_gateway::admin::cache::invalidate_cache_keys(
         Some(state.clone()),
         invalidate_request,
-    ).await;
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -293,10 +324,8 @@ async fn test_cache_operations_with_state() {
         clear_distributed: false,
     };
 
-    let response = highper_gateway::admin::cache::clear_cache(
-        Some(state.clone()),
-        clear_request,
-    ).await;
+    let response =
+        highper_gateway::admin::cache::clear_cache(Some(state.clone()), clear_request).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -314,32 +343,42 @@ async fn test_cache_operations_with_state() {
 
 #[tokio::test]
 async fn test_metrics_with_state() {
-    use highper_gateway::state::{ProxyState, BackendState, HealthStatus};
+    use highper_gateway::state::{BackendState, HealthStatus, ProxyState};
 
     let state = Arc::new(ProxyState::new());
 
     // Register some backends
-    state.register_backend(BackendState {
-        id: "backend_0".to_string(),
-        upstream: "test".to_string(),
-        url: "http://localhost:8080".to_string(),
-        enabled: true,
-        draining: false,
-        reason: None,
-        active_connections: 10,
-        health_status: HealthStatus::Healthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "backend_0".to_string(),
+            upstream: "test".to_string(),
+            url: "http://localhost:8080".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 10,
+            health_status: HealthStatus::Healthy,
+        })
+        .await;
 
-    state.register_backend(BackendState {
-        id: "backend_1".to_string(),
-        upstream: "test".to_string(),
-        url: "http://localhost:8081".to_string(),
-        enabled: true,
-        draining: false,
-        reason: None,
-        active_connections: 5,
-        health_status: HealthStatus::Unhealthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "backend_1".to_string(),
+            upstream: "test".to_string(),
+            url: "http://localhost:8081".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 5,
+            health_status: HealthStatus::Unhealthy,
+        })
+        .await;
 
     // Simulate some requests
     let metrics = state.metrics();
@@ -385,11 +424,17 @@ async fn test_metrics_with_state() {
     let backends = json["backends"].as_array().unwrap();
 
     // Find backends by ID (order not guaranteed with DashMap)
-    let backend_0 = backends.iter().find(|b| b["backend_id"] == "backend_0").unwrap();
+    let backend_0 = backends
+        .iter()
+        .find(|b| b["backend_id"] == "backend_0")
+        .unwrap();
     assert_eq!(backend_0["health_status"], "healthy");
     assert_eq!(backend_0["active_connections"], 10);
 
-    let backend_1 = backends.iter().find(|b| b["backend_id"] == "backend_1").unwrap();
+    let backend_1 = backends
+        .iter()
+        .find(|b| b["backend_id"] == "backend_1")
+        .unwrap();
     assert_eq!(backend_1["health_status"], "unhealthy");
     assert_eq!(backend_1["active_connections"], 5);
 
@@ -407,14 +452,15 @@ async fn test_metrics_with_state() {
     assert!(body_str.contains("proxy_requests_by_status{status=\"5xx\"} 10"));
     assert!(body_str.contains("proxy_backend_up{backend=\"backend_0\",upstream=\"test\"} 1"));
     assert!(body_str.contains("proxy_backend_up{backend=\"backend_1\",upstream=\"test\"} 0"));
-    assert!(body_str.contains("proxy_backend_connections_active{backend=\"backend_0\",upstream=\"test\"} 10"));
+    assert!(body_str
+        .contains("proxy_backend_connections_active{backend=\"backend_0\",upstream=\"test\"} 10"));
 }
 
 #[tokio::test]
 async fn test_full_admin_api_workflow() {
-    use highper_gateway::state::{ProxyState, BackendState, HealthStatus};
-    use highper_gateway::gateway::cache::{LocalCache, CacheEntry};
     use bytes::Bytes;
+    use highper_gateway::gateway::cache::{CacheEntry, LocalCache};
+    use highper_gateway::state::{BackendState, HealthStatus, ProxyState};
     use std::time::Instant;
 
     // Create a full state with cache
@@ -422,26 +468,34 @@ async fn test_full_admin_api_workflow() {
     let state = Arc::new(ProxyState::with_cache(cache));
 
     // Register backends
-    state.register_backend(BackendState {
-        id: "api_0".to_string(),
-        upstream: "api".to_string(),
-        url: "http://api1.example.com".to_string(),
-        enabled: true,
-        draining: false,
-        reason: None,
-        active_connections: 25,
-        health_status: HealthStatus::Healthy,
-    }).await;
+    state
+        .register_backend(BackendState {
+            id: "api_0".to_string(),
+            upstream: "api".to_string(),
+            url: "http://api1.example.com".to_string(),
+            enabled: true,
+            draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
+            reason: None,
+            active_connections: 25,
+            health_status: HealthStatus::Healthy,
+        })
+        .await;
 
     // Add cache entries
     let cache_instance = state.local_cache().unwrap();
-    cache_instance.set("response:/api/users".to_string(), CacheEntry {
-        body: Bytes::from(r#"{"users": []}"#),
-        status: 200,
-        headers: vec![],
-        created_at: Instant::now(),
-        ttl: Duration::from_secs(60),
-    });
+    cache_instance.set(
+        "response:/api/users".to_string(),
+        CacheEntry {
+            body: Bytes::from(r#"{"users": []}"#),
+            status: 200,
+            headers: vec![],
+            created_at: Instant::now(),
+            ttl: Duration::from_secs(60),
+        },
+    );
 
     // Simulate traffic
     let metrics = state.metrics();

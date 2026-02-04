@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncWriteExt, copy_bidirectional};
-use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 /// HTTP server

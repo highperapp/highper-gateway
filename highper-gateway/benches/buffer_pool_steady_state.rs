@@ -3,11 +3,11 @@
 //! This benchmark properly measures per-thread caching by using long-lived
 //! threads that can benefit from thread-local caches.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use highper_gateway::runtime::BufferPool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Benchmark buffer pool with long-lived worker threads (steady-state)
 fn bench_buffer_pool_steady_state(c: &mut Criterion) {
@@ -124,7 +124,8 @@ fn bench_buffer_pool_per_thread(c: &mut Criterion) {
                     barrier.wait();
 
                     // Collect results (take max time)
-                    workers.into_iter()
+                    workers
+                        .into_iter()
                         .map(|w| w.join().unwrap())
                         .max()
                         .unwrap()
@@ -136,9 +137,6 @@ fn bench_buffer_pool_per_thread(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    steady_state_benches,
-    bench_buffer_pool_per_thread,
-);
+criterion_group!(steady_state_benches, bench_buffer_pool_per_thread,);
 
 criterion_main!(steady_state_benches);

@@ -1,9 +1,9 @@
 //! Proxy performance benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use highper_gateway::proxy::{LoadBalancer, LoadBalancerAlgorithm, UpstreamServer};
-use highper_gateway::gateway::cache::{LocalCache, CacheEntry};
 use bytes::Bytes;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use highper_gateway::gateway::cache::{CacheEntry, LocalCache};
+use highper_gateway::proxy::{LoadBalancer, LoadBalancerAlgorithm, UpstreamServer};
 use std::time::{Duration, Instant};
 
 // Benchmark load balancer selection algorithms
@@ -137,15 +137,11 @@ fn benchmark_cache_operations(c: &mut Criterion) {
     cache.set("test_key".to_string(), entry);
 
     c.bench_function("cache_get", |b| {
-        b.iter(|| {
-            black_box(cache.get("test_key"))
-        });
+        b.iter(|| black_box(cache.get("test_key")));
     });
 
     c.bench_function("cache_get_miss", |b| {
-        b.iter(|| {
-            black_box(cache.get("nonexistent_key"))
-        });
+        b.iter(|| black_box(cache.get("nonexistent_key")));
     });
 }
 

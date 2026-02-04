@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Certificate validation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +188,6 @@ impl CertificateValidator {
     /// Try to build certificate chain from AIA (Authority Information Access)
     fn try_build_chain(&self, leaf_cert: &CertificateDer<'_>) -> Result<Vec<CertificateDer<'static>>> {
         use x509_parser::prelude::*;
-        use x509_parser::oid_registry;
 
         let mut chain = vec![CertificateDer::from(leaf_cert.as_ref().to_vec())];
         let mut seen_subjects: HashSet<String> = HashSet::new();

@@ -2,10 +2,10 @@
 //!
 //! Run with: cargo run --release --example benchmark_demo
 
-use highper_gateway::runtime::{BufferPool, AtomicCounter, ConcurrentStats};
-use std::time::Instant;
+use highper_gateway::runtime::{AtomicCounter, BufferPool, ConcurrentStats};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 fn main() {
     println!("{}", "=".repeat(70));
@@ -75,7 +75,9 @@ fn benchmark_buffer_pool() {
         handles.push(thread::spawn(move || {
             for _ in 0..10000 {
                 let mut p = pool.pool.lock().unwrap();
-                let buf = p.pop().unwrap_or_else(|| bytes::BytesMut::with_capacity(4096));
+                let buf = p
+                    .pop()
+                    .unwrap_or_else(|| bytes::BytesMut::with_capacity(4096));
                 drop(p);
 
                 let mut p = pool.pool.lock().unwrap();
@@ -90,12 +92,20 @@ fn benchmark_buffer_pool() {
 
     let mutex_time = start.elapsed();
 
-    println!("  Lock-free pool: {:?} ({} ops/sec)", lockfree_time,
-        lockfree_ops as f64 / lockfree_time.as_secs_f64());
-    println!("  Mutex pool:     {:?} ({} ops/sec)", mutex_time,
-        lockfree_ops as f64 / mutex_time.as_secs_f64());
-    println!("  Speedup:        {:.2}x faster",
-        mutex_time.as_secs_f64() / lockfree_time.as_secs_f64());
+    println!(
+        "  Lock-free pool: {:?} ({} ops/sec)",
+        lockfree_time,
+        lockfree_ops as f64 / lockfree_time.as_secs_f64()
+    );
+    println!(
+        "  Mutex pool:     {:?} ({} ops/sec)",
+        mutex_time,
+        lockfree_ops as f64 / mutex_time.as_secs_f64()
+    );
+    println!(
+        "  Speedup:        {:.2}x faster",
+        mutex_time.as_secs_f64() / lockfree_time.as_secs_f64()
+    );
     println!();
 }
 
@@ -145,12 +155,20 @@ fn benchmark_counter() {
 
     let mutex_time = start.elapsed();
 
-    println!("  Atomic counter: {:?} ({:.0} ops/sec)", atomic_time,
-        total_ops as f64 / atomic_time.as_secs_f64());
-    println!("  Mutex counter:  {:?} ({:.0} ops/sec)", mutex_time,
-        total_ops as f64 / mutex_time.as_secs_f64());
-    println!("  Speedup:        {:.2}x faster",
-        mutex_time.as_secs_f64() / atomic_time.as_secs_f64());
+    println!(
+        "  Atomic counter: {:?} ({:.0} ops/sec)",
+        atomic_time,
+        total_ops as f64 / atomic_time.as_secs_f64()
+    );
+    println!(
+        "  Mutex counter:  {:?} ({:.0} ops/sec)",
+        mutex_time,
+        total_ops as f64 / mutex_time.as_secs_f64()
+    );
+    println!(
+        "  Speedup:        {:.2}x faster",
+        mutex_time.as_secs_f64() / atomic_time.as_secs_f64()
+    );
     println!();
 }
 
@@ -182,8 +200,11 @@ fn benchmark_concurrent_stats() {
     let snapshot = stats.snapshot();
 
     println!("  Time:           {:?}", elapsed);
-    println!("  Operations:     {} ({:.0} ops/sec)", total_ops,
-        total_ops as f64 / elapsed.as_secs_f64());
+    println!(
+        "  Operations:     {} ({:.0} ops/sec)",
+        total_ops,
+        total_ops as f64 / elapsed.as_secs_f64()
+    );
     println!("  Requests:       {}", snapshot.requests);
     println!("  Bytes in:       {} MB", snapshot.bytes_in / 1024 / 1024);
     println!("  Bytes out:      {} MB", snapshot.bytes_out / 1024 / 1024);
@@ -193,7 +214,7 @@ fn benchmark_concurrent_stats() {
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn benchmark_simd() {
-    use highper_gateway::runtime::{simd_find_pattern, simd_checksum};
+    use highper_gateway::runtime::{simd_checksum, simd_find_pattern};
 
     println!("⚡ SIMD Operations (Beneficial Operations Only)");
     println!("{}", "-".repeat(70));
@@ -218,9 +239,13 @@ fn benchmark_simd() {
         }
         let scalar_time = start.elapsed();
 
-        println!("    {} KB: SIMD {:?} | Scalar {:?} | Speedup: {:.1}x",
-            size / 1024, simd_time, scalar_time,
-            scalar_time.as_secs_f64() / simd_time.as_secs_f64());
+        println!(
+            "    {} KB: SIMD {:?} | Scalar {:?} | Speedup: {:.1}x",
+            size / 1024,
+            simd_time,
+            scalar_time,
+            scalar_time.as_secs_f64() / simd_time.as_secs_f64()
+        );
     }
 
     println!();
@@ -243,9 +268,13 @@ fn benchmark_simd() {
         }
         let scalar_time = start.elapsed();
 
-        println!("    {} KB: SIMD {:?} | Scalar {:?} | Speedup: {:.1}x",
-            size / 1024, simd_time, scalar_time,
-            scalar_time.as_secs_f64() / simd_time.as_secs_f64());
+        println!(
+            "    {} KB: SIMD {:?} | Scalar {:?} | Speedup: {:.1}x",
+            size / 1024,
+            simd_time,
+            scalar_time,
+            scalar_time.as_secs_f64() / simd_time.as_secs_f64()
+        );
     }
     println!();
 }

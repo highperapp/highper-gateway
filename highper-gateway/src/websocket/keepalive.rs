@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::{interval, sleep};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, warn};
 use crate::websocket::{ConnectionTracker, ConnectionId, ConnectionState};
 
 /// Keep-alive manager configuration

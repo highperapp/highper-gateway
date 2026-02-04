@@ -7,7 +7,7 @@
 //! Full end-to-end tests with actual HTTP requests should be done in e2e tests.
 
 use highper_gateway::middleware::request_size_limit::{
-    RequestSizeLimiter, RequestSizeLimitConfig, format_byte_size
+    format_byte_size, RequestSizeLimitConfig, RequestSizeLimiter,
 };
 
 /// Test default configuration (10MB limit)
@@ -85,7 +85,7 @@ fn test_various_size_limits() {
 fn test_limiter_disabled() {
     let config = RequestSizeLimitConfig {
         max_body_size: 1024, // 1 KB limit
-        enabled: false, // Disabled
+        enabled: false,      // Disabled
         error_message: None,
     };
 
@@ -101,7 +101,10 @@ fn test_custom_error_messages() {
     let configs = vec![
         ("Upload size too large. Please reduce file size.", 1024),
         ("File exceeds maximum allowed size.", 5 * 1024 * 1024),
-        ("Request body is too large for processing.", 10 * 1024 * 1024),
+        (
+            "Request body is too large for processing.",
+            10 * 1024 * 1024,
+        ),
     ];
 
     for (msg, size) in configs {
@@ -255,7 +258,7 @@ fn test_multiple_limiters() {
         .map(|i| {
             let config = RequestSizeLimitConfig {
                 max_body_size: (i + 1) * 1024, // 1KB, 2KB, 3KB, ..., 100KB
-                enabled: i % 2 == 0, // Every other one disabled
+                enabled: i % 2 == 0,           // Every other one disabled
                 error_message: Some(format!("Error for limiter {}", i)),
             };
             RequestSizeLimiter::new(config)
@@ -310,7 +313,10 @@ fn test_api_type_configurations() {
         enabled: true,
         error_message: Some("GraphQL query too large".to_string()),
     };
-    assert_eq!(RequestSizeLimiter::new(graphql_config).max_size(), 5 * 1024 * 1024);
+    assert_eq!(
+        RequestSizeLimiter::new(graphql_config).max_size(),
+        5 * 1024 * 1024
+    );
 
     // File Upload API - Large files allowed
     let upload_config = RequestSizeLimitConfig {
@@ -318,7 +324,10 @@ fn test_api_type_configurations() {
         enabled: true,
         error_message: Some("File upload too large".to_string()),
     };
-    assert_eq!(RequestSizeLimiter::new(upload_config).max_size(), 100 * 1024 * 1024);
+    assert_eq!(
+        RequestSizeLimiter::new(upload_config).max_size(),
+        100 * 1024 * 1024
+    );
 
     // Webhook endpoint - Moderate size
     let webhook_config = RequestSizeLimitConfig {
@@ -326,7 +335,10 @@ fn test_api_type_configurations() {
         enabled: true,
         error_message: Some("Webhook payload too large".to_string()),
     };
-    assert_eq!(RequestSizeLimiter::new(webhook_config).max_size(), 10 * 1024 * 1024);
+    assert_eq!(
+        RequestSizeLimiter::new(webhook_config).max_size(),
+        10 * 1024 * 1024
+    );
 }
 
 /// Test limiter creation performance
@@ -352,8 +364,10 @@ fn test_limiter_creation_performance() {
     println!("Average time per limiter creation: {} ns", per_creation);
 
     // Should be very fast (< 10 microseconds per creation)
-    assert!(per_creation < 10_000,
-            "Limiter creation should be extremely fast");
+    assert!(
+        per_creation < 10_000,
+        "Limiter creation should be extremely fast"
+    );
 }
 
 /// Test configuration with extreme values

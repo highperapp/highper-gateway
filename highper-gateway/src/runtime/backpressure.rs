@@ -35,7 +35,7 @@
 use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing::{debug, warn, info};
-use crate::observability::system::{SystemStats, MemoryStats};
+use crate::observability::system::MemoryStats;
 
 /// Backpressure manager for graceful degradation
 pub struct BackpressureManager {

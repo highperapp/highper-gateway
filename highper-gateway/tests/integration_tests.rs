@@ -17,25 +17,23 @@ async fn test_tls_passthrough_sni_extraction() {
     // TLS ClientHello with SNI for "example.com"
     let client_hello = vec![
         0x16, 0x03, 0x01, 0x00, 0xc4, // TLS Record Header (Handshake, TLS 1.0, length 196)
-        0x01, 0x00, 0x00, 0xc0,       // Handshake Type (ClientHello, length 192)
-        0x03, 0x03,                   // Client Version (TLS 1.2)
+        0x01, 0x00, 0x00, 0xc0, // Handshake Type (ClientHello, length 192)
+        0x03, 0x03, // Client Version (TLS 1.2)
         // Random (32 bytes)
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-        0x00,                         // Session ID Length (0)
-        0x00, 0x02,                   // Cipher Suites Length (2)
-        0x00, 0x2f,                   // Cipher Suite (TLS_RSA_WITH_AES_128_CBC_SHA)
-        0x01,                         // Compression Methods Length (1)
-        0x00,                         // Compression Method (null)
-        0x00, 0x7f,                   // Extensions Length (127 bytes)
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x1f, 0x00, // Session ID Length (0)
+        0x00, 0x02, // Cipher Suites Length (2)
+        0x00, 0x2f, // Cipher Suite (TLS_RSA_WITH_AES_128_CBC_SHA)
+        0x01, // Compression Methods Length (1)
+        0x00, // Compression Method (null)
+        0x00, 0x7f, // Extensions Length (127 bytes)
         // SNI Extension
-        0x00, 0x00,                   // Extension Type (Server Name)
-        0x00, 0x10,                   // Extension Length (16 bytes)
-        0x00, 0x0e,                   // Server Name List Length (14 bytes)
-        0x00,                         // Server Name Type (host_name)
-        0x00, 0x0b,                   // Server Name Length (11 bytes)
+        0x00, 0x00, // Extension Type (Server Name)
+        0x00, 0x10, // Extension Length (16 bytes)
+        0x00, 0x0e, // Server Name List Length (14 bytes)
+        0x00, // Server Name Type (host_name)
+        0x00, 0x0b, // Server Name Length (11 bytes)
         // "example.com" (11 bytes)
         b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o', b'm',
     ];
@@ -63,9 +61,9 @@ async fn test_tls_passthrough_sni_extraction() {
 /// - Valid gRPC path format
 #[test]
 fn test_grpc_request_detection() {
-    use hyper::{Request, Version};
-    use http_body_util::Empty;
     use bytes::Bytes;
+    use http_body_util::Empty;
+    use hyper::{Request, Version};
 
     // Create a valid gRPC request
     let req = Request::builder()
@@ -80,7 +78,8 @@ fn test_grpc_request_detection() {
     assert_eq!(req.version(), Version::HTTP_2);
 
     // Verify content-type
-    let content_type = req.headers()
+    let content_type = req
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok());
     assert_eq!(content_type, Some("application/grpc"));
@@ -110,7 +109,11 @@ fn test_grpc_path_formats() {
 
     for path in valid_paths {
         assert!(path.starts_with("/"), "Path starts with /: {}", path);
-        assert!(path.contains('.'), "Path contains package separator: {}", path);
+        assert!(
+            path.contains('.'),
+            "Path contains package separator: {}",
+            path
+        );
 
         let after_slash = &path[1..];
         let parts: Vec<&str> = after_slash.split('/').collect();
@@ -126,9 +129,9 @@ fn test_grpc_path_formats() {
 /// required headers according to RFC 6455
 #[test]
 fn test_websocket_upgrade_headers() {
-    use hyper::{Request, header};
-    use http_body_util::Empty;
     use bytes::Bytes;
+    use http_body_util::Empty;
+    use hyper::{header, Request};
 
     // Create a valid WebSocket upgrade request
     let req = Request::builder()
@@ -144,23 +147,27 @@ fn test_websocket_upgrade_headers() {
     // Verify all required headers
     assert_eq!(req.method(), "GET");
 
-    let upgrade = req.headers()
+    let upgrade = req
+        .headers()
         .get(header::UPGRADE)
         .and_then(|v| v.to_str().ok());
     assert_eq!(upgrade, Some("websocket"));
 
-    let connection = req.headers()
+    let connection = req
+        .headers()
         .get(header::CONNECTION)
         .and_then(|v| v.to_str().ok());
     assert!(connection.map(|c| c.contains("Upgrade")).unwrap_or(false));
 
-    let ws_key = req.headers()
+    let ws_key = req
+        .headers()
         .get("sec-websocket-key")
         .and_then(|v| v.to_str().ok());
     assert!(ws_key.is_some(), "WebSocket key is present");
     assert_eq!(ws_key.unwrap().len(), 24, "WebSocket key is base64 encoded");
 
-    let ws_version = req.headers()
+    let ws_version = req
+        .headers()
         .get("sec-websocket-version")
         .and_then(|v| v.to_str().ok());
     assert_eq!(ws_version, Some("13"));
@@ -176,8 +183,8 @@ fn test_websocket_accept_key_calculation() {
     let expected_accept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
     // Calculate accept key
+    use base64::{engine::general_purpose, Engine as _};
     use sha1::{Digest, Sha1};
-    use base64::{Engine as _, engine::general_purpose};
 
     const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -281,7 +288,11 @@ fn test_protocol_metrics() {
 
     for protocol in protocols {
         assert!(!protocol.is_empty(), "Protocol name defined: {}", protocol);
-        assert!(protocol.len() < 20, "Protocol name is reasonable length: {}", protocol);
+        assert!(
+            protocol.len() < 20,
+            "Protocol name is reasonable length: {}",
+            protocol
+        );
     }
 }
 
@@ -368,13 +379,16 @@ async fn test_graceful_shutdown_timeout() {
     // Simulate a task that takes longer than shutdown timeout
     let result = timeout(shutdown_timeout, async {
         tokio::time::sleep(Duration::from_secs(60)).await;
-    }).await;
+    })
+    .await;
 
     let elapsed = start.elapsed();
 
     assert!(result.is_err(), "Task should timeout");
-    assert!(elapsed >= shutdown_timeout && elapsed < Duration::from_secs(31),
-        "Timeout should be enforced");
+    assert!(
+        elapsed >= shutdown_timeout && elapsed < Duration::from_secs(31),
+        "Timeout should be enforced"
+    );
 }
 
 // ============================================================================
@@ -404,6 +418,9 @@ async fn test_full_stack_proxy_state_integration() {
             url: "http://127.0.0.1:18081".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Unknown,
@@ -417,6 +434,9 @@ async fn test_full_stack_proxy_state_integration() {
             url: "http://127.0.0.1:18082".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Unknown,
@@ -426,7 +446,11 @@ async fn test_full_stack_proxy_state_integration() {
     // Test backend disable via ProxyState
     println!("\n=== Testing Backend Disable ===");
     let success = proxy_state
-        .set_backend_enabled("test_backend_0", false, Some("Integration test".to_string()))
+        .set_backend_enabled(
+            "test_backend_0",
+            false,
+            Some("Integration test".to_string()),
+        )
         .await;
 
     assert!(success, "Failed to disable backend");
@@ -464,7 +488,10 @@ async fn test_full_stack_proxy_state_integration() {
     metrics.record_status(404);
 
     assert_eq!(metrics.get_total_requests(), 2);
-    println!("✅ Metrics tracked correctly: {} requests", metrics.get_total_requests());
+    println!(
+        "✅ Metrics tracked correctly: {} requests",
+        metrics.get_total_requests()
+    );
 
     //Test health status updates
     println!("\n=== Testing Health Status Updates ===");
@@ -500,6 +527,9 @@ async fn test_loadbalancer_state_integration() {
             url: "http://127.0.0.1:20001".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Healthy,
@@ -513,6 +543,9 @@ async fn test_loadbalancer_state_integration() {
             url: "http://127.0.0.1:20002".to_string(),
             enabled: false, // Disabled
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: Some("Test".to_string()),
             active_connections: 0,
             health_status: HealthStatus::Healthy,
@@ -570,6 +603,9 @@ async fn test_connection_count_sync() {
             url: "http://127.0.0.1:21001".to_string(),
             enabled: true,
             draining: false,
+            drain_started_at: None,
+            drain_timeout_secs: None,
+            drain_completed: false,
             reason: None,
             active_connections: 0,
             health_status: HealthStatus::Healthy,
@@ -605,5 +641,8 @@ async fn test_connection_count_sync() {
         .expect("Backend not found");
 
     assert_eq!(backend_state.active_connections, 2);
-    println!("✅ Connection count synced: {}", backend_state.active_connections);
+    println!(
+        "✅ Connection count synced: {}",
+        backend_state.active_connections
+    );
 }

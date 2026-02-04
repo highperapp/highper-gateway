@@ -1,9 +1,8 @@
+use highper_gateway::config::dsl_converter::convert_dsl_to_config;
 /// End-to-end DSL integration tests
 ///
 /// Tests the complete DSL pipeline: parsing → AST → converter → Config
-
 use highper_gateway::config::dsl_parser::parse_dsl;
-use highper_gateway::config::dsl_converter::convert_dsl_to_config;
 
 #[test]
 fn test_simple_http_proxy_dsl() {
@@ -21,7 +20,8 @@ log info
     match dsl_config {
         Ok(config) => {
             println!("✓ DSL parsed successfully");
-            println!("  Global directives: {} sites, log level: {:?}",
+            println!(
+                "  Global directives: {} sites, log level: {:?}",
                 config.sites.len(),
                 config.global.log_level
             );

@@ -5,14 +5,14 @@
 //! - SIMD-accelerated operations vs scalar implementations
 //! - Lock-free data structures vs traditional mutex-based structures
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use highper_gateway::runtime::{BufferPool, AtomicCounter, ConcurrentStats, WorkStealingQueue};
 use bytes::BytesMut;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use highper_gateway::runtime::{AtomicCounter, BufferPool, ConcurrentStats, WorkStealingQueue};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-use highper_gateway::runtime::{simd_find_pattern, simd_checksum};
+use highper_gateway::runtime::{simd_checksum, simd_find_pattern};
 
 // ============================================================================
 // Buffer Pool Benchmarks
@@ -83,7 +83,8 @@ fn bench_buffer_pool_mutex(c: &mut Criterion) {
 
         fn get(&self) -> BytesMut {
             let mut pool = self.pool.lock().unwrap();
-            pool.pop().unwrap_or_else(|| BytesMut::with_capacity(self.size))
+            pool.pop()
+                .unwrap_or_else(|| BytesMut::with_capacity(self.size))
         }
 
         fn put(&self, mut buf: BytesMut) {
@@ -122,26 +123,16 @@ fn bench_simd_find_pattern(c: &mut Criterion) {
         data[*size - 10] = 255; // Pattern to find
 
         // SIMD version
-        group.bench_with_input(
-            BenchmarkId::new("simd", size),
-            size,
-            |b, _| {
-                b.iter(|| {
-                    simd_find_pattern(black_box(&data), black_box(255));
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("simd", size), size, |b, _| {
+            b.iter(|| {
+                simd_find_pattern(black_box(&data), black_box(255));
+            });
+        });
 
         // Scalar version
-        group.bench_with_input(
-            BenchmarkId::new("scalar", size),
-            size,
-            |b, _| {
-                b.iter(|| {
-                    black_box(&data).iter().position(|&x| x == black_box(255))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("scalar", size), size, |b, _| {
+            b.iter(|| black_box(&data).iter().position(|&x| x == black_box(255)));
+        });
     }
 
     group.finish();
@@ -157,26 +148,20 @@ fn bench_simd_checksum(c: &mut Criterion) {
         let data = vec![42u8; *size];
 
         // SIMD version
-        group.bench_with_input(
-            BenchmarkId::new("simd", size),
-            size,
-            |b, _| {
-                b.iter(|| {
-                    simd_checksum(black_box(&data));
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("simd", size), size, |b, _| {
+            b.iter(|| {
+                simd_checksum(black_box(&data));
+            });
+        });
 
         // Scalar version
-        group.bench_with_input(
-            BenchmarkId::new("scalar", size),
-            size,
-            |b, _| {
-                b.iter(|| {
-                    black_box(&data).iter().fold(0u64, |acc, &byte| acc ^ (byte as u64))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("scalar", size), size, |b, _| {
+            b.iter(|| {
+                black_box(&data)
+                    .iter()
+                    .fold(0u64, |acc, &byte| acc ^ (byte as u64))
+            });
+        });
     }
 
     group.finish();
@@ -268,9 +253,7 @@ fn bench_concurrent_stats(c: &mut Criterion) {
     });
 
     c.bench_function("concurrent_stats_snapshot", |b| {
-        b.iter(|| {
-            stats.snapshot()
-        });
+        b.iter(|| stats.snapshot());
     });
 }
 
@@ -307,11 +290,7 @@ criterion_group!(
 );
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-criterion_group!(
-    simd_benches,
-    bench_simd_find_pattern,
-    bench_simd_checksum,
-);
+criterion_group!(simd_benches, bench_simd_find_pattern, bench_simd_checksum,);
 
 #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 criterion_group!(simd_benches,);

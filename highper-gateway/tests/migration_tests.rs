@@ -1,7 +1,7 @@
 //! Integration tests for YAML/JSON → DSL migration tool
 
 use anyhow::Result;
-use highper_gateway::config::{dsl_generator, dsl_parser, dsl_converter, load_config};
+use highper_gateway::config::{dsl_converter, dsl_generator, dsl_parser, load_config};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -46,9 +46,15 @@ observability:
     assert!(dsl.contains("log info"));
 
     // Verify DSL is much shorter
-    let yaml_lines = yaml_content.lines().filter(|l| !l.trim().is_empty()).count();
+    let yaml_lines = yaml_content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
     let dsl_lines = dsl.lines().filter(|l| !l.trim().is_empty()).count();
-    assert!(dsl_lines < yaml_lines / 2, "DSL should be at least 2x shorter");
+    assert!(
+        dsl_lines < yaml_lines / 2,
+        "DSL should be at least 2x shorter"
+    );
 
     Ok(())
 }
@@ -145,16 +151,23 @@ observability:
     assert!(dsl.contains("backend:3000"), "Should have backend address");
 
     // Verify DSL is significantly shorter
-    let yaml_lines = yaml_content.lines().filter(|l| !l.trim().is_empty()).count();
+    let yaml_lines = yaml_content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
     let dsl_lines = dsl.lines().filter(|l| !l.trim().is_empty()).count();
 
-    assert!(dsl_lines < yaml_lines / 2,
-            "DSL should be at least 2x shorter than YAML");
+    assert!(
+        dsl_lines < yaml_lines / 2,
+        "DSL should be at least 2x shorter than YAML"
+    );
 
     // Verify no protocol prefixes in output
     assert!(!dsl.contains("http://"), "Should strip http:// prefix");
-    assert!(!dsl.contains("https://") || dsl.starts_with("https://"),
-            "https:// should only appear as site protocol");
+    assert!(
+        !dsl.contains("https://") || dsl.starts_with("https://"),
+        "https:// should only appear as site protocol"
+    );
 
     Ok(())
 }
@@ -249,8 +262,10 @@ observability:
 
     // Should generate site with TLS address
     // Note: Generator uses tls_bind if available
-    assert!(dsl.contains("0.0.0.0:8443") || dsl.contains("https://"),
-            "DSL should contain TLS address or https protocol");
+    assert!(
+        dsl.contains("0.0.0.0:8443") || dsl.contains("https://"),
+        "DSL should contain TLS address or https protocol"
+    );
     assert!(dsl.contains("backend:3000"));
 
     Ok(())
@@ -344,13 +359,20 @@ observability:
     let dsl = dsl_generator::generate_dsl(&config)?;
 
     // Calculate reduction
-    let yaml_lines = yaml_content.lines().filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#')).count();
+    let yaml_lines = yaml_content
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+        .count();
     let dsl_lines = dsl.lines().filter(|l| !l.trim().is_empty()).count();
 
     let reduction_ratio = yaml_lines as f64 / dsl_lines as f64;
 
     // Should be at least 3x reduction
-    assert!(reduction_ratio >= 3.0, "Expected at least 3x reduction, got {:.1}x", reduction_ratio);
+    assert!(
+        reduction_ratio >= 3.0,
+        "Expected at least 3x reduction, got {:.1}x",
+        reduction_ratio
+    );
 
     Ok(())
 }
@@ -393,7 +415,10 @@ observability:
 
     // Try to parse the generated DSL
     let parse_result = dsl_parser::parse_dsl(&dsl);
-    assert!(parse_result.is_ok(), "Generated DSL should parse successfully");
+    assert!(
+        parse_result.is_ok(),
+        "Generated DSL should parse successfully"
+    );
 
     // Try to load as config
     let load_result = load_config(&dsl_path);
@@ -435,7 +460,11 @@ observability:
 
     // Should be very concise
     let lines: Vec<&str> = dsl.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert!(lines.len() <= 3, "Minimal config should be 3 lines or less, got {}", lines.len());
+    assert!(
+        lines.len() <= 3,
+        "Minimal config should be 3 lines or less, got {}",
+        lines.len()
+    );
 
     Ok(())
 }

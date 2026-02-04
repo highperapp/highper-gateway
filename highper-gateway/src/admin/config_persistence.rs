@@ -4,7 +4,6 @@
 //! persist across restarts.
 
 use crate::admin::{RouteDefinition, UpstreamDefinition};
-use crate::config::Config;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{Response, StatusCode};
@@ -13,8 +12,7 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::info;
 
 /// Configuration persistence manager
 pub struct ConfigPersistence {

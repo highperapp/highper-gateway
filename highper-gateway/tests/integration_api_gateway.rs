@@ -2,8 +2,8 @@
 //! Tests hostname-based routing, path matching, and hot reload
 
 use highper_gateway::gateway::routing::{
-    HostnameRouter, HostnameRoutesConfig, HostConfig, RouteConfig, PathMatch,
-    UpstreamConfig, MatchedRoute,
+    HostConfig, HostnameRouter, HostnameRoutesConfig, MatchedRoute, PathMatch, RouteConfig,
+    UpstreamConfig,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -26,24 +26,20 @@ async fn test_hostname_routing_exact_match() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "users".to_string(),
-                        path_match: PathMatch::Exact {
-                            path: "/api/users".to_string(),
-                        },
-                        upstream: "users-service".to_string(),
-                        methods: vec!["GET".to_string(), "POST".to_string()],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "users".to_string(),
+                path_match: PathMatch::Exact {
+                    path: "/api/users".to_string(),
+                },
+                upstream: "users-service".to_string(),
+                methods: vec!["GET".to_string(), "POST".to_string()],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams,
     };
 
@@ -84,24 +80,20 @@ async fn test_hostname_routing_prefix_match() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "products".to_string(),
-                        path_match: PathMatch::Prefix {
-                            prefix: "/api/products/".to_string(),
-                        },
-                        upstream: "products-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "products".to_string(),
+                path_match: PathMatch::Prefix {
+                    prefix: "/api/products/".to_string(),
+                },
+                upstream: "products-service".to_string(),
+                methods: vec![],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams,
     };
 
@@ -142,24 +134,20 @@ async fn test_hostname_routing_pattern_match() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "orders".to_string(),
-                        path_match: PathMatch::Pattern {
-                            pattern: r"^/api/orders/\d+$".to_string(),
-                        },
-                        upstream: "orders-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "orders".to_string(),
+                path_match: PathMatch::Pattern {
+                    pattern: r"^/api/orders/\d+$".to_string(),
+                },
+                upstream: "orders-service".to_string(),
+                methods: vec![],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams,
     };
 
@@ -195,24 +183,20 @@ async fn test_wildcard_hostname_matching() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "*.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "wildcard-route".to_string(),
-                        path_match: PathMatch::Exact {
-                            path: "/api/health".to_string(),
-                        },
-                        upstream: "tenant-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "*.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "wildcard-route".to_string(),
+                path_match: PathMatch::Exact {
+                    path: "/api/health".to_string(),
+                },
+                upstream: "tenant-service".to_string(),
+                methods: vec![],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams,
     };
 
@@ -253,24 +237,20 @@ async fn test_method_filtering() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "create-user".to_string(),
-                        path_match: PathMatch::Exact {
-                            path: "/api/users".to_string(),
-                        },
-                        upstream: "write-service".to_string(),
-                        methods: vec!["POST".to_string(), "PUT".to_string()],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "create-user".to_string(),
+                path_match: PathMatch::Exact {
+                    path: "/api/users".to_string(),
+                },
+                upstream: "write-service".to_string(),
+                methods: vec!["POST".to_string(), "PUT".to_string()],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams,
     };
 
@@ -319,35 +299,33 @@ async fn test_route_priority_exact_over_prefix() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "exact-route".to_string(),
-                        path_match: PathMatch::Exact {
-                            path: "/api/special".to_string(),
-                        },
-                        upstream: "exact-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![
+                RouteConfig {
+                    name: "exact-route".to_string(),
+                    path_match: PathMatch::Exact {
+                        path: "/api/special".to_string(),
                     },
-                    RouteConfig {
-                        name: "prefix-route".to_string(),
-                        path_match: PathMatch::Prefix {
-                            prefix: "/api/".to_string(),
-                        },
-                        upstream: "prefix-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
+                    upstream: "exact-service".to_string(),
+                    methods: vec![],
+                    timeout_ms: None,
+                    middleware: vec![],
+                    metadata: HashMap::new(),
+                },
+                RouteConfig {
+                    name: "prefix-route".to_string(),
+                    path_match: PathMatch::Prefix {
+                        prefix: "/api/".to_string(),
                     },
-                ],
-            },
-        ],
+                    upstream: "prefix-service".to_string(),
+                    methods: vec![],
+                    timeout_ms: None,
+                    middleware: vec![],
+                    metadata: HashMap::new(),
+                },
+            ],
+        }],
         upstreams,
     };
 
@@ -400,35 +378,31 @@ async fn test_multiple_hosts() {
         hosts: vec![
             HostConfig {
                 hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "api-route".to_string(),
-                        path_match: PathMatch::Prefix {
-                            prefix: "/api/".to_string(),
-                        },
-                        upstream: "api-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
+                routes: vec![RouteConfig {
+                    name: "api-route".to_string(),
+                    path_match: PathMatch::Prefix {
+                        prefix: "/api/".to_string(),
                     },
-                ],
+                    upstream: "api-service".to_string(),
+                    methods: vec![],
+                    timeout_ms: None,
+                    middleware: vec![],
+                    metadata: HashMap::new(),
+                }],
             },
             HostConfig {
                 hostname: "www.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "web-route".to_string(),
-                        path_match: PathMatch::Prefix {
-                            prefix: "/".to_string(),
-                        },
-                        upstream: "web-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
+                routes: vec![RouteConfig {
+                    name: "web-route".to_string(),
+                    path_match: PathMatch::Prefix {
+                        prefix: "/".to_string(),
                     },
-                ],
+                    upstream: "web-service".to_string(),
+                    methods: vec![],
+                    timeout_ms: None,
+                    middleware: vec![],
+                    metadata: HashMap::new(),
+                }],
             },
         ],
         upstreams,
@@ -504,8 +478,14 @@ async fn test_load_performance_10k_routes() {
     router.load_from_json(&json).await.unwrap();
     let load_duration = start.elapsed();
 
-    println!("✓ Loaded 10,000 routes across 100 hosts in {:?}", load_duration);
-    assert!(load_duration.as_secs() < 5, "Load should complete in under 5 seconds");
+    println!(
+        "✓ Loaded 10,000 routes across 100 hosts in {:?}",
+        load_duration
+    );
+    assert!(
+        load_duration.as_secs() < 5,
+        "Load should complete in under 5 seconds"
+    );
 
     // Measure lookup time (should be O(1) for hostname)
     let start = std::time::Instant::now();
@@ -518,7 +498,10 @@ async fn test_load_performance_10k_routes() {
 
     println!("✓ Performed 1,000 lookups in {:?}", lookup_duration);
     println!("  Average: {:?} per lookup", lookup_duration / 1000);
-    assert!(lookup_duration.as_millis() < 100, "1000 lookups should complete in under 100ms");
+    assert!(
+        lookup_duration.as_millis() < 100,
+        "1000 lookups should complete in under 100ms"
+    );
 }
 
 #[tokio::test]
@@ -537,24 +520,20 @@ async fn test_json_export() {
 
     let config = HostnameRoutesConfig {
         version: "1.0".to_string(),
-        hosts: vec![
-            HostConfig {
-                hostname: "api.example.com".to_string(),
-                routes: vec![
-                    RouteConfig {
-                        name: "test-route".to_string(),
-                        path_match: PathMatch::Exact {
-                            path: "/api/test".to_string(),
-                        },
-                        upstream: "test-service".to_string(),
-                        methods: vec![],
-                        timeout_ms: None,
-                        middleware: vec![],
-                        metadata: HashMap::new(),
-                    },
-                ],
-            },
-        ],
+        hosts: vec![HostConfig {
+            hostname: "api.example.com".to_string(),
+            routes: vec![RouteConfig {
+                name: "test-route".to_string(),
+                path_match: PathMatch::Exact {
+                    path: "/api/test".to_string(),
+                },
+                upstream: "test-service".to_string(),
+                methods: vec![],
+                timeout_ms: None,
+                middleware: vec![],
+                metadata: HashMap::new(),
+            }],
+        }],
         upstreams: upstreams.clone(),
     };
 
@@ -576,7 +555,12 @@ async fn test_json_export() {
     assert_eq!(exported_config.upstreams.len(), 1);
     assert!(exported_config.upstreams.contains_key("test-service"));
     assert_eq!(
-        exported_config.upstreams.get("test-service").unwrap().servers.len(),
+        exported_config
+            .upstreams
+            .get("test-service")
+            .unwrap()
+            .servers
+            .len(),
         1
     );
 }

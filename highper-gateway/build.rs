@@ -22,7 +22,9 @@ fn main() {
     println!("cargo:rustc-env=PROFILE={}", profile);
 
     // Get build timestamp
-    let build_date = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+    let build_date = chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S UTC")
+        .to_string();
     println!("cargo:rustc-env=BUILD_DATE={}", build_date);
 
     // Rebuild if build script changes

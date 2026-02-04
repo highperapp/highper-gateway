@@ -134,7 +134,10 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 
 # OAuth2 and OIDC
 oauth2 = "4.4"
-openidconnect = "3.5"
+# openidconnect depends on 'rsa' crate which has RUSTSEC-2023-0071 (Marvin Attack)
+# Made optional until rsa crate is fixed. OIDC discovery features are not yet
+# implemented anyway - all JWT validation uses jsonwebtoken (ring-based) instead.
+openidconnect = { version = "3.5", optional = true }
 
 # X.509 certificate parsing for mTLS
 x509-parser = "0.16"
@@ -146,7 +149,7 @@ redis = { version = "0.32", features = ["tokio-comp", "connection-manager", "clu
 bb8-redis = "0.15"
 
 # GeoIP for geographic load balancing
-maxminddb = "0.24"
+maxminddb = "0.27"
 ip2location = "0.4"
 
 # GraphQL support
@@ -173,8 +176,8 @@ aws-sdk-wafv2 = { version = "1.50", optional = true }
 
 # Plugin system
 # WASM runtime with WASI support
-wasmtime = { version = "27.0", optional = true, features = ["async", "component-model"] }
-wasmtime-wasi = { version = "27.0", optional = true }
+wasmtime = { version = "41.0", optional = true, features = ["async", "component-model"] }
+wasmtime-wasi = { version = "41.0", optional = true }
 # FFI plugin loading
 libloading = { version = "0.8", optional = true }
 
@@ -183,6 +186,9 @@ default = ["jemalloc"]
 jemalloc = ["tikv-jemallocator"]
 # Week 2 optimization: io_uring hybrid integration (Linux-only)
 io-uring = ["dep:io-uring"]
+# OIDC Discovery support (uses openidconnect crate which depends on vulnerable rsa crate)
+# Enable only when needed - standard JWT validation uses ring-based jsonwebtoken
+oidc = ["dep:openidconnect"]
 # WAF engine features
 waf-aws = ["aws-config", "aws-sdk-wafv2"]
 # Plugin system features

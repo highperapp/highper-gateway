@@ -8,9 +8,11 @@ use oauth2::{
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse as OAuth2TokenResponse,
     TokenUrl,
 };
-use openidconnect::{
-    core::CoreClient,
-};
+
+// OIDC support is optional due to rsa crate vulnerability (RUSTSEC-2023-0071)
+// Standard JWT validation uses ring-based jsonwebtoken instead
+#[cfg(feature = "oidc")]
+use openidconnect::core::CoreClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, info};
@@ -95,6 +97,7 @@ impl Default for OAuth2Config {
 pub struct OAuth2Handler {
     config: OAuth2Config,
     oauth_client: BasicClient,
+    #[cfg(feature = "oidc")]
     oidc_client: Option<CoreClient>,
 }
 
@@ -111,14 +114,13 @@ impl OAuth2Handler {
         let client_secret = Some(ClientSecret::new(config.client_secret.clone()));
 
         // Determine auth and token URLs
-        let (auth_url, token_url, oidc_client) = if let Some(_issuer_url) = &config.issuer_url {
-            // TODO: OIDC discovery implementation
-            // The openidconnect crate API varies by version
-            // Full implementation requires:
-            // 1. CoreProviderMetadata::discover_async()
-            // 2. CoreClient::from_provider_metadata()
-            // 3. Proper async_http_client configuration
-            info!("OIDC discovery requested but not yet implemented - using manual config");
+        let (auth_url, token_url) = if let Some(_issuer_url) = &config.issuer_url {
+            // OIDC discovery requires the 'oidc' feature
+            // For now, fall back to manual configuration
+            #[cfg(feature = "oidc")]
+            info!("OIDC discovery requested - feature enabled but not yet implemented");
+            #[cfg(not(feature = "oidc"))]
+            info!("OIDC discovery requires 'oidc' feature - using manual config");
 
             let auth_url = AuthUrl::new(
                 config
@@ -135,7 +137,7 @@ impl OAuth2Handler {
                 .transpose()
                 .context("Invalid token URL")?;
 
-            (auth_url, token_url, None)
+            (auth_url, token_url)
         } else {
             // Manual configuration
             info!("Using manual OAuth2 configuration");
@@ -155,7 +157,7 @@ impl OAuth2Handler {
                 .transpose()
                 .context("Invalid token URL")?;
 
-            (auth_url, token_url, None)
+            (auth_url, token_url)
         };
 
         let oauth_client = BasicClient::new(client_id, client_secret, auth_url, token_url)
@@ -168,7 +170,8 @@ impl OAuth2Handler {
         Ok(Self {
             config,
             oauth_client,
-            oidc_client,
+            #[cfg(feature = "oidc")]
+            oidc_client: None,
         })
     }
 

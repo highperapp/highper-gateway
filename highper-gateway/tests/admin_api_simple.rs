@@ -2,8 +2,8 @@
 //!
 //! Tests the endpoint functions directly to verify correct behavior.
 
-use hyper::StatusCode;
 use http_body_util::BodyExt;
+use hyper::StatusCode;
 use serde_json::Value;
 
 #[tokio::test]
@@ -128,7 +128,7 @@ async fn test_backend_metrics() {
 
 #[tokio::test]
 async fn test_health_history() {
-    let response = highper_gateway::admin::metrics::get_health_history(Some(50)).await;
+    let response = highper_gateway::admin::metrics::get_health_history(Some(50), None).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -186,7 +186,10 @@ async fn test_backend_get_invalid_id() {
 
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body_bytes).unwrap();
-    assert!(json["error"].as_str().unwrap().contains("Invalid backend ID"));
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("Invalid backend ID"));
 }
 
 #[tokio::test]

@@ -3,11 +3,11 @@
 //! Performance benchmarks for TCP proxy operations
 //! Target: < 0.5ms P99 overhead
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use highper_gateway::tcp::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
-    pool::{TcpConnectionPool, PoolConfig},
-    protocol::{Protocol, MysqlProtocol, PostgresqlProtocol, RedisProtocol},
+    pool::{PoolConfig, TcpConnectionPool},
+    protocol::{MysqlProtocol, PostgresqlProtocol, Protocol, RedisProtocol},
 };
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -33,7 +33,8 @@ fn bench_protocol_detection(c: &mut Criterion) {
 
     group.bench_function("detect_from_port", |b| {
         b.iter(|| {
-            let proto = highper_gateway::tcp::protocol::ProtocolDetector::detect_from_port(black_box(3306));
+            let proto =
+                highper_gateway::tcp::protocol::ProtocolDetector::detect_from_port(black_box(3306));
             black_box(proto);
         });
     });

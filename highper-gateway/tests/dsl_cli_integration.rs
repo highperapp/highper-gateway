@@ -1,10 +1,9 @@
 /// Test CLI integration for DSL config loading
 ///
 /// Tests that .proxy files are correctly loaded through the main config loader
-
 use highper_gateway::config::load_config;
-use std::fs;
 use std::env;
+use std::fs;
 
 #[test]
 fn test_load_proxy_file() {
