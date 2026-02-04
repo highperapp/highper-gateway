@@ -84,7 +84,7 @@ See [Security Features Guide](docs/SECURITY_FEATURES.md) for complete documentat
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/highper-gateway.git
+git clone https://github.com/highperapp/highper-gateway.git
 cd highper-gateway
 cargo build --release
 ```

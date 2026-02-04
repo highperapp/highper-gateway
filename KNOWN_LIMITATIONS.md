@@ -408,23 +408,27 @@ Ongoing - TODOs will be addressed incrementally in future releases.
 
 ## Feature Roadmap
 
-### Planned for v1.0.1 (Patch Release)
-- [ ] OCSP fetcher production hardening
-- [ ] Compression module documentation update
-- [ ] Cloud load test automatic cleanup
-- [ ] CRL checker enhancements
+### Completed in v1.0.1 (Patch Release)
+- [x] OCSP fetcher production hardening
+- [x] Compression module documentation update
+- [x] Cloud load test automatic cleanup
+- [x] CRL checker enhancements
 
-### Planned for v1.1.0 (Minor Release)
-- [ ] Static service discovery implementation
-- [ ] Complete OAuth2 implementation (PKCE, refresh, revocation)
-- [ ] Enhanced certificate validation (cross-signed certs)
-- [ ] Improved CRL delta support
+### Completed in v1.1.0 (Minor Release)
+- [x] Static service discovery implementation
+- [x] Complete OAuth2 implementation (PKCE, refresh, revocation)
+- [x] Enhanced certificate validation (cross-signed certs)
+- [x] Improved CRL delta support
+- [x] Directory listing for static files
+- [x] Stick Tables (HAProxy-style session persistence)
+- [x] BFF Pattern (Backend for Frontend routing)
+- [x] Response Aggregation
 
 ### Planned for v1.2.0 (Minor Release)
-- [ ] Directory listing for static files
 - [ ] PowerShell scripts for Windows native support
-- [ ] Enhanced observability features
-- [ ] Additional load balancing algorithms
+- [ ] Enhanced observability dashboards
+- [ ] Plugin marketplace integration
+- [ ] WASM plugin SDK improvements
 
 ### Planned for v2.0.0 (Major Release)
 - [ ] Breaking API changes (if needed)
@@ -507,13 +511,18 @@ For a comprehensive comparison with industry leaders and planned improvements, s
 - **Feature Comparison Matrix:** [deploy/docs/FEATURE_COMPARISON_MATRIX.md](deploy/docs/FEATURE_COMPARISON_MATRIX.md)
 - **Feature Improvement Roadmap:** [docs/FEATURE_IMPROVEMENT_ROADMAP.md](docs/FEATURE_IMPROVEMENT_ROADMAP.md)
 
-### Key Planned Improvements
+### Key Improvements (v1.1.0)
 
-| Phase | Features | Timeline |
-|-------|----------|----------|
-| **Phase 1** | Automatic HTTPS (ACME), API-based Config, Least Response Time LB, Connection Draining, Zero-Config Mode, OpenTelemetry | 6-8 weeks |
-| **Phase 2** | Slow Start, Disk Cache, Status Dashboard, Request Validation, etcd Discovery, JSON Config, Stick Tables | 8-12 weeks |
-| **Phase 3** | Response Aggregation, BFF Pattern, Database Protocol Awareness | 6-8 weeks |
+| Phase | Features | Status |
+|-------|----------|--------|
+| **Phase 1** | Automatic HTTPS (ACME), API-based Config, Least Response Time LB, Connection Draining, Zero-Config Mode, OpenTelemetry | ✅ Complete |
+| **Phase 2** | Slow Start, Disk Cache, Status Dashboard, Request Validation, etcd Discovery, JSON Config, Stick Tables | ✅ Complete |
+| **Phase 3** | Response Aggregation, BFF Pattern, Database Protocol Awareness | ✅ Complete |
+
+**Recently Added Features (v1.1.0):**
+- ✅ Stick Tables (HAProxy-style session persistence)
+- ✅ BFF Pattern (Backend for Frontend routing)
+- ✅ Response Aggregation (multi-backend request composition)
 
 ---
 
@@ -525,5 +534,5 @@ For a comprehensive comparison with industry leaders and planned improvements, s
 
 ---
 
-**Last Updated:** January 24, 2026
-**Next Review:** February 24, 2026 (monthly)
+**Last Updated:** January 25, 2026
+**Next Review:** February 25, 2026 (monthly)

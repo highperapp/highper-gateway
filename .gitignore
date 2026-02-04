@@ -77,6 +77,8 @@ config-local.toml
 *.pfx
 /certs/
 /ssl/
+
+# Environment files (NEVER COMMIT actual values!)
 .env
 .env.*
 .env.infrastructure
@@ -84,6 +86,12 @@ config-local.toml
 .env.development
 .env.production
 .env.test
+# BUT allow template/example files for reference
+!.env.template
+!.env.example
+!.env.*.template
+!.env.*.example
+
 secrets/
 *.secret
 *.token
@@ -134,10 +142,14 @@ GeoLite2-*.mmdb
 GeoIP2-*.mmdb
 
 # ============================================
-# CLAUDE CODE TEMP FILES
+# CLAUDE CODE / AI ASSISTANT FILES (NEVER COMMIT!)
 # ============================================
 /tmp/claude*/
 /.claude/
+.claude/
+**/.claude/
+.claude-*
+*.claude
 
 # ============================================
 # WAF RULES (CAN BE LARGE)
