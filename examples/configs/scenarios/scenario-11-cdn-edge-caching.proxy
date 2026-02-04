@@ -1,5 +1,5 @@
-# Scenario 11: CDN Edge Caching (Simplified)
-# Note: Caching features not yet implemented
+# Scenario 11: CDN Edge Caching
+# Response caching with memory, disk, or Redis backends
 
 https://cdn.loadtest.local:8451 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

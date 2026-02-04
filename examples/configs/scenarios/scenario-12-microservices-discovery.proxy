@@ -1,5 +1,5 @@
-# Scenario 12: Microservices Discovery (Simplified)
-# Note: Service discovery features not yet implemented
+# Scenario 12: Microservices Discovery
+# Service discovery with Consul, etcd, or Kubernetes integration
 
 https://api.microservices.local:8452 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

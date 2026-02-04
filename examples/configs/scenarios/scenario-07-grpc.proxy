@@ -1,5 +1,5 @@
-# Scenario 07: gRPC Load Balancing (Simplified)
-# Note: gRPC-specific features not yet implemented, using HTTP/2
+# Scenario 07: gRPC Load Balancing
+# gRPC proxying with HTTP/2 and health checking
 
 https://grpc.loadtest.local:8447 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

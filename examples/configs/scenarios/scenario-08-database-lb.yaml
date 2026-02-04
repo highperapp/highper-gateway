@@ -1,0 +1,80 @@
+# Scenario 08: Database Load Balancing (TCP/Layer 4)
+# TCP proxy for database connections (MySQL, PostgreSQL, etc.)
+# Status: FULLY IMPLEMENTED (TCP load balancing with health checks)
+
+server:
+  # TCP bind configuration
+  tcp_bind:
+    - "0.0.0.0:3306"  # MySQL default port
+
+  workers: "auto"
+
+  # TCP-specific settings
+  tcp:
+    enabled: true
+    # Connection timeout for backend
+    connect_timeout: 5
+    # Idle timeout for connections
+    idle_timeout: 300
+    # Enable TCP keepalive
+    keepalive: true
+    keepalive_interval: 60
+
+# TCP Upstreams (Database servers)
+upstreams:
+  - name: "mysql_backends"
+    servers:
+      - url: "tcp://127.0.0.1:13306"
+        weight: 1
+      - url: "tcp://127.0.0.1:13307"
+        weight: 1
+      - url: "tcp://127.0.0.1:13308"
+        weight: 1
+
+    load_balancing:
+      algorithm: "round_robin"  # Options: round_robin, least_conn, random, ip_hash
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      # TCP health check (connection test)
+      type: "tcp"
+      max_failures: 3
+
+    # Connection pool for database connections
+    connection:
+      max_connections: 1000
+      min_idle: 10
+      max_idle: 100
+      idle_timeout: 300
+
+# TCP Routes
+routes:
+  - name: "mysql_route"
+    type: "tcp"
+    match:
+      ports:
+        - 3306
+    upstream: "mysql_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8081"
+
+# Circuit Breaker for database backends
+circuit_breaker:
+  enabled: true
+  failure_threshold: 3
+  success_threshold: 2
+  timeout: 60

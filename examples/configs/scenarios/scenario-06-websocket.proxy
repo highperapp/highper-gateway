@@ -1,5 +1,6 @@
-# Scenario 06: WebSocket Proxying (Simplified)
-# Note: WebSocket-specific features not yet implemented
+# Scenario 06: WebSocket Proxying
+# Full WebSocket support with connection upgrade, keep-alive, and message routing.
+# For advanced WebSocket options, use YAML format (scenario-06-websocket.yaml).
 
 https://ws.loadtest.local:8446 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

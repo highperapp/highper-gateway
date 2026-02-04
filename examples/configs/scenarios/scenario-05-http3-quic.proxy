@@ -1,5 +1,6 @@
-# Scenario 05: HTTP/3 + QUIC (Simplified to HTTPS/TLS)
-# Note: HTTP/3 and QUIC are not yet implemented, using HTTPS/2 instead
+# Scenario 05: HTTP/3 + QUIC
+# HTTP/3 with QUIC transport is fully implemented via quiche library.
+# For full HTTP/3 configuration options, use YAML format (scenario-05-http3-quic.yaml).
 
 https://http3.loadtest.local:8445 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

@@ -1,28 +1,30 @@
 # Scenario 03: Layer 7 HTTPS/TLS Termination
 # TLS termination at gateway with HTTP backend communication
 # Target: 500K+ RPS with TLS overhead, P99 < 15ms
+#
+# Note: For advanced TLS options (tls_protocols, tls_ciphers, http2, pool)
+# use YAML configuration format instead. This DSL provides core functionality.
 
-https://loadtest.local {
-    # TLS configuration
+https://loadtest.local:8443 {
+    # TLS configuration (basic)
     tls "/etc/highper/certs/loadtest.crt" "/etc/highper/certs/loadtest.key"
-    tls_protocols TLSv1.2 TLSv1.3
-    tls_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
-    # Backend servers (HTTP)
-    proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
+
+    # Backend servers (HTTP) - gateway terminates TLS
+    proxy http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083
+
     # Layer 7 load balancing
     lb least_conn
     health interval=10s path="/health" timeout=5s
-    # HTTP/2 support
-    http2 enabled
+
     # Connection settings
     keepalive 120s
     max_conns 2000000
+
     # Compression
-    compress gzip br level=6
+    compress gzip br
+
     # Rate limiting
     rate_limit 550000 burst=75000
-    # Connection pooling to backends
-    pool min_idle=200 max_idle=15000 max_open=800000
 }
 
 # Global settings

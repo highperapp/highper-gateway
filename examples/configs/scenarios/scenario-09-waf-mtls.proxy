@@ -1,5 +1,5 @@
-# Scenario 09: WAF + mTLS (Simplified)
-# Note: WAF and mTLS features not yet implemented
+# Scenario 09: WAF + mTLS
+# Web Application Firewall with mutual TLS authentication
 
 https://secure.loadtest.local:8449 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

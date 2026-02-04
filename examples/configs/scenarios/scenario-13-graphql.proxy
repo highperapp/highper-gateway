@@ -1,5 +1,5 @@
-# Scenario 13: GraphQL Gateway (Simplified)
-# Note: GraphQL-specific features not yet implemented
+# Scenario 13: GraphQL Gateway
+# GraphQL routing with schema stitching and query routing
 
 https://graphql.loadtest.local:8453 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

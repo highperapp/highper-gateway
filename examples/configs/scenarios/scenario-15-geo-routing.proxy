@@ -1,5 +1,5 @@
-# Scenario 15: Geo-Based Routing (Simplified)
-# Note: Geo-routing features not yet implemented
+# Scenario 15: Geo-Based Routing
+# Geographic routing with latency-based backend selection
 
 https://geo.loadtest.local:8455 {
     tls "$CERT_PATH/api.crt" "$CERT_PATH/api.key"

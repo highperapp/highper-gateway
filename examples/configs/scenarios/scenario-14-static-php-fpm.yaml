@@ -1,0 +1,156 @@
+# Scenario 14: Static File Serving + PHP-FPM (FastCGI)
+# Combined static file server with PHP backend proxy
+# Status: FULLY IMPLEMENTED (webserver module + FastCGI support)
+
+server:
+  bind:
+    - "0.0.0.0:8454"
+
+  workers: "auto"
+
+  protocols:
+    - http1
+    - http2
+
+  # Performance tuning
+  performance:
+    connection_pool:
+      enabled: true
+      min_idle: 50
+      max_idle: 5000
+
+# Static file serving (webserver module)
+webserver:
+  enabled: true
+  root: "/var/www/html"
+  index_files:
+    - "index.html"
+    - "index.php"
+
+  # Static file settings
+  static_files:
+    enabled: true
+    # Cache static assets
+    cache_control: "public, max-age=86400"
+    # Compression
+    compression:
+      enabled: true
+      types:
+        - "text/html"
+        - "text/css"
+        - "application/javascript"
+        - "application/json"
+    # MIME types
+    mime_types:
+      html: "text/html"
+      css: "text/css"
+      js: "application/javascript"
+      json: "application/json"
+      png: "image/png"
+      jpg: "image/jpeg"
+      gif: "image/gif"
+      svg: "image/svg+xml"
+      woff2: "font/woff2"
+
+  # Directory listing (disabled for security)
+  directory_listing: false
+
+# PHP-FPM Backends (FastCGI)
+upstreams:
+  - name: "php_fpm_backends"
+    servers:
+      - url: "http://127.0.0.1:8081"
+        weight: 1
+      - url: "http://127.0.0.1:8082"
+        weight: 1
+      - url: "http://127.0.0.1:8083"
+        weight: 1
+
+    load_balancing:
+      algorithm: "round_robin"
+
+    health_check:
+      enabled: true
+      interval: 10
+      timeout: 5
+      path: "/health.php"
+      max_failures: 3
+
+    # FastCGI specific settings
+    fastcgi:
+      enabled: true
+      # PHP-FPM socket or TCP address
+      pass: "127.0.0.1:9000"
+      # FastCGI parameters
+      params:
+        SCRIPT_FILENAME: "$document_root$fastcgi_script_name"
+        PATH_INFO: "$fastcgi_path_info"
+        QUERY_STRING: "$query_string"
+        REQUEST_METHOD: "$request_method"
+        CONTENT_TYPE: "$content_type"
+        CONTENT_LENGTH: "$content_length"
+      # Index for directory requests
+      index: "index.php"
+      # Split path info for PHP
+      split_path_info: "^(.+\\.php)(/.+)$"
+
+# Routes
+routes:
+  # PHP files go to PHP-FPM
+  - name: "php_route"
+    match:
+      hosts:
+        - "php.loadtest.local"
+      paths:
+        - "/*.php"
+    upstream: "php_fpm_backends"
+
+  # Static files served directly
+  - name: "static_route"
+    match:
+      hosts:
+        - "php.loadtest.local"
+      paths:
+        - "/static/*"
+        - "/assets/*"
+        - "/images/*"
+    handler: "static"
+    static:
+      root: "/var/www/html"
+
+  # Default route for other requests
+  - name: "default_route"
+    match:
+      hosts:
+        - "php.loadtest.local"
+      paths:
+        - "/*"
+    upstream: "php_fpm_backends"
+
+# Observability
+observability:
+  metrics:
+    enabled: true
+    bind: "0.0.0.0:9090"
+  logging:
+    level: "info"
+    format: "json"
+
+# Admin API
+admin:
+  enabled: true
+  bind: "127.0.0.1:8082"
+
+# Rate limiting for PHP requests (prevent abuse)
+rate_limit:
+  enabled: true
+  requests_per_second: 100
+  burst: 200
+  per_ip: true
+
+# Security headers
+security:
+  headers:
+    X-Content-Type-Options: "nosniff"
+    X-Frame-Options: "SAMEORIGIN"
+    X-XSS-Protection: "1; mode=block"

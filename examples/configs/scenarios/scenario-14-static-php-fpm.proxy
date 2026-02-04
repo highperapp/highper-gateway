@@ -1,5 +1,6 @@
-# Scenario 14: Static + PHP-FPM (Simplified)
-# Note: PHP-FPM and static file serving not yet implemented
+# Scenario 14: Static File Serving + Backend Proxy
+# Static file serving is implemented via webserver module.
+# Note: PHP-FPM FastCGI protocol requires YAML configuration for advanced options.
 
 http://php.loadtest.local:8454 {
     proxy 127.0.0.1:8081 127.0.0.1:8082 127.0.0.1:8083
