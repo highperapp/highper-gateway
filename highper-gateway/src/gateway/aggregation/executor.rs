@@ -607,7 +607,9 @@ impl AggregationExecutor {
                 } else if let Ok(num) = right.parse::<i64>() {
                     serde_json::Value::Number(num.into())
                 } else if let Ok(num) = right.parse::<f64>() {
-                    serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap())
+                    serde_json::Number::from_f64(num)
+                        .map(serde_json::Value::Number)
+                        .unwrap_or_else(|| serde_json::Value::String(right.to_string()))
                 } else {
                     serde_json::Value::String(right.to_string())
                 };
@@ -630,7 +632,9 @@ impl AggregationExecutor {
                 } else if let Ok(num) = right.parse::<i64>() {
                     serde_json::Value::Number(num.into())
                 } else if let Ok(num) = right.parse::<f64>() {
-                    serde_json::Value::Number(serde_json::Number::from_f64(num).unwrap())
+                    serde_json::Number::from_f64(num)
+                        .map(serde_json::Value::Number)
+                        .unwrap_or_else(|| serde_json::Value::String(right.to_string()))
                 } else {
                     serde_json::Value::String(right.to_string())
                 };

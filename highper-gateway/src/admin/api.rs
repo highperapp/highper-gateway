@@ -56,15 +56,15 @@ impl AdminApiServer {
             (&Method::GET, "/admin/routes") => self.list_routes().await,
             (&Method::POST, "/admin/routes") => self.create_route(req).await,
             (&Method::GET, path) if path.starts_with("/admin/routes/") => {
-                let route_name = path.strip_prefix("/admin/routes/").unwrap();
+                let route_name = path.strip_prefix("/admin/routes/").unwrap_or_default();
                 self.get_route(route_name).await
             }
             (&Method::PUT, path) if path.starts_with("/admin/routes/") => {
-                let route_name = path.strip_prefix("/admin/routes/").unwrap();
+                let route_name = path.strip_prefix("/admin/routes/").unwrap_or_default();
                 self.update_route(route_name, req).await
             }
             (&Method::DELETE, path) if path.starts_with("/admin/routes/") => {
-                let route_name = path.strip_prefix("/admin/routes/").unwrap();
+                let route_name = path.strip_prefix("/admin/routes/").unwrap_or_default();
                 self.delete_route(route_name).await
             }
 
@@ -309,12 +309,10 @@ impl AdminApiServer {
     fn add_cors_headers(&self, mut response: Response<Body>) -> Response<Body> {
         let headers = response.headers_mut();
 
-        if !self.config.cors_origins.is_empty() {
-            let origin = self.config.cors_origins.first().unwrap();
-            headers.insert(
-                "Access-Control-Allow-Origin",
-                header::HeaderValue::from_str(origin).unwrap()
-            );
+        if let Some(origin) = self.config.cors_origins.first() {
+            if let Ok(val) = header::HeaderValue::from_str(origin) {
+                headers.insert("Access-Control-Allow-Origin", val);
+            }
         } else {
             headers.insert(
                 "Access-Control-Allow-Origin",
@@ -344,7 +342,7 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Body> 
         .status(status)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))
-        .unwrap()
+        .expect("response builder with valid status and content-type header")
 }
 
 /// Extract backend ID from path

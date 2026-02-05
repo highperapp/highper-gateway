@@ -433,7 +433,7 @@ async fn run_zero_config(
                     email: email.unwrap_or_else(|| "admin@localhost".to_string()),
                     directory_url: "".to_string(), // Auto-detected
                     staging: false,
-                    domains: vec![domain.clone().unwrap()],
+                    domains: vec![domain.clone().expect("domain validated when tls enabled")],
                     challenge_type: "http-01".to_string(),
                     storage: highper_gateway::config::StorageConfig {
                         storage_type: "file".to_string(),
