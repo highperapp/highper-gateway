@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tracing::debug;
 
-use super::schema::{SchemaRegistry, TypeDefinition};
+use super::schema::SchemaRegistry;
 use super::GraphQLConfig;
 
 /// Schema stitcher for combining multiple GraphQL schemas

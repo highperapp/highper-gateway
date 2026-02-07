@@ -17,7 +17,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Upstream manager for runtime upstream updates
 pub struct UpstreamManager {

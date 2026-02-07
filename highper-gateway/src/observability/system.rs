@@ -333,7 +333,7 @@ impl SystemMonitor {
     }
 
     fn update_metrics(&self, stats: &SystemStats) {
-        use metrics::{gauge, counter};
+        use metrics::gauge;
 
         // File descriptor metrics
         gauge!("system_fd_open").set(stats.fd_stats.open_fds as f64);

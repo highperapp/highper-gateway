@@ -1,6 +1,6 @@
 //! Plugin registry for managing loaded plugins
 
-use super::trait_def::{BoxedPlugin, Plugin};
+use super::trait_def::BoxedPlugin;
 use super::types::*;
 use super::{PluginError, Result};
 use dashmap::DashMap;

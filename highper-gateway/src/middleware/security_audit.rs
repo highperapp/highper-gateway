@@ -14,7 +14,6 @@ use crate::http::ResponseBody;
 use hyper::{Request, Response, StatusCode, header};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use tracing::{info, warn, error};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};

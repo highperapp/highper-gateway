@@ -881,7 +881,6 @@ impl Http3Server {
             UnsyncBoxBody::new(stream_body)
         } else {
             // No body (GET/HEAD requests)
-            use futures_util::TryStreamExt;
             let empty_body = http_body_util::Empty::new()
                 .map_err(|e: std::convert::Infallible| match e {});
             UnsyncBoxBody::new(empty_body)

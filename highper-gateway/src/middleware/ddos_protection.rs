@@ -16,7 +16,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use dashmap::DashMap;
-use tracing::{warn, debug, info};
+use tracing::{warn, debug};
 use std::net::IpAddr;
 use bytes::Bytes;
 use http_body_util::Full;

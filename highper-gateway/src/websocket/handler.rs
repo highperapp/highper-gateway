@@ -7,7 +7,7 @@ use hyper::{Request, Response, StatusCode, header::{self, HeaderValue}};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, error, info, warn};
 use anyhow::{Result, anyhow};
-use crate::websocket::{SessionId, SessionManager};
+use crate::websocket::SessionId;
 
 /// Check if a request is a WebSocket upgrade request
 pub fn is_websocket_upgrade<B>(req: &Request<B>) -> bool {

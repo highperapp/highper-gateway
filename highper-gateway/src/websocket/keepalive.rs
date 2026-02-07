@@ -4,7 +4,7 @@
 //! Automatically cleans up connections that don't respond to pings.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::time::{interval, sleep};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tracing::{debug, info, warn};

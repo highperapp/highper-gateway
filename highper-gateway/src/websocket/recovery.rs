@@ -5,11 +5,11 @@
 //! and circuit breaker pattern for failing backends.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 use tracing::{debug, info, warn, error};
-use crate::websocket::{ConnectionId, ConnectionTracker, ConnectionState};
+use crate::websocket::{ConnectionId, ConnectionTracker};
 
 /// Error recovery configuration
 #[derive(Debug, Clone)]

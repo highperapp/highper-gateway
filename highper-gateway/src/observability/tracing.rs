@@ -6,7 +6,7 @@
 use crate::config::{TracingConfig, OtlpConfig};
 use opentelemetry::{
     global,
-    trace::{TraceError, TracerProvider as _, Tracer},
+    trace::{TraceError, TracerProvider as _},
     KeyValue,
 };
 use opentelemetry_sdk::{
@@ -195,7 +195,6 @@ pub async fn shutdown_tracing() {
 // OTLP Metrics Support
 // =====================================================
 
-use opentelemetry::metrics::MeterProvider;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use std::sync::Arc;
 

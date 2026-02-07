@@ -8,12 +8,11 @@
 //! - Malformed request detection
 //! - Suspicious header validation
 
-use super::{Middleware, MiddlewareResult};
-use crate::http::ResponseBody;
+use super::Middleware;
 use hyper::{Request, Response, StatusCode, header};
 use std::future::Future;
 use std::pin::Pin;
-use tracing::{warn, debug};
+use tracing::debug;
 use regex::Regex;
 use bytes::Bytes;
 use http_body_util::Full;

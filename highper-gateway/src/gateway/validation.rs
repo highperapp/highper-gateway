@@ -3,12 +3,11 @@
 //! Provides JSON Schema validation for request and response bodies.
 //! Supports both inline schemas and schema files.
 
-use crate::config::{RequestValidation, ResponseValidation, ValidationAction, ValidationConfig};
+use crate::config::{RequestValidation, ResponseValidation, ValidationAction};
 use bytes::Bytes;
-use jsonschema::{JSONSchema, ValidationError};
+use jsonschema::JSONSchema;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use tracing::{debug, warn};
