@@ -190,7 +190,7 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                     routes.push(route);
                 }
             }
-            SiteAddress::Tcp { port, protocol } => {
+            SiteAddress::Tcp { port, protocol: _ } => {
                 // TCP proxy: treat as HTTP for now (works for HTTP backends)
                 // Future: add dedicated TCP proxy configuration section
                 let bind_addr = format!("0.0.0.0:{}", port);

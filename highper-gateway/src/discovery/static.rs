@@ -144,7 +144,7 @@ impl StaticDiscovery {
 
     /// Create from base discovery config with static backends
     pub async fn from_discovery_config(
-        config: DiscoveryConfig,
+        _config: DiscoveryConfig,
         static_config: StaticDiscoveryConfig,
     ) -> Result<Self> {
         Self::new(static_config).await

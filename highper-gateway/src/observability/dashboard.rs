@@ -220,7 +220,7 @@ impl DashboardBroadcaster {
 
         // Calculate derived metrics
         if snapshot.http.total_requests > 0 {
-            let error_rate = snapshot.http.total_errors as f64 / snapshot.http.total_requests as f64;
+            let _error_rate = snapshot.http.total_errors as f64 / snapshot.http.total_requests as f64;
             snapshot.http.requests_per_second = snapshot.http.total_requests as f64 / 60.0; // Rough estimate
         }
 

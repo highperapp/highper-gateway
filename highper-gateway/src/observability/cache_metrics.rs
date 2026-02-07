@@ -188,10 +188,9 @@ pub fn record_delete(route: &str) {
 }
 
 /// Record cache cleanup operation
-pub fn record_cleanup(duration: Duration, items_removed: usize) {
+pub fn record_cleanup(duration: Duration, _items_removed: usize) {
     counter!("cache_cleanups_total").increment(1);
     histogram!("cache_cleanup_duration_seconds").record(duration.as_secs_f64());
-
 }
 
 /// Calculate and update cache hit ratio

@@ -106,7 +106,7 @@ pub fn describe_tcp_metrics() {
 }
 
 /// Record a new TCP connection
-pub fn record_connection_open(backend: &str, remote_addr: &str) {
+pub fn record_connection_open(backend: &str, _remote_addr: &str) {
     gauge!("tcp_connections_active").increment(1.0);
     counter!("tcp_connections_total").increment(1);
 
@@ -124,7 +124,7 @@ pub fn record_connection_open(backend: &str, remote_addr: &str) {
 /// Record a TCP connection close
 pub fn record_connection_close(
     backend: &str,
-    remote_addr: &str,
+    _remote_addr: &str,
     duration: Duration,
     bytes_sent: u64,
     bytes_received: u64,

@@ -843,7 +843,7 @@ impl Http3Server {
 
     /// Forward request to backend (async)
     async fn forward_to_backend(
-        client: &Client,
+        _client: &Client,
         backend_req: BackendRequest,
         middleware_chain: &Arc<MiddlewareChain>,
     ) -> Result<BackendResponse> {
@@ -1006,7 +1006,7 @@ impl Http3Server {
 
     /// Build quiche QUIC configuration
     fn build_quic_config(&self, config: &Config) -> Result<quiche::Config> {
-        let http3_config = &config.server.http3;
+        let _http3_config = &config.server.http3;
 
         // Create quiche config
         let mut quiche_config = quiche::Config::new(quiche::PROTOCOL_VERSION)?;

@@ -169,7 +169,7 @@ pub fn record_connection_open(server_name: &str, zero_rtt: bool) {
 }
 
 /// Record QUIC connection close
-pub fn record_connection_close(server_name: &str, duration: Duration) {
+pub fn record_connection_close(server_name: &str, _duration: Duration) {
     gauge!("quic_connections_active").decrement(1.0);
     counter!("quic_connections_closed_total", "server_name" => server_name.to_string()).increment(1);
 

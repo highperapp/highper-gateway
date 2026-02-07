@@ -265,7 +265,7 @@ impl WafMiddleware {
     /// Extract request context for WAF analysis
     async fn extract_context(
         req: &Request<hyper::body::Incoming>,
-        max_body_size: usize,
+        _max_body_size: usize,
     ) -> WafContext {
         use std::collections::HashMap;
 

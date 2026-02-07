@@ -152,25 +152,23 @@ pub fn record_query(
 }
 
 /// Record query complexity exceeded
-pub fn record_complexity_exceeded(operation_name: Option<&str>, complexity: u32, limit: u32) {
+pub fn record_complexity_exceeded(operation_name: Option<&str>, _complexity: u32, _limit: u32) {
     let operation = operation_name.unwrap_or("anonymous");
 
     counter!(
         "graphql_complexity_exceeded_total",
         "operation" => operation.to_string(),
     ).increment(1);
-
 }
 
 /// Record query depth exceeded
-pub fn record_depth_exceeded(operation_name: Option<&str>, depth: u32, limit: u32) {
+pub fn record_depth_exceeded(operation_name: Option<&str>, _depth: u32, _limit: u32) {
     let operation = operation_name.unwrap_or("anonymous");
 
     counter!(
         "graphql_depth_exceeded_total",
         "operation" => operation.to_string(),
     ).increment(1);
-
 }
 
 /// Record resolver execution
@@ -287,10 +285,9 @@ pub fn record_subscription_open(operation_name: Option<&str>) {
 
 /// Record subscription close
 pub fn record_subscription_close(operation_name: Option<&str>) {
-    let operation = operation_name.unwrap_or("anonymous");
+    let _operation = operation_name.unwrap_or("anonymous");
 
     gauge!("graphql_subscriptions_active").decrement(1.0);
-
 }
 
 #[cfg(test)]
