@@ -1587,7 +1587,7 @@ impl Handler {
                     std::path::Path::new(document_root).join(path.trim_start_matches('/'))
                 } else if pattern == "$uri/" {
                     // Try as directory with trailing slash
-                    let mut p = std::path::Path::new(document_root).join(path.trim_start_matches('/'));
+                    let p = std::path::Path::new(document_root).join(path.trim_start_matches('/'));
                     if p.is_dir() {
                         // Try index files in this directory
                         for index_file in &route.index {

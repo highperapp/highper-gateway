@@ -736,12 +736,11 @@ fn parse_timeout_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directiv
 }
 
 fn parse_headers_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
-    let mut direction = None;
     let mut name = None;
     let mut value = None;
 
     let text = pair.as_str();
-    direction = if text.starts_with("header_up") {
+    let direction = if text.starts_with("header_up") {
         Some(HeaderDirection::Up)
     } else {
         Some(HeaderDirection::Down)
