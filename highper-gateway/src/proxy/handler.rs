@@ -1599,9 +1599,9 @@ impl Handler {
                         }
                     }
                     continue;
-                } else if pattern.starts_with('=') {
+                } else if let Some(code_str) = pattern.strip_prefix('=') {
                     // Status code fallback (e.g., =404)
-                    if let Ok(code) = pattern[1..].parse::<u16>() {
+                    if let Ok(code) = code_str.parse::<u16>() {
                         if let Ok(status) = StatusCode::from_u16(code) {
                             let duration = start.elapsed().as_secs_f64();
                             record_request(method.as_str(), status.as_u16(), duration);

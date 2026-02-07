@@ -126,7 +126,7 @@ impl StaticDiscovery {
                 metadata: backend.metadata.clone(),
             };
 
-            services.entry(service_name).or_insert_with(Vec::new).push(instance);
+            services.entry(service_name).or_default().push(instance);
         }
 
         let discovery = Self {

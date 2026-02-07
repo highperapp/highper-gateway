@@ -872,14 +872,14 @@ fn parse_backpressure_directive(pair: pest::iterators::Pair<Rule>) -> Result<Dir
 
 fn parse_memory_size(s: &str) -> Result<usize> {
     let s = s.trim();
-    let (num_str, unit) = if s.ends_with("kb") {
-        (&s[..s.len()-2], 1024)
-    } else if s.ends_with("mb") {
-        (&s[..s.len()-2], 1024 * 1024)
-    } else if s.ends_with("gb") {
-        (&s[..s.len()-2], 1024 * 1024 * 1024)
-    } else if s.ends_with("tb") {
-        (&s[..s.len()-2], 1024 * 1024 * 1024 * 1024)
+    let (num_str, unit) = if let Some(n) = s.strip_suffix("kb") {
+        (n, 1024)
+    } else if let Some(n) = s.strip_suffix("mb") {
+        (n, 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix("gb") {
+        (n, 1024 * 1024 * 1024)
+    } else if let Some(n) = s.strip_suffix("tb") {
+        (n, 1024 * 1024 * 1024 * 1024)
     } else {
         (s, 1)
     };
@@ -1352,23 +1352,17 @@ fn parse_limits_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive
         if inner.as_rule() == Rule::limit_param {
             let param_text = inner.as_str();
 
-            if param_text.starts_with("max_file_size=") {
-                let value = &param_text[14..]; // Skip "max_file_size="
+            if let Some(value) = param_text.strip_prefix("max_file_size=") {
                 limits.max_file_size = Some(parse_byte_size(value)?);
-            } else if param_text.starts_with("max_request_body=") {
-                let value = &param_text[17..]; // Skip "max_request_body="
+            } else if let Some(value) = param_text.strip_prefix("max_request_body=") {
                 limits.max_request_body = Some(parse_byte_size(value)? as usize);
-            } else if param_text.starts_with("max_upload_size=") {
-                let value = &param_text[16..]; // Skip "max_upload_size="
+            } else if let Some(value) = param_text.strip_prefix("max_upload_size=") {
                 limits.max_upload_size = Some(parse_byte_size(value)? as usize);
-            } else if param_text.starts_with("max_path_depth=") {
-                let value = &param_text[15..]; // Skip "max_path_depth="
+            } else if let Some(value) = param_text.strip_prefix("max_path_depth=") {
                 limits.max_path_depth = Some(value.parse::<usize>()?);
-            } else if param_text.starts_with("max_connections_per_ip=") {
-                let value = &param_text[23..]; // Skip "max_connections_per_ip="
+            } else if let Some(value) = param_text.strip_prefix("max_connections_per_ip=") {
                 limits.max_connections_per_ip = Some(value.parse::<usize>()?);
-            } else if param_text.starts_with("max_requests_per_second=") {
-                let value = &param_text[24..]; // Skip "max_requests_per_second="
+            } else if let Some(value) = param_text.strip_prefix("max_requests_per_second=") {
                 limits.max_requests_per_second = Some(value.parse::<u32>()?);
             }
         }
@@ -1378,17 +1372,17 @@ fn parse_limits_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive
 }
 
 fn parse_byte_size(value: &str) -> Result<u64> {
-    if value.ends_with("GB") {
-        let num = value[..value.len()-2].parse::<u64>()?;
+    if let Some(num_str) = value.strip_suffix("GB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024 * 1024 * 1024)
-    } else if value.ends_with("MB") {
-        let num = value[..value.len()-2].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("MB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024 * 1024)
-    } else if value.ends_with("KB") {
-        let num = value[..value.len()-2].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("KB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024)
-    } else if value.ends_with("B") {
-        let num = value[..value.len()-1].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("B") {
+        let num = num_str.parse::<u64>()?;
         Ok(num)
     } else {
         // No suffix, treat as bytes
@@ -1400,16 +1394,16 @@ fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
 
     // Parse number and unit
-    let (num_str, unit) = if s.ends_with("ms") {
-        (&s[..s.len()-2], "ms")
-    } else if s.ends_with('s') {
-        (&s[..s.len()-1], "s")
-    } else if s.ends_with('m') {
-        (&s[..s.len()-1], "m")
-    } else if s.ends_with('h') {
-        (&s[..s.len()-1], "h")
-    } else if s.ends_with('d') {
-        (&s[..s.len()-1], "d")
+    let (num_str, unit) = if let Some(n) = s.strip_suffix("ms") {
+        (n, "ms")
+    } else if let Some(n) = s.strip_suffix('s') {
+        (n, "s")
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, "m")
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, "h")
+    } else if let Some(n) = s.strip_suffix('d') {
+        (n, "d")
     } else {
         return Err(anyhow!("Invalid duration format: {}", s));
     };

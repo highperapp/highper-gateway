@@ -165,7 +165,6 @@ pub fn record_connection_open(server_name: &str, zero_rtt: bool) {
 
     if zero_rtt {
         counter!("quic_zero_rtt_attempts_total", "server_name" => server_name.to_string()).increment(1);
-    } else {
     }
 }
 

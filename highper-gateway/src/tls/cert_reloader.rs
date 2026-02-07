@@ -51,7 +51,7 @@ impl CertificateReloader {
 
         for cert_config in &self.config.certificates {
             let key = (cert_config.cert_file.clone(), cert_config.key_file.clone());
-            cert_groups.entry(key).or_insert_with(Vec::new).push(cert_config.clone());
+            cert_groups.entry(key).or_default().push(cert_config.clone());
         }
 
         info!("Watching {} unique certificate file pair(s)", cert_groups.len());

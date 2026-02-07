@@ -124,8 +124,6 @@ pub fn record_request(
             "method" => method.to_string(),
             "code" => status_code.to_string(),
         ).increment(1);
-
-    } else {
     }
 }
 

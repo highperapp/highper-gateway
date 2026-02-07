@@ -198,8 +198,6 @@ pub fn record_resolver(
             "graphql_resolver_errors_total",
             "field" => field.clone(),
         ).increment(1);
-
-    } else {
     }
 }
 

@@ -100,12 +100,7 @@ impl ClientCertInfo {
         self.subject_dn
             .split(',')
             .find_map(|part| {
-                let part = part.trim();
-                if part.starts_with("CN=") {
-                    Some(part[3..].to_string())
-                } else {
-                    None
-                }
+                part.trim().strip_prefix("CN=").map(|cn| cn.to_string())
             })
     }
 

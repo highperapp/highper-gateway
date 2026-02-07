@@ -396,7 +396,7 @@ impl RequestMetrics {
         // Get or create route metrics
         let metrics = self.route_metrics
             .entry(route.to_string())
-            .or_insert_with(RouteMetrics::new);
+            .or_default();
 
         metrics.record_request(status_code, response_time, bytes_sent, bytes_received);
 
@@ -416,7 +416,7 @@ impl RequestMetrics {
         // Get or create backend metrics
         let metrics = self.backend_metrics
             .entry(backend_id.to_string())
-            .or_insert_with(BackendMetrics::new);
+            .or_default();
 
         metrics.record_request(is_error, response_time, bytes_sent, bytes_received);
     }

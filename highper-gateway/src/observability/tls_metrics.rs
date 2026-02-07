@@ -199,8 +199,6 @@ pub fn record_certificate_reload(server_name: &str, success: bool) {
             "tls_certificate_reload_errors_total",
             "server_name" => server_name.to_string(),
         ).increment(1);
-
-    } else {
     }
 }
 

@@ -86,17 +86,17 @@ pub fn env_duration(key: &str) -> Option<Duration> {
 
 /// Parse byte size from string (internal helper)
 fn parse_byte_size(value: &str) -> Result<u64> {
-    if value.ends_with("GB") {
-        let num = value[..value.len() - 2].parse::<u64>()?;
+    if let Some(num_str) = value.strip_suffix("GB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024 * 1024 * 1024)
-    } else if value.ends_with("MB") {
-        let num = value[..value.len() - 2].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("MB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024 * 1024)
-    } else if value.ends_with("KB") {
-        let num = value[..value.len() - 2].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("KB") {
+        let num = num_str.parse::<u64>()?;
         Ok(num * 1024)
-    } else if value.ends_with("B") {
-        let num = value[..value.len() - 1].parse::<u64>()?;
+    } else if let Some(num_str) = value.strip_suffix("B") {
+        let num = num_str.parse::<u64>()?;
         Ok(num)
     } else {
         // No suffix, treat as bytes
@@ -109,16 +109,16 @@ fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
 
     // Parse number and unit
-    let (num_str, unit) = if s.ends_with("ms") {
-        (&s[..s.len() - 2], "ms")
-    } else if s.ends_with('s') {
-        (&s[..s.len() - 1], "s")
-    } else if s.ends_with('m') {
-        (&s[..s.len() - 1], "m")
-    } else if s.ends_with('h') {
-        (&s[..s.len() - 1], "h")
-    } else if s.ends_with('d') {
-        (&s[..s.len() - 1], "d")
+    let (num_str, unit) = if let Some(n) = s.strip_suffix("ms") {
+        (n, "ms")
+    } else if let Some(n) = s.strip_suffix('s') {
+        (n, "s")
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, "m")
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, "h")
+    } else if let Some(n) = s.strip_suffix('d') {
+        (n, "d")
     } else {
         return Err(anyhow!("Invalid duration format: {}", s));
     };

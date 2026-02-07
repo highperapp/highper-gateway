@@ -606,8 +606,7 @@ fn matches_sni(pattern: &str, sni: &str) -> bool {
     }
 
     // Support wildcard matching (*.example.com)
-    if pattern.starts_with("*.") {
-        let domain_suffix = &pattern[2..];
+    if let Some(domain_suffix) = pattern.strip_prefix("*.") {
         return sni.ends_with(domain_suffix) && sni.len() > domain_suffix.len();
     }
 

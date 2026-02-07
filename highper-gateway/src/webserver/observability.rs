@@ -65,7 +65,7 @@ impl WebserverMetrics {
     pub fn record_request(&self, path: &str) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
         self.path_metrics.entry(path.to_string())
-            .or_insert_with(PathMetrics::default)
+            .or_default()
             .request_count.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -97,7 +97,7 @@ impl WebserverMetrics {
         };
 
         self.path_metrics.entry(path.to_string())
-            .or_insert_with(PathMetrics::default)
+            .or_default()
             .error_count.fetch_add(1, Ordering::Relaxed);
     }
 

@@ -217,11 +217,7 @@ impl JwtAuthenticator {
 
     /// Extract token from Authorization header
     pub fn extract_bearer_token(header_value: &str) -> Option<String> {
-        if header_value.starts_with("Bearer ") {
-            Some(header_value[7..].to_string())
-        } else {
-            None
-        }
+        header_value.strip_prefix("Bearer ").map(|s| s.to_string())
     }
 
     /// Clear token cache
