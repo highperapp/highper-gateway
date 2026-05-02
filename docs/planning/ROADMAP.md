@@ -717,6 +717,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **Cluster security env vars (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** add the following to the `Settings::cluster` sub-struct with refuse-to-start-on-missing semantics: `HIGHPER_CLUSTER_TYPEB_AUTH` (Valkey AUTH password, file path, or secrets-resolver ref); `HIGHPER_CLUSTER_TYPEB_TLS` (`true`/`false`); `HIGHPER_CLUSTER_TYPEC_CLIENT_CERT`, `_CLIENT_KEY`, `_CA` (file paths or secrets-resolver refs for etcd mTLS); `HIGHPER_CLUSTER_ALLOW_INSECURE` (default `false`; required `true` to start a Type 2/3/4 deployment without AUTH/mTLS — dev escape hatch). Validation: when `_TYPEB_BACKEND ≠ none`, `_TYPEB_AUTH` is required unless `_ALLOW_INSECURE=true`; same shape for Type C cert chain. **1.5 days.**
 - [ ] **UC16 virtual-key pepper env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3):** add `HIGHPER_AI_KEY_PEPPER` to the `Settings::ai` sub-struct. 32-byte secret loaded as raw bytes (or hex-decoded) from env var or via the secrets-manager resolver (`HIGHPER_SECRETS_PROVIDER` from Phase 1.4). Used as the HMAC-SHA-256 key for virtual-key hashing. **Refuse to start** when UC16 features are enabled and pepper is empty unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true`. Documented in `docs/CONFIG_ENV.md`; rotation guidance in `docs/SECURITY_CLUSTER_BASELINE.md`. **0.5 day.**
 - [ ] **Plugin drain-window env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.3.7):** move the hardcoded 30 s timeout in `src/plugin/manager.rs:252 wait_for_plugin_idle()` to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 rule. Default 30 s. Validates ≥ 5 s. **0.5 day.**
+- [ ] **UC16 pricing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §5.5):** five env vars on the `Settings::ai.pricing` sub-struct: `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream, operator can self-host), `HIGHPER_AI_PRICING_FEED_SIGN_KEY` (Ed25519 public key path or sigstore ref; refresh refuses unsigned feed when set), `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default 604 800 = 7 days; minimum 3600), `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` (`last_known_good` default / `fail_closed` opt-in), `HIGHPER_AI_ALLOW_FREE_TIER` (default `false`; required `true` to allow requests for models with no pricing entry). Documented in `docs/CONFIG_ENV.md`. **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -876,7 +877,11 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 2.3 Routing + accounting (week 3)
 
-- [ ] Model registry loader (`model_prices_and_context_window.json` from LiteLLM, vendored). **1 day.**
+- [ ] **Pricing registry (UC16 #7, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.5):** module at `src/gateway/ai/pricing.rs` with two-layer lookup (vendored snapshot + admin overrides applied on top, both held in `Arc<RwLock<HashMap>>`). Boot-load from baked LiteLLM JSON snapshot (build-time include via `include_bytes!`); validate schema; populate registry. Snapshot file vendored at `crates/highper-ai-prices/data/model_prices_and_context_window.json` with a script in `xtask` to refresh from LiteLLM upstream. **1.5 days.**
+- [ ] **Pricing weekly signed refresh job (UC16 #7):** internal cron-like task driven by `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default 604 800 s). Fetches `HIGHPER_AI_PRICING_FEED_URL`, verifies Ed25519 signature against `HIGHPER_AI_PRICING_FEED_SIGN_KEY`, atomically swaps the snapshot layer of the registry. Failure mode `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` (`last_known_good` default, `fail_closed` opt-in). Emits `ai_pricing_refresh_succeeded_total` / `_failed_total{reason}` metrics. **2 days.**
+- [ ] **Pricing admin-override endpoints (UC16 #7):** extend `src/admin/api.rs` with `PATCH /admin/ai/models/{alias}` (override row), `GET /admin/ai/models/{alias}` (effective row), `DELETE /admin/ai/models/{alias}/override` (revert), `GET /admin/ai/pricing/refresh-status`, `POST /admin/ai/pricing/refresh-now`. Overrides stored under `ai/pricing_overrides/global/{alias}` namespace in the configured `AiStateStore`. Every change emits a hash-chain audit event into the `AiStateStore` audit log. Hot-applied via `RwLock` swap — no restart. **2 days.**
+- [ ] **Zero-price handling (UC16 #7):** lookup-time check; default reject with 400 + structured error. Honors `HIGHPER_AI_ALLOW_FREE_TIER` for self-hosted / free-tier deployments. Emits `ai_request_no_pricing_total{provider,model}` when allowed. **0.5 day.**
+- [ ] Model registry loader (`model_prices_and_context_window.json` from LiteLLM, vendored) — **superseded by the four pricing tasks above 2026-05-02; kept as a checkbox so historical references resolve.** **(0 days; rolled into above)** [d]
 - [ ] Router with priority-list fallback and rate-limit-aware skip. **3 days.**
 - [ ] **Token counter — bake-in posture (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.1 / §5.2):** `tiktoken-rs` crate for OpenAI `cl100k_base` + `o200k_base`; `tokenizers` (HuggingFace) crate for Anthropic BPE at MVP. Vocabularies baked into the binary; ~6 MB delta for these two providers. Default Cargo feature includes both. New `ai-tokenizers-minimal` Cargo feature ships only OpenAI's two for size-conscious builds. Implementation site: `src/gateway/ai/tokens.rs`. **3 days** (was 2 — adds Anthropic at MVP per UC16 #2). |
 - [ ] **Reasoning-token billing rule (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.4):** virtual-key scope gains `count_reasoning_in_output: bool` (default `true`). Token counter records reasoning tokens (Anthropic `thinking`, OpenAI `reasoning_content`, DeepSeek `reasoning_content`) and the accounting layer respects the flag for budget / TPM decrement. Metrics emit `ai_output_tokens_total` with a `kind={prompt|completion|reasoning}` label regardless of billing inclusion. **1 day.**
@@ -917,14 +922,15 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 - [ ] Semantic cache (Redis-Stack vector or HNSW; pluggable). **5 days.**
 - [ ] Provider prompt-caching passthrough with byte-stable serializer + CI byte-stability test. **3 days.**
-- [ ] Pre-call guardrails: PII regex set, OpenAI moderation, Bedrock Guardrails, Llama-Guard via configured upstream. **5 days.**
-- [ ] Post-call guardrails (streaming): output PII redact, JSON-schema validate, regex deny. **5 days.**
-- [ ] Prompt registry + versioning (Postgres). **5 days.**
+- [k] ~~Pre-call guardrails: PII regex set, OpenAI moderation, Bedrock Guardrails, Llama-Guard via configured upstream.~~ **Killed 2026-05-02 per UC16 #1 scope fence — guardrails are operator-side services wired via `src/plugin/` hooks; highper does not ship guardrail logic. See `USECASE_16_AI_LLM_GATEWAY.md` §8.**
+- [k] ~~Post-call guardrails (streaming): output PII redact, JSON-schema validate, regex deny.~~ **Killed 2026-05-02 per UC16 #1 scope fence — same as above. JSON-schema validation for non-AI traffic still ships as competitor parity item N4 (Phase 4.1).**
+- [ ] **Prompt registry + versioning (UC16 #4 storage):** durable layer in the configured `AiStateStore` (ReDB / RocksDB / ScyllaDB) — was "Postgres" in the original draft; updated 2026-05-02 to use the trait per UC16 #4. **5 days.**
+- [ ] **Per-tenant pricing overrides (UC16 #7, 2026-05-02 — `USECASE_16_AI_LLM_GATEWAY.md` §5.5.5):** extends MVP's operator-level overrides with per-tenant rows under `ai/pricing_overrides/tenant/{tid}/{alias}`. Three-level lookup at request time: tenant → global override → snapshot. Admin endpoints `PATCH /admin/ai/tenants/{tid}/models/{alias}` etc. Audit events tagged with tenant. Useful for reseller / multi-tier pricing. **3 days.**
 - [ ] MCP passthrough (`/v1/mcp/{server}`). **3 days.**
 - [ ] Add providers: xAI, DeepSeek, Mistral, Groq, Together, Fireworks, Cohere, Vertex (non-Anthropic), Azure OpenAI. **7 days.**
 - [ ] Embedding batch coalescing (combine N small embeds into one upstream batch within 50 ms window). **3 days.**
 - [ ] Vision passthrough (URL-fetch for providers that don't auto-fetch). **3 days.**
-- [ ] Anthropic-shape inbound (`POST /v1/messages`). **3 days.**
+- [d] ~~Anthropic-shape inbound (`POST /v1/messages`).~~ **Moved to Phase 2.1 MVP on 2026-05-02 per UC16 design decision #2** (OpenAI + Anthropic dual-shape MVP). Kept as a checkbox so historical references resolve.
 
 #### 3.2 Cross-cutting + UC P1 polish (folded from Section 4.2)
 
@@ -1421,7 +1427,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     `AiStateStore` instead of sled+Argon2id.
   - **§13 status snapshot** to be extended next iteration; this revision
     adds 4 changed lines and 1 new sub-section (§3.3.7) to USECASE_16.
-- **2026-05-02 (tenth revision, current):** UC16 topic #6 fold-in
+- **2026-05-02 (tenth revision):** UC16 topic #6 fold-in
   (tokenization posture).
   - **UC16 design decision #6 (tokenization):** USECASE_16 §12 #6 and
     #7 marked DECIDED. Bake all tokenizer vocabularies (~30 MB binary
@@ -1446,6 +1452,41 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     the respective `AiProvider` impls.
   - **§13 status snapshot** gains 1 row recording decision #6.
   - Memory `uc16_scope.md` updated with the tokenization rule.
+- **2026-05-02 (eleventh revision, current):** UC16 topic #7 fold-in
+  (cost / pricing source) + Phase 3.1 scope-fence cleanup.
+  - **UC16 design decision #7:** USECASE_16 §12 #12 marked DECIDED.
+    Vendored LiteLLM `model_prices_and_context_window.json` snapshot
+    baked into binary + weekly signed refresh from
+    `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream, operator
+    can self-host) + admin override at runtime via
+    `PATCH /admin/ai/models/{alias}` (operator-level at MVP, per-tenant
+    in Phase 3).
+  - **USECASE_16 §5.5 fully rewritten** with six sub-sections:
+    5.5.1 source / 5.5.2 admin override mechanics / 5.5.3 refresh
+    failure handling (`last_known_good` default, `fail_closed` opt-in)
+    / 5.5.4 zero-price handling / 5.5.5 per-tenant overrides as Phase 3
+    follow-on / 5.5.6 schema fields. Added 5 new admin endpoints to
+    §2.4.
+  - **Phase 0.J** gains 5 pricing env vars
+    (`HIGHPER_AI_PRICING_FEED_URL`, `_FEED_SIGN_KEY`,
+    `_REFRESH_INTERVAL_SECS`, `_REFRESH_FAIL_MODE`,
+    `HIGHPER_AI_ALLOW_FREE_TIER`) — 0.5 day.
+  - **Phase 2.3** gains 4 new pricing tasks (registry + refresh job +
+    admin endpoints + zero-price handling) totalling ~6 days; original
+    "Model registry loader" 1-day task deferred (rolled into the four
+    new tasks).
+  - **Phase 3.1 cleanup** done at the same time:
+    - Pre-call + post-call guardrail items killed (`[k]`) per UC16 #1
+      scope fence — these were leftovers from before the fence.
+    - Anthropic-shape inbound deferred (`[d]`) — moved to Phase 2.1
+      MVP per UC16 #2.
+    - Prompt-registry storage updated from "Postgres" to
+      `AiStateStore` (UC16 #4 trait).
+    - New 3-day **per-tenant pricing override** task added to
+      Phase 3.1 (UC16 #7 follow-on).
+  - **§13 status snapshot** gains 3 rows (decision #7; Phase 3.1
+    cleanup; per-tenant overrides queued).
+  - Memory `uc16_scope.md` updated with the pricing-source rule.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1492,6 +1533,8 @@ and planning**. No source code has changed. Phase 0 has not started.
 | Plugin hot-load capability matrix documented for AI providers | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.3.7 | reuses `src/plugin/hot_reload.rs` + `manager.rs:252` 30 s drain; built-in providers update via Phase 0 config reload; third-party WASM/FFI plugin code hot-loads from Phase 3 Beta |
 | §4.4 interface-first audit extended from 8 to 10 boundaries | ROADMAP §4.4 | rows 9 (`AiStateStore`) and 10 (`AiProvider`) added — both greenfield, both Phase 2.1; total trait-extraction effort 9.5 → 10.5 person-weeks |
 | UC16 design decision #6 recorded 2026-05-02 (tokenization posture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §5.1–§5.4 / §12 #6, #7 | bake all vocabularies (~30 MB binary at Phase 3 GA); `tiktoken-rs` for OpenAI + `tokenizers` (HuggingFace) for everything else; reasoning tokens count as output by default with per-virtual-key `count_reasoning_in_output: bool` opt-out; air-gap / regulated deployments fully supported |
+| UC16 design decision #7 recorded 2026-05-02 (cost / pricing source) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §5.5 (six sub-sections) / §12 #12 | vendored LiteLLM snapshot baked into binary + weekly signed refresh + admin override at runtime via `PATCH /admin/ai/models/{alias}`; refresh failure default `last_known_good`; zero-price default-reject; per-tenant overrides queued for Phase 3 |
+| Phase 3.1 scope-fence cleanup 2026-05-02 | ROADMAP Phase 3.1 | killed pre-/post-call guardrail items per UC16 #1 scope fence; moved Anthropic-shape inbound to Phase 2.1 MVP per UC16 #2; updated prompt-registry storage to `AiStateStore` per UC16 #4 |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |

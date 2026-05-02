@@ -499,11 +499,135 @@ output.
 | Reasoning tokens count toward $ budget | Yes | same |
 | Reasoning tokens emitted as `ai_output_tokens_total` metric | Yes (with `kind=reasoning` label) | always emitted, regardless of billing |
 
-### 5.5 Cost source
+### 5.5 Cost / pricing source (UC16 design decision #7, 2026-05-02)
 
-| Concern | Decision |
+**Decision recorded.** Vendored snapshot + weekly signed refresh + admin
+override at runtime. Live-feed and maintain-in-house were considered and
+dropped.
+
+#### 5.5.1 Source
+
+Boot-load price data from a **vendored snapshot** of LiteLLM's
+[`model_prices_and_context_window.json`](https://github.com/BerriAI/litellm)
+(MIT-licensed, ~150 models, ~2 community PRs / week). Snapshot is baked
+into the binary at build time so initial deploy works fully offline,
+matching the §5.1 tokenizer bake-all stance.
+
+A **weekly signed refresh** task (cron-like, internal to highper) fetches
+the current JSON from `HIGHPER_AI_PRICING_FEED_URL`, verifies the
+signature against `HIGHPER_AI_PRICING_FEED_SIGN_KEY` (Ed25519 public key
+or sigstore reference), and atomically swaps the price registry on
+success. Operator can self-host the feed JSON behind their own URL and
+sign it themselves; `HIGHPER_AI_PRICING_FEED_URL` defaults to the
+LiteLLM upstream.
+
+Refresh interval `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default
+604 800 s = 7 days; minimum 3600 s = 1 hour) per the §0.1 no-hardcoded-
+tunables rule.
+
+Live-feed (fetch on every cold start + once a day) was considered and
+dropped: requires network at startup, exposes operator to GitHub rate
+limits, no air-gap support. Maintain-in-house was considered and
+dropped: LiteLLM's community curates aggressively; duplicating that work
+costs multi-person-weeks per quarter and is not a highper differentiator.
+
+#### 5.5.2 Admin override at runtime
+
+Operators **must** be able to override prices live without a refresh
+cycle — provider price changes ship daily during AI-market churn, and
+operators with pre-negotiated discounts (volume contracts, partner
+pricing) need their own numbers in effect immediately.
+
+**Admin API endpoints** (extends §2.4):
+
+```
+PATCH  /admin/ai/models/{alias}        # override pricing / capability flags
+GET    /admin/ai/models/{alias}        # show effective row (snapshot + overrides applied)
+DELETE /admin/ai/models/{alias}/override  # revert to current snapshot row
+GET    /admin/ai/pricing/refresh-status   # last-refresh time, last-good-time, last-error
+POST   /admin/ai/pricing/refresh-now      # manual refresh trigger (admin scope)
+```
+
+**Override scope and storage:**
+
+- Per (provider, model) row — operator overrides any combination of `input_price_per_1M_tokens`, `output_price_per_1M_tokens`, `cached_input_price_per_1M_tokens`, `reasoning_price_per_1M_tokens`, `image_input_price_per_image`, `audio_input_price_per_minute`, `context_window_max`, capability flags, plus a free-form `note` string for change-rationale.
+- Override expiry — operator may set `expires_at`; row reverts to the snapshot value automatically. Default: no expiry (sticky until explicit removal).
+- Stored in the configured `AiStateStore` (UC16 #4) under a dedicated `ai/pricing_overrides/{alias}` namespace.
+- Override layered on top of the snapshot at lookup time; the snapshot is never mutated.
+- Hot-applied — no restart, no refresh wait. Lookup goes through `RwLock<HashMap>`; admin write swaps in the new override.
+
+**Audit:** every PATCH / DELETE on `/admin/ai/models/{alias}` emits an
+audit event into the `AiStateStore`-backed audit log per §7.3 — same
+hash-chain integrity as virtual-key changes. Includes actor, before /
+after, IP, timestamp.
+
+#### 5.5.3 Refresh failure handling
+
+| Mode | Behaviour | Env var |
+|---|---|---|
+| **`last_known_good` (default)** | If refresh fails (network error, signature mismatch, malformed JSON), keep the current price registry and emit `ai_pricing_refresh_failed_total{reason}` metric + structured-log warning. Service continues. | `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE=last_known_good` |
+| **`fail_closed`** | If refresh fails *and* the operator has set this mode, refuse new AI requests with 503 and a `Retry-After` header until refresh succeeds. Used in regulated billing environments where stale prices are unacceptable. | `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE=fail_closed` |
+
+**Default is `last_known_good`** because the realistic failure mode is
+"GitHub had a hiccup" or "operator's signing infra is being maintained";
+the realistic *price drift* in 7 days is small and the admin override
+mechanism (§5.5.2) is the relief valve. `fail_closed` is opt-in for
+operators whose finance team won't accept stale prices.
+
+Health endpoint `/health/ai/pricing` reports `last_refresh_at`,
+`last_good_at`, `seconds_since_last_good_refresh` — operators can
+alert on staleness.
+
+#### 5.5.4 Zero-price handling
+
+When a request arrives for a (provider, model) pair with **no pricing
+entry** (snapshot doesn't include it, no override set), the gateway:
+
+| Mode | Behaviour | Env var |
+|---|---|---|
+| **Default (`false`)** | Reject with 400 Bad Request: `{"error": "model 'xxx' has no pricing configured; set an admin override or HIGHPER_AI_ALLOW_FREE_TIER=true"}` | `HIGHPER_AI_ALLOW_FREE_TIER=false` |
+| **`true`** | Allow the request; log + emit metric `ai_request_no_pricing_total{provider,model}`; budget check skipped (no $ cap can apply); usage records show `cost_usd=0` | `HIGHPER_AI_ALLOW_FREE_TIER=true` |
+
+The default-reject behaviour catches typos in `model_alias`
+configuration and prevents accidental zero-cost runaway requests.
+Free-tier mode is for operators running self-hosted models (UC17 future)
+or genuinely-free providers where billing tracking isn't relevant.
+
+#### 5.5.5 Per-tenant pricing overrides — Phase 3
+
+**Out of MVP.** MVP ships operator-level overrides only (one global
+override per model alias). Phase 3 adds per-tenant overrides for
+multi-tenant resellers — operator marks up provider prices for their
+end-customers, applies different rates per tenant tier (free / pro /
+enterprise), or honours per-tenant negotiated rates.
+
+Phase 3 schema sketch:
+
+```
+ai/pricing_overrides/global/{alias}           # MVP — operator override
+ai/pricing_overrides/tenant/{tid}/{alias}     # Phase 3 — per-tenant override
+```
+
+Lookup at request time: check tenant-override first, fall back to
+global-override, fall back to snapshot. Three-level lookup adds ~1 µs;
+acceptable.
+
+#### 5.5.6 Pricing registry schema fields
+
+For every (provider, model) row, the registry tracks:
+
+| Field | Used by |
 |---|---|
-| Cost source | Boot-load `model_prices.json` from LiteLLM (MIT) — `model_prices_and_context_window.json` — refreshed weekly via signed download. Admin can override per row at runtime. Detail in §12 #12 (still open) — vendored snapshot vs live feed. |
+| `input_price_per_1M_tokens` | Pre-call budget gate, post-call accounting |
+| `output_price_per_1M_tokens` | Same |
+| `cached_input_price_per_1M_tokens` | Provider-prompt-cache discount (§6.3) |
+| `reasoning_price_per_1M_tokens` | When reasoning differs from output (rare; future-proofing) |
+| `image_input_price_per_image` | Vision passthrough (Beta) |
+| `audio_input_price_per_minute` | Audio (GA) |
+| `context_window_max` | Pre-call validation; reject early on input > limit |
+| `model_capability_flags` | `supports_function_calling`, `supports_vision`, `supports_streaming`, `supports_reasoning`, … — used by capability-aware routing in Phase 4.1 |
+| `last_updated_at` | Drift / audit |
+| `source` | `snapshot` \| `refresh` \| `override` — provenance tag for the row |
 
 ---
 
@@ -877,7 +1001,7 @@ and reference the design-decision number.
 9. **Hard-stop on TPM enforcement** — break stream with error frame, or only post-stream warning? Recommended: **post-stream warning** by default; hard-stop opt-in (hard-stop semantics are jarring in practice).
 10. **Prompt registry storage** — durable layer in `AiStateStore` rows vs Git-backed text vs both? Recommended: **`AiStateStore` rows MVP**, expose `git push` adapter at GA for GitOps users.
 11. **MCP placement** — gateway hosts MCP server (lets LLMs query gateway state), or proxy-only? Recommended: **proxy-only MVP**, in-process MCP server in Beta.
-12. **Pricing source** — vendored snapshot, periodic refresh from LiteLLM JSON, or community feed? Recommended: **boot-load from vendored LiteLLM JSON snapshot, refresh weekly via signed download, admin override at runtime.**
+12. **DECIDED (UC16 #7, 2026-05-02)** — Pricing source: **vendored LiteLLM snapshot baked into binary** + **weekly signed refresh** from `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream; operator can self-host) + **admin override at runtime** via `PATCH /admin/ai/models/{alias}` (operator-level overrides at MVP, per-tenant overrides at Phase 3). Refresh failure default `last_known_good`; `fail_closed` opt-in for regulated billing. Zero-price model lookup default-reject (`HIGHPER_AI_ALLOW_FREE_TIER=false`). §5.5 above.
 13. **Realtime / Voice** — OpenAI Realtime + Gemini Live needed at MVP, Beta, or GA? Recommended: **GA**; voice apps are a smaller market and the WS reuse is non-trivial.
 14. **License posture** — keep Apache-2 (matches the rest of highper-gateway), or BUSL/Commons-Clause for enterprise pieces (audit, BYOK, evals)? Owner decision; affects monetization story.
 15. **Inference-engine integration (UC17)** — explicit non-goal here, but with the §3.3 plugin architecture, a self-hosted-models integration becomes "an `AiProvider` plugin that wraps `mistral.rs` / `candle` in-process." Recommended: **defer to UC17** but the router contract is now plugin-shaped which makes UC17 strictly additive.
@@ -1004,4 +1128,35 @@ See `ROADMAP.md` §5 for sequencing.
     (OpenAI + Anthropic at MVP per UC16 #2); new 1-day "reasoning-token
     billing rule" task added; Phase 3 vocabulary additions noted as
     bundled with respective `AiProvider` impls.
+- **2026-05-02 (decision #7 — cost / pricing source, current):** topic-#7 fold-in.
+  - **§5.5 fully rewritten** with six sub-sections (5.5.1 source /
+    5.5.2 admin override / 5.5.3 refresh failure handling /
+    5.5.4 zero-price handling / 5.5.5 per-tenant overrides — Phase 3 /
+    5.5.6 schema fields).
+  - **Vendored LiteLLM snapshot** baked into the binary at build time
+    (mirrors §5.1 tokenizer bake-all stance) + **weekly signed refresh**
+    from `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream,
+    operator can self-host).
+  - **Admin override at runtime** via `PATCH /admin/ai/models/{alias}`
+    (per-row override of price / capability / context-window fields with
+    optional expiry). Stored under `ai/pricing_overrides/global/{alias}`
+    namespace in the configured `AiStateStore` (UC16 #4). Hot-applied
+    via `RwLock` swap; no restart, no refresh wait. Every change emits
+    a hash-chain audit event into the `AiStateStore` audit log. Five new
+    admin endpoints added to §2.4.
+  - **Refresh failure** default `last_known_good`; `fail_closed` opt-in
+    via `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` for regulated billing.
+    Health endpoint `/health/ai/pricing` reports staleness.
+  - **Zero-price handling** — default-reject with 400 ("model X has no
+    pricing configured"); `HIGHPER_AI_ALLOW_FREE_TIER=true` opt-in for
+    self-hosted / free-tier deployments.
+  - **Per-tenant overrides** queued for **Phase 3** (multi-tenant
+    resellers / per-tier rates). MVP ships operator-level overrides only.
+  - **§12 #12 marked DECIDED.**
+  - ROADMAP Phase 0.J gains 5 pricing env vars; Phase 2.3 gains 4 new
+    pricing tasks (~6 days); Phase 3.1 gains a 3-day per-tenant override
+    task. Phase 3.1 also got a scope-fence cleanup pass: killed
+    pre-/post-call guardrail items (per UC16 #1), deferred Anthropic-shape
+    inbound (now Phase 2.1 MVP per UC16 #2), updated prompt-registry
+    storage to `AiStateStore`.
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.
