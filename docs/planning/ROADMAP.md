@@ -524,6 +524,26 @@ examples loading against the current schema after each Phase 0–4 change.
 `docs/DEPLOYMENT_GUIDE.md` (54 KB user-facing scenario cookbook covering all
 15 UCs).
 
+**Cluster-deployment cookbook coverage (added 2026-05-02 — see [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §1 + §7):**
+
+Per the operator-chooses-per-deployment posture, each (cluster type ×
+infrastructure) combination needs its own cookbook directory under
+`examples/configs/clusters/`. None exist today — all 9 cells (plus the
+top-level decision-flow README) are queued in Phase 1.3.1 above.
+
+| Cell | Path | Status |
+|---|---|---|
+| Type A × K8s | `examples/configs/clusters/type-a-k8s/` | Phase 1.3.1 deliverable |
+| Type A × VM | `examples/configs/clusters/type-a-vm/` | Phase 1.3.1 deliverable |
+| Type A × Bare Metal | `examples/configs/clusters/type-a-baremetal/` | Phase 1.3.1 deliverable |
+| Type B × K8s | `examples/configs/clusters/type-b-k8s/` | Phase 1.3.1 deliverable |
+| Type B × VM | `examples/configs/clusters/type-b-vm/` | Phase 1.3.1 deliverable |
+| Type B × Bare Metal | `examples/configs/clusters/type-b-baremetal/` | Phase 1.3.1 deliverable |
+| Type C × K8s | `examples/configs/clusters/type-c-k8s/` | Phase 1.3.1 deliverable |
+| Type C × VM | `examples/configs/clusters/type-c-vm/` | Phase 1.3.1 deliverable |
+| Type C × Bare Metal | `examples/configs/clusters/type-c-baremetal/` | Phase 1.3.1 deliverable |
+| Top-level decision flow | `examples/configs/clusters/README.md` | Phase 1.3.1 deliverable |
+
 **Maintenance tasks (folded into Phase 1.3):**
 
 - [ ] Schema-load test: write a CI job that loads every file under `examples/`
@@ -632,6 +652,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] Body decompression pipeline (gzip/deflate up to cap from `HIGHPER_BODY_MAX_WAF`) before WAF runs. **3 days.**
 - [ ] WAF rule hot-reload via signal + admin API. **2 days.**
 - [ ] **RateLimiter trait extraction (added 2026-05-02):** define `RateLimiter` trait (`check(&self, key: &Key, cost: u64) -> Decision`); migrate `TokenBucket` in `src/middleware/rate_limit.rs:93-145` and `gateway/ratelimit/{token_bucket, sliding_window, distributed}.rs` into trait impls; chosen algorithm via `HIGHPER_RATELIMIT_ALGO`; opens the door for GCRA/leaky-bucket impls in Phase 4 without parallel code paths. **1 week.** *(folded from interface-first audit §4.4)*
+- [ ] **Hot-key sharding for distributed rate limiting (added 2026-05-02 — addresses `HA_ARCHITECTURE.md` §1.5.4 F1 Valkey hot-key bottleneck):** add `HIGHPER_RATELIMIT_KEY_SHARDS` env var (default `1` = no sharding); when `>1`, the distributed limiter writes to N sub-keys (`<key>:<shard_id>`) chosen by a stable hash of the request, and reads aggregate by summing all N at decision time. Trade-off: ~0.1 ms extra latency per check vs. eliminating single-shard contention for popular keys. Add a `examples/configs/scenarios/scenario-04-rate-limit-hot-key.yaml` cookbook entry demonstrating the pattern. **2 days.**
 
 #### Workstream 0.D — Protocol fixes (UC5, UC6, UC7, B7, B8, B14)
 
@@ -683,6 +704,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] Build a small "env settings" loader using `figment` or hand-rolled (no proc-macro reflection); validate types and ranges; refuse to start on out-of-range values. **2 days.**
 - [ ] Create `docs/CONFIG_ENV.md` (NEW) — exhaustive table of every `HIGHPER_*` var with default, valid range, subsystem owner, and citation to where it's read. **1 day; updated alongside every PR that adds a new var.**
 - [ ] CI lint: forbid bare `std::env::var` in `src/**/*.rs` outside `src/config/`; forbid literal `Duration::from_secs(..)` and `* 1024 * 1024` in production code (allowed in tests). **1 day.**
+- [ ] **Cluster security env vars (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** add the following to the `Settings::cluster` sub-struct with refuse-to-start-on-missing semantics: `HIGHPER_CLUSTER_TYPEB_AUTH` (Valkey AUTH password, file path, or secrets-resolver ref); `HIGHPER_CLUSTER_TYPEB_TLS` (`true`/`false`); `HIGHPER_CLUSTER_TYPEC_CLIENT_CERT`, `_CLIENT_KEY`, `_CA` (file paths or secrets-resolver refs for etcd mTLS); `HIGHPER_CLUSTER_ALLOW_INSECURE` (default `false`; required `true` to start a Type 2/3/4 deployment without AUTH/mTLS — dev escape hatch). Validation: when `_TYPEB_BACKEND ≠ none`, `_TYPEB_AUTH` is required unless `_ALLOW_INSECURE=true`; same shape for Type C cert chain. **1.5 days.**
 
 #### Phase 0 deliverables
 
@@ -710,6 +732,7 @@ Workstreams **0.A, 0.B, 0.D, 0.G** are largely independent. **0.I** is independe
 - [ ] Memory-leak / fd-leak diff using heap profiler at start vs end.
 - [ ] 30-day soak as parallel background activity once 7-day is green.
 - [ ] Chaos-engineering pass: kill backends, inject 5 % packet loss, add 200 ms latency, saturate CPU, force-close upstreams. Record graceful-degradation behavior. **3 days active work + observation.**
+- [ ] **Per-cluster-type RPS benchmark (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §1.5):** measure sustained RPS for Type 1 / 2 / 3 / 4 deployments at 3-replica HA size; document p50 / p99 latency adders per coordination layer; surface Valkey hot-key bottleneck (F1) and etcd write ceiling (F2) with concrete numbers. Replaces the placeholder `(unsourced inference)` numbers in §1.5 with measured ones. **5 days.**
 
 #### 1.3 Operational deliverables
 
@@ -717,8 +740,64 @@ Workstreams **0.A, 0.B, 0.D, 0.G** are largely independent. **0.I** is independe
 - [ ] `docs/MONITORING.md` (NEW) — Prometheus + Grafana quickstart with importable dashboards (RED + USE) for: HTTP, TLS, WAF, cache, discovery, geo, PHP-FPM, gRPC, HTTP/3, WebSocket. **5 days.**
 - [ ] `docs/TROUBLESHOOTING.md` (NEW) — common errors → root cause → fix. **3 days.**
 - [ ] `docs/UPGRADE.md` (NEW) — config migration matrix from beta → v1.0. **2 days.**
-- [ ] Sample systemd unit, container image, Helm chart, compose file. **3 days.**
+- [ ] Sample systemd unit, container image, Helm chart, compose file (baseline single-node, persona-agnostic). **3 days.**
 - [ ] `SECURITY.md` (project root, 3.6 KB, `SECURITY.md`) updated with disclosure policy + bounty link. **0.5 day.**
+- [ ] **`docs/SECURITY_CLUSTER_BASELINE.md` (NEW) (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** per-type security hardening templates. Sections: Valkey AUTH config + TLS setup; etcd client/peer mTLS config + RBAC role examples; K8s `NetworkPolicy` YAML templates per cluster type; VM/BM firewall-rules templates (iptables / nftables / ufw); secrets-rotation playbook (Valkey password, etcd certs); recovery procedures. **3 days.**
+
+##### 1.3.1 Cluster deployment templates — 3 personas × 3 infrastructures (added 2026-05-02)
+
+Per [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §1 + §7, highper-gateway
+facilitates every (cluster type × infrastructure) combination through cookbook
+templates. Each cell below is a Phase 1.3 deliverable landing under
+`examples/configs/clusters/`. Note: now reorganised by the four-cluster-type
+model (Type 1 / 2 / 3 / 4) instead of the earlier 3-persona × 3-infra cells. Cell layout:
+`examples/configs/clusters/<type>-<infra>/` with `README.md` + the artifact
+appropriate for that infrastructure (manifest / unit + keepalived / playbook).
+
+- [ ] `examples/configs/clusters/type-a-k8s/` — `Deployment` + HPA + Service
+      (LoadBalancer or ClusterIP+MetalLB) + pod anti-affinity. README links
+      to UC1 / UC2 / UC8 / UC9 / UC10 / UC14 / UC15 cookbook entries.
+      Includes a `values-typeA.yaml` for the Helm chart. **2 days.**
+- [ ] `examples/configs/clusters/type-a-vm/` — systemd unit per node +
+      Keepalived `keepalived.conf` for VIP failover. Cloud-init / Ansible
+      playbook for 2-node Active/Standby bringup. **2 days.**
+- [ ] `examples/configs/clusters/type-a-baremetal/` — Anycast bootstrap
+      script + ExaBGP / FRR config + sample `bird.conf`. README explains
+      kernel UDP tuning for UC5 (HTTP/3 prefers BM per `HA_ARCHITECTURE.md` §4 footprint guidance).
+      **3 days.**
+- [ ] `examples/configs/clusters/type-b-k8s/` — `StatefulSet` for highper +
+      Valkey via Bitnami chart (or Valkey operator) + sample sharded-Valkey
+      config to isolate UC4 rate-limit traffic from UC16 token quotas
+      (per `HA_ARCHITECTURE.md` §2.4 isolation rule). **3 days.**
+- [ ] `examples/configs/clusters/type-b-vm/` — Ansible playbook for a
+      3-node Valkey cluster + N highper VMs pointing at Valkey via
+      `HIGHPER_VALKEY_ADDRS`. Sample `keepalived.conf` for Valkey VIP. **3 days.**
+- [ ] `examples/configs/clusters/type-b-baremetal/` — Valkey on dedicated
+      bare-metal nodes; sub-ms-latency tuning README; recommended for UC11
+      (BM Performance) and UC16 with adjacent self-hosted models. **3 days.**
+- [ ] `examples/configs/clusters/type-c-k8s/` — etcd-operator manifests +
+      highper `StatefulSet` reading cert / discovery state from etcd.
+      Alternative: k3s with embedded etcd. README covers the
+      "most-restrictive wins" implication: any deployment running UC3 or
+      UC12 lands here regardless of other UCs. **3 days.**
+- [ ] `examples/configs/clusters/type-c-vm/` — Ansible playbook for an
+      odd-node etcd cluster (3 or 5 VMs) + N highper VMs pointing at etcd.
+      Consul-based variant in a sibling subdirectory. **3 days.**
+- [ ] `examples/configs/clusters/type-c-baremetal/` — etcd on dedicated
+      bare-metal nodes for sub-ms quorum writes. README discourages this
+      cell unless UC3 / UC12 latency budget genuinely demands it. **3 days.**
+- [ ] **Cross-cell:** `examples/configs/clusters/README.md` (NEW) — table
+      mirroring `HA_ARCHITECTURE.md` §3 all-in-one mapping, plus a "pick your cluster type" decision flow
+      (which UCs do you enable? → which persona is required? → which infra
+      do you have? → click into that cell). **1 day.**
+- [ ] **Validation harness:** Phase 1.1 cloud-validation matrix runs each
+      of the 9 cells against scenario fixtures so every cell is provably
+      bootable end-to-end before v1.0 GA. **2 days CI work; runs as part of
+      1.1.**
+- [ ] **Single-node opt-in:** every cell's README documents how to fall
+      back to a 1-node deployment via `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=true`
+      (acknowledging "0 % fault tolerance" trade-off). **0.5 day; doc.**
+- [ ] **Cloud-VM sub-cells (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.5):** each `type-{a,b,c}-vm/` cell needs a `cloud-vm/` sub-folder because **Keepalived does not work on AWS / GCP / Azure** (no L2 multicast). Sub-cell shape: same Ansible playbook for highper / Valkey / etcd VMs, but the front-LB switches from Keepalived to the cloud's L4 LB (NLB / Network LB / Standard LB). Include a `README.md` per sub-cell that lists which provider's LB to provision and the IAM permissions needed. Three sub-cells × three cluster types = nine paths — but the *cloud-LB* portion is mostly identical across cluster types, so factor as a shared module. **2 days.**
 
 #### 1.4 Cross-cutting catch-up
 
@@ -753,6 +832,7 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] `Retry-After` precision fix (avoid f64→u64 cast loss). **0.5 day.**
 - [ ] Delete the empty parallel `src/gateway/rate_limit/` directory. **0.1 day.** *(may be folded into 1.4 cleanups; tracked here for visibility)*
 - [ ] **B12 body-size centralization (added 2026-05-02):** introduce `BodySizeLimits` struct in `src/config/body_limits.rs`, populated from `HIGHPER_BODY_*` env vars per §4.1.1 table. Replace 11 hardcoded `pub const DEFAULT_MAX_BODY_SIZE` / `10 * 1024 * 1024` literals across `body_utils.rs`, `body_access.rs`, `webserver/security.rs`, `webserver/resource_limits.rs`, `request_validation.rs`, `streaming_validator.rs`, `request_size_limit.rs`, `dsl_ast.rs` with reads from `Settings`. Per-route overrides preserved. **3 days.**
+- [ ] **DSL grammar parity with HTTP LB algorithms (added 2026-05-02 — addresses `HA_ARCHITECTURE.md` §4.1 footnote):** `src/config/dsl_ast.rs:402-410` exposes 7 of the 9 HTTP algorithms — `Maglev` and `Geographic` are missing. Extend the DSL `LoadBalancingAlgorithm` enum + the `Display` impl + the parser at `src/config/dsl_parser.rs` to accept `maglev` and `geographic` variants; add round-trip parser tests. **1 day.**
 
 #### Phase 1 exit criteria
 
@@ -977,9 +1057,10 @@ UC16 item that doesn't fit cleanly inside the MVP six weeks.
 1. **Now (before Phase 0 start):** confirm Phase 0 priority order — agree all 14 blockers (B1–B14) are in scope, or strike specific items with rationale. Confirm Rancher Desktop choice and Phase 1.5 tool stack (Trivy + syft+Grype + Dastardly + ZAP).
 2. **End of Phase 1:** does v1.0 launch with UC13 (GraphQL) marked "passthrough only, federation deferred"? Or block on shipping real federation in Phase 1? Recommendation: defer to v1.1.
 3. **Before Phase 2 start (UC16 scope gate):** confirm the §3.1 in-scope/out-of-scope fence; revise `docs/planning/USECASE_16_AI_LLM_GATEWAY.md` to remove out-of-scope items (guardrails, AI observability product, in-memory cache product, vLLM); answer the remaining design questions that survive the scope fence. **Phase 2 cannot begin without this.**
-4. **End of Phase 3 (HA architecture gate, revised 2026-05-02):** decision is **not** binary "Raft vs stateless+Redis." Per the cluster-persona research (`docs/planning/research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt`, see §11 of this document), the system must support three personas — **Type A** (Edge / no shared state), **Type B** (Coordinator / Stateless + Valkey), **Type C** (Trusted / Raft consensus) — because the 16 use cases distribute unevenly across them. The decision to make is: **(i) which persona is the default for a single-node deployment, (ii) which Type B backend ships first (Valkey vs Redis vs both — Valkey is Redis-protocol-compatible and is the reference choice in the research), (iii) which Type C backend ships first (etcd vs raft-rs vs Consul as control-plane source). Affects Phase 4 enterprise tier feasibility and the UC16 storage gate (#5 below).
+4. **End of Phase 3 (HA architecture gate, revised 2026-05-02):** decision recorded — the four-cluster-type model is the design (Type 1 Stateless / Type 2 +Valkey / Type 3 +etcd / Type 4 +Valkey+etcd); see [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md). Three open sub-decisions remain: **(i)** which Type B backend the cookbooks default to and which CI exercises (Valkey vs Redis — same protocol, mostly cookbook + CI choice); **(ii)** which Type C backend ships first as a code path (etcd already coded, Consul already coded, raft-rs not yet — recommendation: etcd default, raft-rs Phase 4.2); **(iii)** whether highper drives peer discovery for clustering or delegates to the chosen infrastructure (K8s headless service / Consul / etc.). Affects Phase 4 enterprise tier feasibility and the UC16 storage gate (#5 below). Per the HA research's "most-restrictive HA logic wins" rule, a deployment that enables UC3 or UC12 must include the etcd layer — that's a runtime validation enforced by §11.2, not a decision.
 5. **Before Phase 2.4 (UC16 storage-backend gate, added 2026-05-02):** decide the durable backend for virtual keys / budgets / usage / sessions. Candidates: PostgreSQL, ScyllaDB, foundationdb, sled+gossip, Redis-only. Single-node MUST work without external deps; multi-node MUST enforce budgets without double-spend. Implication for code: keep `AiStateStore` trait pluggable until decision lands. **Phase 2.4 cannot begin without this.**
 6. **Before any v1.0 GA tag (added 2026-05-02):** confirm §0.5 reconciliation banners are still consistent with then-current code; KNOWN_LIMITATIONS / README / CHANGELOG / ARCHITECTURE may need refresh again at tag time.
+7. **Multi-region commitment (added 2026-05-02 — `HA_ARCHITECTURE.md` §6.5):** decide *when* multi-region ships as a single-button deployment (recommended: not in v1.0; Phase 4.x ecosystem alongside xDS / K8s operator). Until then, single-region-multi-AZ is the v1.0 default and multi-region patterns are documented but not productized. Decision affects UC15 footprint expectations and UC16 cross-region budget enforcement (gate #5 follow-on).
 
 ---
 
@@ -1028,105 +1109,129 @@ Those concerns live in customer-side services, not in highper-gateway.
 
 ---
 
-## 11. HA architecture — cluster personas (added 2026-05-02)
+## 11. HA architecture — pointer + cluster-bootstrap config shape (revised 2026-05-02)
 
-**Source:** `docs/planning/research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt`
-(60 lines; verified 2026-05-02). All claims in this section cite that file by
-line range or the source code where behavior is currently realized.
+**Authoritative reference:** [`docs/planning/HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md).
+That document contains the full cluster-type definitions, per-UC profiles
+(group letter, supported types, LB algorithms, footprint, scaling pattern),
+single-node→multi-node conversion paths, front-LB patterns (VIP / Anycast /
+cloud-LB / K8s ingress / kernel-UDP-steering), per-infrastructure deployment
+notes, and the all-in-one mapping table.
 
-### 11.1 Three personas
+This section keeps only the items that drive **roadmap tracking**:
 
-The HA story is **not** a binary Raft-vs-Redis choice. Highper-gateway must
-serve three distinct cluster personas because the 16 deployment use cases
-distribute unevenly across them.
+1. The four cluster types as one-line summaries (§11.1).
+2. The cluster-bootstrap env-var configuration shape — Phase 0.J deliverable (§11.2).
+3. Open owner-side decisions still tracked here (§11.3).
 
-| Persona | Cited shape | When it applies | Reference |
+For everything else, follow the link.
+
+### 11.1 Four cluster types — one-liners
+
+| Type | Components | UC groups served |
+|---|---|---|
+| **Type 1 — Stateless** | N highper-gateway replicas | Group A only (7 UCs) |
+| **Type 2 — Stateless + Valkey** | N highper + Valkey/Redis cluster | Group A + Group B (14 UCs) |
+| **Type 3 — Stateless + etcd** | N highper + etcd / Consul / Raft cluster | Group A + Group C (9 UCs) |
+| **Type 4 — Stateless + Valkey + etcd** | All three components | All 16 UCs |
+
+UC group letters and the per-UC mapping live in `HA_ARCHITECTURE.md` §3 (cited
+from research lines 11–27). The cluster type follows mechanically from the union
+of group letters in the operator's enabled-UC selection.
+
+### 11.2 Cluster-bootstrap configuration shape (revised 2026-05-02)
+
+Operators declare their deployment posture at startup via env vars (§0.1 rule
+applies — no hardcoding). The design is **two independent on/off flags** for
+the coordination layers (Type B and Type C), not a single "cluster type" enum
+— this matches the four-type model in §11.1 and avoids the misleading "C is a
+superset of B" framing that the earlier enum design implied.
+
+| Knob | Env var | Values | Default |
 |---|---|---|---|
-| **Type A — The Edge (Independent)** | "Focuses on raw throughput and protocol handling. No shared state is required for core operations." | UC1, UC2, UC5, UC8, UC9, UC10 (mixed), UC14, UC15 | `research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt:4` |
-| **Type B — The Coordinator (Stateless + Valkey)** | "Required for features that need a 'global memory' (e.g., global rate limits, shared caches) across all nodes." | UC4, UC6, UC7, UC10 (mixed), UC11, UC13, UC16 | `research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt:5` |
-| **Type C — The Trusted (Raft / Consensus)** | "Required for sensitive configuration state where every node must be in 100 % agreement (e.g., SSL certificates, service discovery)." | UC3, UC12 | `research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt:6` |
+| Infrastructure | `HIGHPER_CLUSTER_INFRA` | `k8s` / `vm` / `baremetal` / `single` | `single` (no peer assumed) |
+| Type B backend | `HIGHPER_CLUSTER_TYPEB_BACKEND` | `valkey` / `redis` / `none` | `none` |
+| Type B addresses | `HIGHPER_CLUSTER_TYPEB_ADDRS` | comma-separated `host:port` | unset |
+| Type C backend | `HIGHPER_CLUSTER_TYPEC_BACKEND` | `etcd` / `consul` / `raft` / `none` | `none` |
+| Type C addresses | `HIGHPER_CLUSTER_TYPEC_ADDRS` | comma-separated `host:port` | unset |
+| Peer discovery mode | `HIGHPER_CLUSTER_PEER_DISCOVERY` | `static` / `k8s_headless` / `consul` / `dns` / `none` | `none` |
+| Peer list (when static) | `HIGHPER_CLUSTER_PEERS` | comma-separated `host:port` | unset |
+| Single-node "0 % FT" override | `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE` | `true` / `false` | `false` |
 
-**Note on naming:** the research uses **Valkey** (the BSD-licensed fork of
-Redis 7.x) as the reference Type B backend. Highper currently ships Redis
-support (`src/cache/backends.rs:182-326`, `src/gateway/ratelimit/distributed.rs:150-204`);
-Valkey speaks the Redis protocol and works against the existing client. The
-docs and example files will be updated in Phase 1.3 to advertise both.
+The effective cluster type follows from the two backend flags: both `none` →
+Type 1; only B set → Type 2; only C set → Type 3; both set → Type 4. The
+operator does not explicitly declare "type"; it is implied.
 
-### 11.2 Per-UC mapping (table from research, lines 10–27)
+**Validation at startup (refuses to boot on failure).** Walks enabled UCs
+and computes the union of required group letters. Then asserts:
 
-The table below is the source-of-record for which persona each UC requires.
-Where the research column "Single Node" is marked `✅*` it indicates the
-persona works on a single node but offers **0 % fault tolerance** (cited at
-`research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt:29`).
+1. If any enabled UC is **Group B** (UC4, UC6, UC7, UC10 mixed-A+B, UC11,
+   UC13, UC16), then `HIGHPER_CLUSTER_TYPEB_BACKEND` must be set (not `none`)
+   and `HIGHPER_CLUSTER_TYPEB_ADDRS` must be non-empty — unless
+   `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=true` is set with the operator
+   accepting "0 % fault tolerance on Valkey/Redis" per the research file
+   line 29 footnote.
+2. If any enabled UC is **Group C** (UC3, UC12), then
+   `HIGHPER_CLUSTER_TYPEC_BACKEND` must be set (not `none`) and
+   `HIGHPER_CLUSTER_TYPEC_ADDRS` must be non-empty — same single-node opt-in
+   exception applies.
+3. If both flags are `none` and any Group B *or* Group C UC is enabled,
+   `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=true` must be explicit (no silent
+   fallback to a no-coordination mode that would corrupt rate limits / cert
+   ordering).
+4. Infrastructure-specific sanity: `HIGHPER_CLUSTER_PEER_DISCOVERY=k8s_headless`
+   requires `HIGHPER_CLUSTER_INFRA=k8s`. `consul` requires Consul addrs to
+   be reachable. `static` requires a non-empty `HIGHPER_CLUSTER_PEERS` list.
+5. Group B and Group C are **independent** — a Type 4 deployment must
+   satisfy both rule 1 and rule 2 (i.e., both stores must be configured).
+   The earlier "C is a superset of B" claim was incorrect; replaced here.
 
-| UC | Use case | Cluster type | HA logic | Single Node | Active / Standby | Distributed HA | Footprint |
-|---|---|---|---|---|---|---|---|
-| 01 | L4 TCP Proxy | Type A | VRRP / Anycast | ✅ | VIP Failover | Anycast / LB | All |
-| 02 | L7 HTTP/1.1 | Type A | Round Robin | ✅ | VIP Failover | Active-Active | All |
-| 03 | HTTPS (ACME / mTLS) | **Type C** | Raft Storage | ✅* | Shared Disk | Raft Cluster | K8s / VM |
-| 04 | Rate Limiting | Type B | Global Counter | ✅ | Local Sync | Valkey Cluster | All |
-| 05 | HTTP/3 QUIC | Type A | Anycast / UDP | ✅ | VIP Failover | UDP Steering | Bare Metal |
-| 06 | WebSockets | Type B | Session Stickiness | ✅ | Sticky VIP | Valkey Backend | All |
-| 07 | gRPC Gateway | Type B | L7 Steering | ✅ | Health Checks | Envoy / Valkey | K8s / VM |
-| 08 | DB Load Balancer | Type A | Peer Sync | ✅ | Keepalived | Stick Tables | VM / BM |
-| 09 | WAF + mTLS | Type A | Policy Engine | ✅ | Local Sync | Node-local | Bare Metal |
-| 10 | Hybrid Multi-Protocol | Type A + B | Dual Stack | ✅ | Multi-VIP | Multi-Tier | All |
-| 11 | CDN Edge Cache | Type B | Cache Purge Bus | ✅ | N/A | Valkey Sync | BM (Performance) |
-| 12 | Microservices Discovery | **Type C** | Quorum | ✅* | Consensus | etcd / Consul | K8s / VM |
-| 13 | GraphQL Gateway | Type B | Schema Sync | ✅ | Push Sync | Valkey Metadata | K8s / VM |
-| 14 | Static + PHP-FPM | Type A | Process Manager | ✅ | File Sync | Shared FS | VM / BM |
-| 15 | Geo Load Balancer | Type A | IP Databases | ✅ | Local DB | GeoDNS / Anycast | All |
-| 16 | AI / LLM Gateway | Type B | Token Quota | ✅ | Async Sync | Valkey Cluster | K8s / BM (GPU) |
+**Implementation site (Phase 0.J — already in workstream):** the central
+`Settings` struct gains a `Cluster` sub-struct holding these fields; the
+loader runs the validation above before any listener starts. Code consumers
+(rate-limit distributed mode, cache distributed tier, ACME store, service
+discovery) read `Settings::cluster` rather than calling `std::env::var`.
 
-### 11.3 Decision hierarchy
+### 11.3 Open decisions still tracked here
 
-Cited from `research-on-HA-architecture-highper-gateway-16-deployment-usecases.txt:36-40`:
+These remain open and are escalated to §6 owner gate #4. Detail and
+recommendations are in `HA_ARCHITECTURE.md` §9.
 
-1. **Most-restrictive HA logic wins.** "If you need Type C for certificates
-   (03) but only Type A for TCP (01), the whole cluster must support Type C
-   architecture." A deployment that uses any of UC3 or UC12 *must* deploy as
-   Type C; the rest of the workloads run alongside.
-2. **Resource isolation in mixed mode.** Use Valkey sharding to isolate
-   high-frequency rate-limiting traffic (UC4) from critical AI token quotas
-   (UC16) "to avoid race conditions and latency spikes."
+- **Type B backend default** — Valkey vs Redis; mostly a cookbook + CI choice.
+- **Type C backend default** — etcd vs Consul vs `raft-rs`-embedded.
+- **Peer-discovery responsibility** — highper drives via a `PeerDiscovery`
+  trait, or strict delegate-to-infra.
+- **UC16 storage backend** (durable layer for virtual keys / budgets / usage /
+  sessions) — open at §6 gate #5; hot-path counters lean Valkey per the
+  research line 27 footprint.
 
-### 11.4 Implications for the roadmap
+### 11.4 Superseded sub-sections (moved to HA_ARCHITECTURE.md)
 
-- **UC16 storage gate (§3.2 / §6 #5):** the research positions UC16 as Type B
-  (Valkey Cluster) with "Token Quota" as the HA logic. This *softly* favors
-  Valkey for the hot-path budget counters, while the durability layer (virtual
-  keys, usage records) remains an open question and may live in PostgreSQL or
-  another durable store — the hot-path / durable split is the design we should
-  evaluate first.
-- **Phase 1.4 cross-cutting catch-up:** the new `MetricsBackend` /
-  `LogBackend` traits (already in §4.4) should not assume a particular HA
-  posture. Same for the existing `ServiceDiscovery` trait
-  (`src/discovery/mod.rs:134-153`) which already supports Type C backends
-  (Consul, etcd).
-- **Phase 4.2 ecosystem:** "xDS client" should be tagged as **Type C**
-  (control-plane consensus). "Kubernetes operator + Ingress controller +
-  CRDs" runs on K8s which provides Type C semantics out-of-the-box.
-- **Phase 0 prereq (Rancher Desktop + compose.yml):** the dev compose file
-  should already include a Valkey container (or Redis as a stand-in) so Type B
-  features can be exercised locally. Phase 1.1 cloud validation matrix should
-  exercise Type C (etcd) and Type B (Valkey) in addition to Type A baseline.
-- **Documentation:** Phase 1.3 adds a new `docs/HA_DEPLOYMENT.md` (NEW)
-  describing how to pick a persona, the most-restrictive-wins rule, and the
-  Valkey-shard isolation pattern for UC4 vs UC16.
+The earlier §11.1 (Three personas), §11.2 (Per-UC mapping), §11.3 (Decision
+hierarchy), §11.4 (Implications), §11.5 (Deployment matrix — 3 personas × 3
+infrastructures), §11.6 (Cluster-bootstrap configuration shape — earlier
+single-enum design), §11.7 (Decisions recorded + still open) were moved to
+`docs/planning/HA_ARCHITECTURE.md` on 2026-05-02 as part of the four-cluster-type
+restructuring. They contained:
 
-### 11.5 What's not yet decided (open work)
+- The three-persona definitions cited from research lines 4–6 → now in
+  `HA_ARCHITECTURE.md` §3 (under the four-type model — Type A merged into
+  "Stateless"; Type B and C kept as coordination layers).
+- The per-UC research mapping table (research lines 10–27) → now in
+  `HA_ARCHITECTURE.md` §3.
+- The decision hierarchy ("most-restrictive HA logic wins" + Valkey-shard
+  isolation, research lines 36–40) → now in `HA_ARCHITECTURE.md` §2.4 and §8.
+- The 3 × 3 deployment matrix → replaced by the four-cluster-type model
+  in `HA_ARCHITECTURE.md` §1 + §2.x; the per-infrastructure breakdowns are
+  in `HA_ARCHITECTURE.md` §7.
+- The earlier single-enum `HIGHPER_CLUSTER_TYPE` configuration shape →
+  replaced by the two-flag design in §11.2 above.
+- The "decisions recorded" framing → replaced by §11.3 above (open
+  decisions only) and `HA_ARCHITECTURE.md` §9.
 
-- Default persona for a single-node deployment (recommendation: Type A — no
-  external deps; UC4 / UC11 / UC13 / UC16 fall back to local-only with a
-  documented "0 % fault tolerance on this node" note when Valkey is absent).
-- Default Type B backend (Valkey vs Redis — research names Valkey; Redis is
-  what's coded today; both speak the same protocol so this is mostly a docs
-  decision).
-- Default Type C backend: etcd (already in `src/discovery/etcd.rs`), Consul
-  (already in `src/discovery/consul.rs`), or a `raft-rs`-backed embedded
-  store. Recommendation: ship etcd as the default, raft-rs as a Phase 4.2 add.
-
-These decisions are folded into §6 owner gate #4.
+The 9 validation errors flagged by the 2026-05-02 cross-check are all
+addressed in `HA_ARCHITECTURE.md`'s rewrite plus the §11.2 two-flag design
+above. See §12 lifecycle entry "fifth revision" for the full list.
 
 ---
 
@@ -1153,7 +1258,7 @@ These decisions are folded into §6 owner gate #4.
     out-of-scope items: guardrails, vLLM, AI observability product, in-memory
     cache product). Added §6 gate #5 (UC16 storage backend — PostgreSQL vs
     alternative — open) and #6 (re-confirm §0.5 banners at tag time).
-- **2026-05-02 (third revision, current):**
+- **2026-05-02 (third revision):**
   - Inserted §11 HA architecture — three cluster personas (Type A / B / C),
     per-UC mapping, decision hierarchy ("most-restrictive wins" + Valkey-shard
     isolation), implications for the roadmap. Source:
@@ -1170,6 +1275,88 @@ These decisions are folded into §6 owner gate #4.
   - Added §13 Current status snapshot — what's done in 2026-05-02
     documentation work, what's pending (Phase 0–4 work hasn't begun;
     everything to date is documentation).
+- **2026-05-02 (fourth revision):**
+  - Replaced "default persona" framing with operator-chooses-per-deployment
+    posture per owner direction. Highper-gateway facilitates every
+    (cluster type × infrastructure) combination through configuration shape +
+    cookbook templates.
+  - Added §11.5 deployment matrix — 3 personas × 3 infrastructures with
+    HA technique per cell, supported UCs, and infrastructure preferences
+    cited from §11.2 footprint column.
+  - Added §11.6 cluster-bootstrap configuration shape — 9 `HIGHPER_CLUSTER_*`
+    env vars (type, infra, Type B / C backends and addrs, peer discovery,
+    single-node opt-in) honoring §0.1 env-var-only rule. 5 startup
+    validations (most-restrictive-wins refusal-to-boot when contradicted).
+  - Renumbered §11.6 / §11.7 to preserve flow: §11.5 (matrix) → §11.6
+    (config shape) → §11.7 (decisions recorded + still open).
+  - Rewrote §6 owner gate #4 — removed default-persona question; three
+    open sub-decisions remain (Type B backend default, Type C backend
+    default, peer-discovery responsibility).
+  - Added Phase 1.3.1 cluster-deployment templates — 9 cookbook directories
+    queued under `examples/configs/clusters/` (one per cell) + top-level
+    decision-flow README + per-cell CI validation harness. Total ~25 days
+    of new Phase 1 work.
+  - Extended §4.5 cookbook coverage with cluster-deployment dimension.
+  - §13 status snapshot: added rows for HA decision, config shape, Phase 1.3.1
+    queue, scheduled routines, gitignore update, and the 2-commit baseline.
+  - Routines scheduled outside the doc: `gap-auditor` monthly,
+    `docs-keeper` weekly.
+- **2026-05-02 (fifth revision):**
+  - Created [`docs/planning/HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) as the
+    authoritative HA reference. Adopts the four-cluster-type model
+    (Type 1 Stateless / Type 2 +Valkey / Type 3 +etcd / Type 4 +Valkey+etcd)
+    derived directly from research lines 11–27 grouped by coordination need.
+  - HA_ARCHITECTURE.md sections: overview / per-type details / all-in-one
+    UC×type mapping / per-UC profiles with LB algorithms (grep-verified) /
+    single-node→multi-node conversion paths / front-LB patterns
+    (VIP / Anycast / cloud-LB / K8s ingress / kernel UDP steering) /
+    per-infra deployment notes / decision flow / open decisions.
+  - LB algorithm citations grep-verified: TCP `src/tcp/mod.rs:203-224` (7
+    algorithms), HTTP `src/config/schema.rs:450-460` + dispatch at
+    `src/proxy/loadbalancer.rs:366-392` (9 algorithms), gRPC
+    `src/grpc/mod.rs:114-125` (5 algorithms), DSL exposure
+    `src/config/dsl_ast.rs:402-410` (7 algorithms).
+  - Slimmed ROADMAP §11 from ~250 lines to ~110 lines: §11.1 four
+    cluster-type one-liners, §11.2 cluster-bootstrap env-var config shape
+    (Phase 0.J tracking — kept inline because it ships as code), §11.3
+    open decisions, §11.4 superseded-sub-sections record.
+  - Replaced the earlier single-enum `HIGHPER_CLUSTER_TYPE` design with
+    a two-flag design (`HIGHPER_CLUSTER_TYPEB_BACKEND` +
+    `HIGHPER_CLUSTER_TYPEC_BACKEND`) — cleaner, models the four cluster
+    types as the on/off combinations of the two coordination-layer flags.
+  - Fixed all 9 validation errors from the 2026-05-02 cross-check report
+    (operator-chooses-per-deployment / "C-superset-of-B" framing /
+    StatefulSet-for-highper / env-var-name inconsistency / UC10 missing
+    from Type B trigger / UC11 in Type A row / etc.) — they're either
+    addressed in the new HA_ARCHITECTURE.md or made moot by the
+    two-flag design.
+  - Updated §6 gate #4 to point at HA_ARCHITECTURE.md; updated §13
+    status snapshot rows accordingly. External §11.x cross-references
+    in §4.5 and Phase 1.3.1 redirected to HA_ARCHITECTURE.md sections.
+- **2026-05-02 (sixth revision):** 360° architectural review of HA
+  surfaced 12 concerns (F1–F12) with severity grading. P0 + P1 fixes applied:
+  - HA `§1.5` per-type performance envelope (F1 Valkey hot-key, F2 etcd
+    write ceiling, F7 RPS targets), `§3.5` UC16 storage as 5th component
+    (F6), `§6.5` multi-region (F3), `§7.4` cluster security baseline (F10).
+  - HA `§4.1` per-replica vs cluster-consistent LB algorithms (F5),
+    `§5.1` cluster-aware config reload (F8), `§7.5` per-cloud-provider
+    front-LB matrix (F9), `§6` failover-timing column (F4).
+  - HA `§4.1` DSL/schema-mismatch footnote (F11), `§7.1` kTLS / K8s
+    privilege caveat (F12).
+  - ROADMAP §6 owner gate #7 added (multi-region commitment timing).
+  - ROADMAP Phase 1.2 gains a per-type RPS benchmark task that replaces
+    the placeholder `(unsourced inference)` numbers in HA `§1.5`.
+  - §13 status snapshot extended with 6 new rows for the review fold-in.
+- **2026-05-02 (seventh revision, current):** post-review HA consistency pass
+  applying R1 + R2 + R5 + R8 (in HA_ARCHITECTURE.md) plus R3 + R4 + R6 + R7
+  (here in ROADMAP) per the review report. Net: 4 new ROADMAP tasks land —
+  Phase 0.J cluster-security env vars (R2, 1.5 days), Phase 0.C
+  hot-key-sharding cookbook (R6, 2 days), Phase 1.3 SECURITY_CLUSTER_BASELINE
+  doc (R3, 3 days), Phase 1.3.1 cloud-VM sub-cells (R4, 2 days), Phase 1.6
+  DSL Maglev + Geographic exposure (R7, 1 day). HA_ARCHITECTURE.md gets
+  three small clarifications (stale §11.7 ref → §11.3; "Full HA at N=1" →
+  "No HA at N=1"; §7.4 hardening overstatement softened). No new sections
+  added in either doc — this is purely a consistency-fix pass.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1200,6 +1387,19 @@ and planning**. No source code has changed. Phase 0 has not started.
 | GraphQL Federation explicit deferral for v1.0 | `docs/planning/GRAPHQL_FEDERATION.md` (NEW) + §3.4 ref + §5 Phase 0.E ref + §5 Phase 4.2 ref | UC13 ships passthrough+depth/complexity only |
 | Sub-agents list pruned | §8 | `ai-guardrail-builder` removed; 6 remain |
 | Persistent memory updated | `~/.claude/projects/.../memory/{config_env_vars_only.md, uc16_scope.md}` | survives across sessions |
+| Two recurring routines scheduled | claude.ai routines | `gap-auditor` (monthly, 06:07 IST 1st) `trig_012cxCxcDsxugaqdJXB6syj2`; `docs-keeper` (weekly, 06:13 IST Sun) `trig_017YZKK1gLdJNntEAcSqVE7H` |
+| HA architecture extracted into separate doc | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) | 4 cluster types (Type 1 Stateless / 2 +Valkey / 3 +etcd / 4 +V+E); per-UC profiles with LB algorithms cited; per-infra deployment notes |
+| Cluster-bootstrap configuration shape defined | §11.2 | two-flag design (`HIGHPER_CLUSTER_TYPEB_BACKEND`, `HIGHPER_CLUSTER_TYPEC_BACKEND`) + 5 startup validations; replaces earlier single-enum design and fixes 9 validation errors |
+| LB algorithms verified per UC | `src/tcp/mod.rs:203-224` (7), `src/config/schema.rs:450-460` (9), `src/grpc/mod.rs:114-125` (5), `src/config/dsl_ast.rs:402-410` (7) | grep-verified 2026-05-02; tabulated in `HA_ARCHITECTURE.md` §4 |
+| 360° architectural review of HA — 12 concerns surfaced (F1–F12) | review report (this conversation) | 4 P0 fixes + 4 P1 fixes + 2 P2 fixes applied to HA_ARCHITECTURE.md; ROADMAP gained gate #7 (multi-region) and a Phase 1.2 RPS-benchmark task |
+| HA §1.5 per-type performance envelope landed | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §1.5 | Type 1/2/3/4 RPS ceilings, latency adders per layer, Valkey hot-key bottleneck (F1), etcd write ceiling (F2) all called out |
+| UC16 storage as 5th component documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §3.5 | hot-path counters in Valkey vs durable state separately; cookbook table for sled / Postgres / Scylla / FDB / Redis-AOF |
+| Multi-region patterns documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §6.5 | per-type behaviour, 5 recommended patterns, UC16 multi-region considerations; ships single-region in v1.0 |
+| Cluster security baseline documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §7.4 | per-type required controls (Valkey AUTH, etcd mTLS, network isolation); `docs/SECURITY_CLUSTER_BASELINE.md` queued in Phase 1.3 |
+| Per-cloud-provider front-LB matrix documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §7.5 | AWS / GCP / Azure don't support Keepalived (no L2); cloud-LB is the cloud default |
+| Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
+| `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
+| Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
 ### 13.2 What's pending — by priority
 
@@ -1228,7 +1428,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | #2 v1.0 GA includes / excludes UC13 federation? | v1.0 tag | **answered 2026-05-02 — defer; passthrough only**; see `GRAPHQL_FEDERATION.md` |
 | #3 UC16 scope + design-doc revision | Phase 2 start | open — §3.1 fence written; doc revision pending |
 | #4 HA architecture (default persona + Type B + Type C backends) | Phase 4 enterprise scope | open — three personas defined per §11; defaults TBD |
-| #5 UC16 storage backend (PostgreSQL vs alternative) | Phase 2.4 | open — soft tilt to Valkey for hot path per §11.4 |
+| #5 UC16 storage backend (PostgreSQL vs alternative) | Phase 2.4 | open — soft tilt to Valkey for hot path per `HA_ARCHITECTURE.md` §2.2 |
 | #6 Re-confirm §0.5 banners at GA tag time | v1.0 tag | open — re-runs at tag |
 
 **P1 — Cheap hygiene (Phase 1.6, < 2 days each):** `DefaultHasher` swap;
@@ -1244,7 +1444,9 @@ fastcgi_status; UC15 ASN + region failover.
 
 **P1 — Cross-cutting v1.0:** OTLP via `MetricsBackend` trait; W3C trace context;
 Vault / AWS Secrets / K8s Secret resolver; clippy-zero; SBOM (Trivy + syft +
-Grype); DAST (Dastardly + ZAP); cookbook schema-load CI test; UC16 cookbook entry.
+Grype); DAST (Dastardly + ZAP); cookbook schema-load CI test; UC16 cookbook entry;
+**9 cluster-deployment cookbook cells** under `examples/configs/clusters/`
+(Phase 1.3.1) + cell-level validation in Phase 1.1.
 
 **P1 — UC16 MVP (Phase 2):** `AiProvider` trait + 4 providers (OpenAI / Anthropic /
 Bedrock / Gemini); virtual keys + budgets; exact cache; SSE chunker; admin
