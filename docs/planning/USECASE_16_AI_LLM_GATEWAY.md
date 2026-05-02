@@ -146,10 +146,12 @@ Client
   │  - Semantic key: embed(prompt) → vector ANN; threshold gated
   │  - On hit: return synth response
   ▼
-[Route resolve]                                            (NEW src/gateway/ai/router.rs)
+[Route resolve]                                            (NEW src/gateway/ai/router.rs — see §3.4)
   │  - Model alias → ordered list of (provider, key, model_id)
-  │  - Filter on rate-limit-aware health: skip 429-cooled-down
-  │  - Conditional routing (env=prod → primary)
+  │  - Layered filtering: per-key allow-list → capability flags → circuit
+  │    breaker → 429 cooldown (cooldown state in Type B Valkey when available
+  │    else local) → optional session affinity → priority/cost/latency order
+  │  - Retry budget: 3 attempts max across providers (per-key override)
   ▼
 [Outbound shape translate]                                 (NEW src/gateway/ai/translators/)
   │  - Convert Request → provider-native (OpenAI / Anthropic / Bedrock-Converse / Gemini)
@@ -376,6 +378,171 @@ rolling, Ansible playbook, K8s ConfigMap mount sync) is responsible for
 landing the new plugin file on every replica. Type 3 / 4 deployments could
 *also* push plugins via etcd in Phase 4.2 once the `ConfigSource` trait
 extraction lands (`ROADMAP.md` §4.4 #8).
+
+### 3.4 Routing strategies and fallback (UC16 design decision #9, 2026-05-02)
+
+When a virtual key requests model alias `"smart"` and the operator has
+configured `model_alias_map["smart"] = [anthropic/claude-3-7, openai/gpt-4o,
+bedrock/claude-3-7]`, this section defines exactly which provider serves
+the request, in what order, and what happens when the chosen provider
+fails.
+
+#### 3.4.1 Layered candidate-list construction
+
+Routing is a sequence of filters applied to the operator-declared
+provider list, producing a final ordered candidate list. Each filter
+removes providers that don't qualify for *this* request.
+
+```
+Operator declares: model_alias_map["smart"] = [anthropic/claude-3-7,
+                                                openai/gpt-4o,
+                                                bedrock/claude-3-7]
+                                  │
+                                  ▼
+[Filter A] Per-virtual-key models_allow scope (§7.1.1)
+           — drop providers the key isn't allowed to use
+                                  │
+                                  ▼
+[Filter B] Capability flags (from pricing registry §5.5.6)
+           — drop providers whose capability_flags don't match request shape
+             (vision needed → drop non-vision providers; function calling
+             needed → drop providers without supports_function_calling; etc.)
+                                  │
+                                  ▼
+[Filter C] Circuit-breaker / health
+           — drop providers whose breaker is OPEN (per `src/proxy/circuit_breaker.rs`)
+                                  │
+                                  ▼
+[Filter D] Rate-limit cooldown
+           — drop providers in 429 cooldown window
+             (cooldown derived from provider's `Retry-After` header, fallback 30 s)
+                                  │
+                                  ▼
+[Filter E] Session affinity (Beta — N23 Helicone-style sessions)
+           — if session is set and last provider is in candidate list, pin to it
+                                  │
+                                  ▼
+[Order]   Order remaining candidates by:
+            • priority (default — operator's declared order)            ← MVP
+            • cost_aware (cheapest meeting SLA)                          ← Beta (Phase 3.1)
+            • latency_aware (lowest p50 / p99)                           ← GA (Phase 4.1)
+                                  │
+                                  ▼
+[Weighted] If `weighted_split` configured (Beta): probabilistic pick over the ordered list
+                                  │
+                                  ▼
+First candidate → attempt → on retryable error, fall to next candidate
+                                  │
+                                  ▼
+All candidates exhausted → 503 with structured error (see §3.4.4)
+```
+
+**MVP ships filters A + B + C + D and the priority ordering.** Filters E,
+weighted, cost-aware, and latency-aware land in subsequent phases.
+
+#### 3.4.2 Retryable vs non-retryable errors
+
+| Error class | Retryable? | Action |
+|---|---|---|
+| 429 Too Many Requests | ✅ Yes | Mark provider in cooldown for `Retry-After` (or 30 s default); fall through |
+| 502 Bad Gateway / 503 Service Unavailable / 504 Gateway Timeout | ✅ Yes | Fall through immediately; circuit-breaker increments failure count |
+| 500 Internal Server Error | ✅ Yes | Same as 502/503 |
+| Network timeout / connection reset / TLS handshake failure | ✅ Yes | Same; counts toward circuit-breaker |
+| 400 Bad Request / 422 Unprocessable Entity | ❌ No | Surface to client immediately — request shape is wrong; retrying gets the same error from any provider |
+| 401 Unauthorized | ❌ No | Operator's provider API key is bad; surface (with provider key redacted from response) |
+| 403 Forbidden | ❌ No | Provider denied (model not enabled, region restriction, content policy); surface |
+| Provider-specific content-policy block (e.g. OpenAI moderation) | ❌ No | Surface with the provider's reason; operator's guardrail layer (§8) is the right place to catch this if they want to retry against another provider |
+
+#### 3.4.3 Retry budget and backoff
+
+| Knob | Default | Env var |
+|---|---|---|
+| Max attempts across providers (per request) | **3** | `HIGHPER_AI_RETRY_BUDGET` (per-virtual-key override on the scope) |
+| Backoff strategy when no `Retry-After` provided | Exponential with jitter | n/a |
+| Backoff floor | 50 ms | `HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN` |
+| Backoff ceiling | 200 ms | `HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX` |
+| Honor provider's `Retry-After` header | Always when present | n/a |
+
+When `Retry-After` is set, that's authoritative — exponential backoff is
+only used when the provider doesn't tell us how long to wait.
+
+**Per-virtual-key budget override.** The virtual-key scope (§7.1.1) gains
+an optional `retry_budget: u32` field. Use case: regulated environments
+where one attempt is policy (e.g. financial-services workloads where a
+duplicate request to a different provider is a compliance violation).
+
+#### 3.4.4 Failure response when all candidates exhausted
+
+When every candidate in the list has either filtered out or failed retryable,
+return **503 Service Unavailable** with a structured error body so the
+operator's monitoring can distinguish *this* failure from a generic 503:
+
+```json
+{
+  "error": {
+    "code": "all_candidates_failed",
+    "message": "All providers configured for model alias 'smart' failed",
+    "alias": "smart",
+    "attempts": [
+      {
+        "provider": "anthropic",
+        "model": "claude-3-7-sonnet-latest",
+        "status": 429,
+        "latency_ms": 12,
+        "error_class": "rate_limited",
+        "retry_after_secs": 60
+      },
+      {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "status": 503,
+        "latency_ms": 4500,
+        "error_class": "upstream_unavailable"
+      }
+    ]
+  }
+}
+```
+
+This mirrors what AWS API responses give when their internal-services
+fail — operators see exactly which providers tried, why each failed,
+how long each took.
+
+#### 3.4.5 Where cooldown state lives
+
+The "drop providers in 429 cooldown" filter (Filter D in §3.4.1) needs
+state about *which* providers are currently rate-limited and *until
+when*. Two storage options:
+
+| Option | When to use | Trade-off |
+|---|---|---|
+| **Local per-replica** | Type 1 deployments (Group A only) — no Valkey available | Each replica independently observes 429 and applies cooldown; minor wasted calls when a replica that hasn't seen 429 yet routes to the same provider |
+| **Shared via Valkey** (default for Type 2 / 4) | Whenever Type B is configured | Cluster-wide consistency: when one replica observes 429, every replica skips the provider until cooldown expires; saves wasted upstream calls |
+
+**Selection logic:** if `HIGHPER_CLUSTER_TYPEB_BACKEND ≠ none`, cooldown
+state lives in Valkey under key `ai:cooldown:{provider}:{model}` with
+TTL = cooldown duration. Otherwise, in-process `Arc<DashMap>`. Selected
+automatically; no separate env var needed.
+
+**Override for explicit local-only behaviour:**
+`HIGHPER_AI_COOLDOWN_BACKEND={auto|valkey|local}` — `auto` is the
+default; operators can force one for testing or compliance reasons.
+
+#### 3.4.6 Metrics emitted by the router
+
+| Metric | Type | Labels |
+|---|---|---|
+| `ai_route_attempts_total` | counter | `alias, provider, model, status, error_class` |
+| `ai_route_fallback_taken_total` | counter | `alias, from_provider, to_provider, reason` |
+| `ai_route_exhausted_total` | counter | `alias` |
+| `ai_route_cooldown_active` | gauge | `provider, model` (1 = in cooldown, 0 = available) |
+| `ai_route_cooldown_remaining_seconds` | gauge | `provider, model` |
+| `ai_route_capability_filter_drops_total` | counter | `alias, provider, reason` (vision_required, function_call_required, json_mode_required, …) |
+| `ai_route_circuit_breaker_open` | gauge | `provider, model` |
+
+Operators alert on `ai_route_exhausted_total` increasing or
+`ai_route_cooldown_active` for the same provider staying high — those
+are the "all-providers-failing" or "one-provider-overwhelmed" patterns.
 
 ---
 
@@ -1095,6 +1262,7 @@ and reference the design-decision number.
 14. **License posture** — keep Apache-2 (matches the rest of highper-gateway), or BUSL/Commons-Clause for enterprise pieces (audit, BYOK, evals)? Owner decision; affects monetization story.
 15. **Inference-engine integration (UC17)** — explicit non-goal here, but with the §3.3 plugin architecture, a self-hosted-models integration becomes "an `AiProvider` plugin that wraps `mistral.rs` / `candle` in-process." Recommended: **defer to UC17** but the router contract is now plugin-shaped which makes UC17 strictly additive.
 16. **AiStateStore single → multi node migration** (new question, opened by UC16 #4): is there a documented path for an operator who starts on ReDB (single-node) and later adopts ScyllaDB (multi-node)? Options: (a) export tool that walks ReDB and writes to ScyllaDB; (b) operator runs both side-by-side during the transition (dual-write at the trait layer); (c) operator restarts fresh — accept that the single-node deployment was throwaway. Recommended for design discussion: **(a) export tool**, ship in Phase 3.
+17. **DECIDED (UC16 #9, 2026-05-02)** — Routing strategies and fallback. Layered MVP: priority + rate-limit-aware skip + health-aware (circuit breaker) + capability-aware filter. Stack ships together at Phase 2.3. Cost-aware (Beta), latency-aware (GA), session affinity (Beta — N23), weighted/canary (Beta) are subsequent additions. Retry budget default **3 attempts max across providers** with per-virtual-key override. Cooldown state in Type B Valkey when configured (cluster-wide consistency), local per-replica fallback. Structured 503 with per-attempt details on exhaustion. §3.4 above.
 
 ---
 
@@ -1276,4 +1444,21 @@ See `ROADMAP.md` §5 for sequencing.
     row 11). Phase 0.J gains 4 cache + vector env vars. Phase 2.4
     gains 3 exact-cache tasks. Phase 3.1 gains `VectorIndex` trait +
     Qdrant impl + semantic-cache engine + 3 more `VectorIndex` impls.
+- **2026-05-02 (decision #9 — routing strategies, current):** topic-#9 fold-in.
+  - **§3.4 (new) Routing strategies and fallback** with six sub-sections:
+    3.4.1 layered candidate-list construction (5-stage filter pipeline) /
+    3.4.2 retryable-vs-non-retryable error classification /
+    3.4.3 retry budget + backoff (3 attempts default, exponential
+    50-200 ms when no `Retry-After`) / 3.4.4 structured 503 failure
+    response / 3.4.5 cooldown state location (Type B Valkey when
+    available else local `DashMap`) / 3.4.6 router metrics (7 metrics).
+  - **§3.1 [Route resolve] step** updated to reference §3.4.
+  - **§12 entry #17 added and marked DECIDED.**
+  - MVP ships layered routing: per-key allow-list + capability filter
+    + circuit-breaker + rate-limit cooldown + priority ordering,
+    stacked. Cost-aware (Beta), latency-aware (GA), session affinity
+    (Beta — N23), weighted/canary (Beta) all phased afterwards.
+  - ROADMAP Phase 2.3 router task expanded 3 → 5 days. Phase 0.J
+    gains 5 routing env vars. Phase 3.1 gains 2 new tasks (cost-aware,
+    weighted/canary). Phase 4.1 gains 1 new task (latency-aware).
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.

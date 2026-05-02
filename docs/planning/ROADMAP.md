@@ -719,6 +719,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **Plugin drain-window env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.3.7):** move the hardcoded 30 s timeout in `src/plugin/manager.rs:252 wait_for_plugin_idle()` to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 rule. Default 30 s. Validates ≥ 5 s. **0.5 day.**
 - [ ] **UC16 pricing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §5.5):** five env vars on the `Settings::ai.pricing` sub-struct: `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream, operator can self-host), `HIGHPER_AI_PRICING_FEED_SIGN_KEY` (Ed25519 public key path or sigstore ref; refresh refuses unsigned feed when set), `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default 604 800 = 7 days; minimum 3600), `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` (`last_known_good` default / `fail_closed` opt-in), `HIGHPER_AI_ALLOW_FREE_TIER` (default `false`; required `true` to allow requests for models with no pricing entry). Documented in `docs/CONFIG_ENV.md`. **0.5 day.**
 - [ ] **UC16 cache + vector backend env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §6.0):** `HIGHPER_AI_CACHE_BACKEND` (default `valkey` → uses cluster Type B Valkey; alternatives: `redis` / `memory` / `disk` / `multi-tier` — same set as existing `src/cache/` trait); `HIGHPER_AI_VECTOR_BACKEND` (default `none`; one of `qdrant` / `redis-stack` / `pgvector` / `hnsw` — only required when semantic cache is enabled); `HIGHPER_AI_VECTOR_ADDRS` (host:port comma-list for non-`hnsw` backends); `HIGHPER_AI_VECTOR_AUTH` (auth token / file path / secrets-resolver ref). Refuse-to-start when an `ai_route` block enables `semantic_cache` and the vector backend / addrs are not set. **0.5 day.**
+- [ ] **UC16 routing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.4):** `HIGHPER_AI_RETRY_BUDGET` (default `3`; max attempts across providers per request; per-virtual-key override via scope's `retry_budget`); `HIGHPER_AI_COOLDOWN_BACKEND` (`auto` default → Valkey when Type B configured, local otherwise; alternatives `valkey` / `local` for forced override); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN` (default `50`); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX` (default `200`); `HIGHPER_AI_DEFAULT_COOLDOWN_SECS_NO_HEADER` (default `30`; used when provider 429s without `Retry-After`). **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -883,7 +884,16 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] **Pricing admin-override endpoints (UC16 #7):** extend `src/admin/api.rs` with `PATCH /admin/ai/models/{alias}` (override row), `GET /admin/ai/models/{alias}` (effective row), `DELETE /admin/ai/models/{alias}/override` (revert), `GET /admin/ai/pricing/refresh-status`, `POST /admin/ai/pricing/refresh-now`. Overrides stored under `ai/pricing_overrides/global/{alias}` namespace in the configured `AiStateStore`. Every change emits a hash-chain audit event into the `AiStateStore` audit log. Hot-applied via `RwLock` swap — no restart. **2 days.**
 - [ ] **Zero-price handling (UC16 #7):** lookup-time check; default reject with 400 + structured error. Honors `HIGHPER_AI_ALLOW_FREE_TIER` for self-hosted / free-tier deployments. Emits `ai_request_no_pricing_total{provider,model}` when allowed. **0.5 day.**
 - [ ] Model registry loader (`model_prices_and_context_window.json` from LiteLLM, vendored) — **superseded by the four pricing tasks above 2026-05-02; kept as a checkbox so historical references resolve.** **(0 days; rolled into above)** [d]
-- [ ] Router with priority-list fallback and rate-limit-aware skip. **3 days.**
+- [ ] **Router with layered filtering (UC16 #9, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.4):** module at `src/gateway/ai/router.rs`. Five-stage pipeline:
+      (A) per-virtual-key `models_allow` filter,
+      (B) capability-flags filter (drops providers that can't serve the request shape — vision / function calling / JSON mode / streaming requirements derived from request),
+      (C) circuit-breaker filter (reuses `src/proxy/circuit_breaker.rs` per UC16 §3.2),
+      (D) rate-limit cooldown filter (parses `x-ratelimit-*` and `Retry-After` from provider responses; cooldown state in Type B Valkey when configured else local `DashMap` — selection via `HIGHPER_AI_COOLDOWN_BACKEND={auto|valkey|local}`),
+      (E) priority ordering (operator-declared list at MVP).
+      Retry budget default 3 attempts; per-virtual-key override via scope's `retry_budget` field. Backoff honors `Retry-After` when present, exponential with jitter (50-200 ms) otherwise. Exhausted → 503 with structured per-attempt error body. Emits 7 metrics (`ai_route_attempts_total`, `_fallback_taken_total`, `_exhausted_total`, `_cooldown_active`, `_cooldown_remaining_seconds`, `_capability_filter_drops_total`, `_circuit_breaker_open`). **5 days** (was 3 — capability filter + cooldown sharing + structured error body add 2 days).
+- [ ] **Cost-aware routing (UC16 #9, Beta — Phase 3.1, 2026-05-02):** alternative ordering mode that sorts the post-filter candidate list by `expected_cost = input_tokens * input_price + max_tokens * output_price`, picks cheapest meeting per-route SLA. Operator opt-in per `ai_route` block with `routing_mode = cost_aware`. **3 days.** *(Phase 3.1)*
+- [ ] **Latency-aware routing (UC16 #9, GA — Phase 4.1, 2026-05-02):** alternative ordering mode that sorts by observed p50 / p99 latency per (provider, model). Requires `ai_provider_latency_seconds` histogram from §9.1. Operator opt-in per `ai_route` block with `routing_mode = latency_aware`. **3 days.** *(Phase 4.1)*
+- [ ] **Weighted / canary split (UC16 #9, Beta — Phase 3.1, 2026-05-02):** probabilistic pick over the ordered candidate list with operator-declared weights, e.g. `model_alias_map["smart"] = [{provider: "openai/gpt-4o", weight: 90}, {provider: "anthropic/claude-3-7", weight: 10}]`. Per-tenant override. Useful for quality A/B testing. **2 days.** *(Phase 3.1)*
 - [ ] **Token counter — bake-in posture (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.1 / §5.2):** `tiktoken-rs` crate for OpenAI `cl100k_base` + `o200k_base`; `tokenizers` (HuggingFace) crate for Anthropic BPE at MVP. Vocabularies baked into the binary; ~6 MB delta for these two providers. Default Cargo feature includes both. New `ai-tokenizers-minimal` Cargo feature ships only OpenAI's two for size-conscious builds. Implementation site: `src/gateway/ai/tokens.rs`. **3 days** (was 2 — adds Anthropic at MVP per UC16 #2). |
 - [ ] **Reasoning-token billing rule (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.4):** virtual-key scope gains `count_reasoning_in_output: bool` (default `true`). Token counter records reasoning tokens (Anthropic `thinking`, OpenAI `reasoning_content`, DeepSeek `reasoning_content`) and the accounting layer respects the flag for budget / TPM decrement. Metrics emit `ai_output_tokens_total` with a `kind={prompt|completion|reasoning}` label regardless of billing inclusion. **1 day.**
 - [ ] **Phase 3 follow-on — additional provider tokenizers (added 2026-05-02):** when Bedrock + Gemini + the 9 more Phase 3 providers ship, their vocabularies join the bake set: Gemini SentencePiece (~4 MB), Llama-3 BPE (~9 MB), Cohere (~4 MB), DeepSeek + Qwen + others (~7 MB combined). Total binary growth at Phase 3 GA: ~30 MB. Tracked under Phase 3.1 ("9 more providers") rather than as separate work — vocabularies ship alongside their respective `AiProvider` impls.
@@ -1492,7 +1502,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 3 rows (decision #7; Phase 3.1
     cleanup; per-tenant overrides queued).
   - Memory `uc16_scope.md` updated with the pricing-source rule.
-- **2026-05-02 (twelfth revision, current):** UC16 topic #8 fold-in
+- **2026-05-02 (twelfth revision):** UC16 topic #8 fold-in
   (cache architecture).
   - **UC16 design decision #8:** USECASE_16 §12 #5 marked DECIDED.
     Engine-plus-pluggable posture confirmed: highper ships the cache
@@ -1534,6 +1544,40 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     extension).
   - Memory `uc16_scope.md` updated with engine-plus-pluggable rule
     and the no-bundled-backends-or-embedding-models guidance.
+- **2026-05-02 (thirteenth revision, current):** UC16 topic #9 fold-in
+  (routing strategies and fallback).
+  - **UC16 design decision #9:** USECASE_16 §12 entry #17 added and
+    marked DECIDED. Five-stage layered routing pipeline at MVP:
+    per-virtual-key allow-list filter → capability-flags filter →
+    circuit-breaker filter → rate-limit cooldown filter → priority
+    ordering. Retry budget default 3 attempts across providers with
+    per-virtual-key override. Cooldown state in Type B Valkey when
+    configured (cluster-wide consistency), local `DashMap` otherwise;
+    selection automatic via `HIGHPER_AI_COOLDOWN_BACKEND=auto`.
+    Structured 503 with per-attempt error body on exhaustion. Cost-aware
+    routing queued for Phase 3.1 Beta; latency-aware for Phase 4.1 GA;
+    session affinity ties into N23 Helicone-style sessions Phase 2.5;
+    weighted/canary split Phase 3.1.
+  - **USECASE_16 §3.4 added** with six sub-sections: 3.4.1 layered
+    candidate-list construction / 3.4.2 retryable-vs-non-retryable
+    error classification / 3.4.3 retry budget + backoff / 3.4.4
+    structured failure response / 3.4.5 cooldown-state location /
+    3.4.6 router metrics (7 metrics: attempts, fallback, exhaustion,
+    cooldown, capability filter, circuit breaker).
+  - **§3.1 [Route resolve] step** updated to reference §3.4.
+  - **Phase 0.J** gains 5 routing env vars
+    (`HIGHPER_AI_RETRY_BUDGET`, `HIGHPER_AI_COOLDOWN_BACKEND`,
+    `_DEFAULT_BACKOFF_MS_MIN/_MAX`, `_DEFAULT_COOLDOWN_SECS_NO_HEADER`)
+    — 0.5 day.
+  - **Phase 2.3 router task** expanded from 3 → 5 days; original
+    "priority-list + rate-limit-aware skip" replaced with the full
+    five-stage pipeline.
+  - **Phase 3.1** gains 2 new tasks: cost-aware routing (3 days),
+    weighted/canary split (2 days).
+  - **Phase 4.1** gains 1 new task: latency-aware routing (3 days).
+  - **§13 status snapshot** gains 1 row (decision #9).
+  - Memory `uc16_scope.md` updated with the layered-routing rule and
+    the cooldown-shared-via-Valkey-when-available guidance.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1584,6 +1628,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | Phase 3.1 scope-fence cleanup 2026-05-02 | ROADMAP Phase 3.1 | killed pre-/post-call guardrail items per UC16 #1 scope fence; moved Anthropic-shape inbound to Phase 2.1 MVP per UC16 #2; updated prompt-registry storage to `AiStateStore` per UC16 #4 |
 | UC16 design decision #8 recorded 2026-05-02 (cache architecture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §6.0–§6.5 / §12 #5 | engine-plus-pluggable: highper ships canonical hashing / lookup / write-back / TTL / tag invalidation / streaming replay / metrics; KV backend via existing `src/cache/` trait, vector backend via new `VectorIndex` trait, embedding model via `AiProvider` registry — all operator-chosen per deployment. New §6.4 explicit "what's NOT in scope" boundary table mirrors §8 (guardrails). |
 | §4.4 interface-first audit extended from 10 to 11 boundaries | ROADMAP §4.4 | row 11 (`VectorIndex`) added — greenfield UC16 trait, Phase 2.4 trait + Qdrant impl, Phase 3.1 for Redis-Stack / PgVector / HNSW; total trait extractions 10.5 → 11 person-weeks |
+| UC16 design decision #9 recorded 2026-05-02 (routing strategies) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.4 / §12 #17 | layered MVP (priority + rate-limit-aware + health-aware + capability-aware stacked); 3-attempt retry budget default with per-virtual-key override; cooldown state in Type B Valkey when configured else local `DashMap`; structured 503 with per-attempt details on exhaustion; cost-aware (Beta) / latency-aware (GA) / weighted-canary (Beta) queued for later phases |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
