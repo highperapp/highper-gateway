@@ -249,40 +249,45 @@ alone does not capture:
 is "Type 2 (or Type 4) **+ a UC16 state-store**." The state-store is a
 separate component the operator deploys and configures.
 
+**Decision recorded (UC16 design decision #4, 2026-05-02).** The
+`AiStateStore` trait ships **three impls** — operator chooses per
+deployment via `HIGHPER_AI_STATE_BACKEND`:
+
 | UC16 deployment shape | Hot-path counters | Durable state | Total cluster components |
 |---|---|---|---|
-| **Single-node dev** | local Valkey | sled (embedded) at `data/uc16/` | 1 highper (sled embedded; Valkey beside it) |
-| **Type 2 + sled** | Valkey cluster | sled — **single-node only**, fails to start cluster mode | not viable for multi-node prod |
-| **Type 2 + Postgres** | Valkey cluster | external PostgreSQL (HA via streaming replication or RDS Multi-AZ) | highper + Valkey + Postgres |
-| **Type 2 + Scylla / FoundationDB** | Valkey cluster | distributed durable store | highper + Valkey + alt-store |
-| **Type 4 + Postgres** | Valkey + etcd (for ACME / discovery) | external Postgres | highper + Valkey + etcd + Postgres |
+| **Single-node dev / small prod (default)** | local Valkey | **ReDB** (pure-Rust embedded; zero external deps) | 1 highper (ReDB embedded; Valkey beside it) |
+| **Single-node prod (RocksDB alternative)** | Valkey | **RocksDB** (mature C++ embedded with Rust bindings; same paradigm as ReDB) | 1 highper (RocksDB embedded; Valkey beside it) |
+| **Multi-node prod** | Valkey cluster | **ScyllaDB** (Cassandra-compatible, distributed, horizontally scalable) | highper replicas + Valkey cluster + ScyllaDB cluster |
+| **Type 4 + ScyllaDB** | Valkey + etcd (for ACME / discovery) | ScyllaDB | highper + Valkey + etcd + ScyllaDB |
 
-**Open owner gate (`ROADMAP.md` §6 #5).** The durable-state backend choice is
-*not* decided. Candidates: PostgreSQL, ScyllaDB, FoundationDB, sled+gossip,
-Redis-only-with-AOF. Constraints to weigh:
+**Trait + impls (Phase 2.1 in `ROADMAP.md`):** `AiStateStore` trait at
+`src/gateway/ai/state_store/mod.rs`. Three sibling modules: `redb.rs`,
+`rocksdb.rs`, `scylladb.rs`. Selected at startup; no runtime switching.
 
-- Single-node deployment must work without external deps → sled or embedded option.
-- Multi-node prod must enforce per-key budgets without double-spend → consensus or single-writer required.
-- Strong durability for usage records (no silent loss on crash); eventual consistency for budgets is acceptable if lag is surfaced.
-
-**Code-side requirement (Phase 2.1, in `ROADMAP.md`):** introduce an
-`AiStateStore` trait so the choice is pluggable. Ship `sled` (single-node,
-MVP) and one distributed impl in Phase 2; finalize the distributed choice
-before Phase 2.4 (budget enforcement).
+**Single-node → multi-node transition** is an open follow-on (UC16 §12
+#16): three options under consideration — (a) export tool that walks ReDB
+and writes to ScyllaDB; (b) dual-write at the trait layer during a
+transition window; (c) accept that the single-node deployment is throwaway
+and operators reset state when scaling up. Recommended: **(a) export tool**,
+shipped in Phase 3.
 
 **ROI comparison (UC16 storage, `unsourced inference`):**
 
-| Option | Single-node? | Multi-node HA? | Monthly cost (mid-size) | Notes |
-|---|---|---|---|---|
-| sled (embedded) | ✅ | ❌ | $0 (local disk) | dev only |
-| PostgreSQL (RDS Multi-AZ) | ✅ | ✅ | ~$200–500 | familiar; mature; the safe default if size isn't extreme |
-| ScyllaDB | ✅ | ✅ | ~$300–800 | high-throughput; operationally heavier |
-| FoundationDB | ✅ | ✅ | ~$300–800 | strong consistency + horizontal scale; smaller community |
-| Redis-only-with-AOF | ✅ | ✅ (Sentinel) | $0 incremental (already deployed) | data-loss window remains; acceptable only with replicated AOF + flushes |
+| Option | Single-node? | Multi-node HA? | Monthly cost (mid-size) | Operational complexity | Notes |
+|---|---|---|---|---|---|
+| **ReDB** (embedded, pure Rust) | ✅ | ❌ | $0 (local disk) | Lowest | Default for dev and single-node prod; matches highper's pure-Rust stack |
+| **RocksDB** (embedded, C++ bindings) | ✅ | ❌ | $0 (local disk) | Low | Mature; widely deployed (etcd, CockroachDB, TiKV); operator picks if they already have RocksDB ops experience |
+| **ScyllaDB** (distributed) | ✅ (single-node also runs) | ✅ | ~$300–800 (3-node cluster) | Higher | Horizontally scalable; right answer for multi-tenant high-volume |
+| ~~PostgreSQL~~ | ~~✅~~ | ~~✅~~ | ~~~$200–500~~ | ~~Medium~~ | **Dropped from candidate list** — heavier than ReDB, not horizontally scalable like ScyllaDB. Can revisit as a 4th impl in Phase 4 if operator demand surfaces. |
+| ~~sled / FoundationDB / Redis-AOF~~ | — | — | — | — | **Dropped from candidate list** during UC16 #4 decision. |
 
-**Recommendation (pending owner decision):** Postgres for v1.x (familiar,
-proven for billing). Scylla / FDB as a Phase 4 option for operators at very
-high tenant counts.
+**Why these three.** Three impls covers the spectrum — pure-Rust embedded
+(ReDB) for "no external deps, everything in one binary", mature embedded
+(RocksDB) for ops familiarity, and distributed (ScyllaDB) for multi-node
+scale. PostgreSQL and FoundationDB were considered and dropped per the
+2026-05-02 design discussion: PostgreSQL is operationally heavier than
+ReDB without giving the horizontal scale of ScyllaDB; FoundationDB has a
+smaller community.
 
 ---
 

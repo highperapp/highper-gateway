@@ -848,11 +848,12 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 2.1 Core scaffolding (week 1)
 
-- [ ] Owner-driven decisions: answer the 13 design questions in §12 of UC16 doc; commit decisions in design notes. **2 days, decisions before code.**
+- [ ] Owner-driven decisions: answer the design questions in `USECASE_16_AI_LLM_GATEWAY.md` §12; **decisions #1–#4 already resolved 2026-05-02** (scope fence; OpenAI+Anthropic dual-shape MVP; AiProvider plugin architecture; ReDB/RocksDB/ScyllaDB AiStateStore). Remaining open questions (#4 tenant model, #5 vector index, #6 token-counter posture, #7–#16) committed in design notes. **1 day** (down from 2 — 4 are pre-decided).
 - [ ] Create `src/gateway/ai/` module skeleton with files from §3.2 of UC16 doc. **0.5 day.**
 - [ ] Canonical `AiRequest` / `AiResponse` types per UC16 doc §4. **2 days.**
-- [ ] Inbound shape detect + parse for OpenAI (chat + embeddings + models). **2 days.**
-- [ ] **`AiProvider` trait + registry (added 2026-05-02 — interface-first acceptance criterion):** define `AiProvider` trait following the existing `Compressor` (`src/middleware/compression/compressor.rs:70-127`) and `WafEngine` (`src/middleware/waf/engine.rs:10-40`) registry pattern. Provider impls register at startup; routing layer takes `Arc<dyn AiProvider>`. Provider list, default model, and per-provider endpoint configured via `HIGHPER_AI_PROVIDERS` / `HIGHPER_AI_<PROVIDER>_*` env vars. **3 days.**
+- [ ] Inbound shape detect + parse for **both OpenAI and Anthropic** (chat + embeddings + models for OpenAI; messages for Anthropic) — UC16 #2. **3 days** (was 2 — Anthropic-shape inbound moved to MVP).
+- [ ] **`AiProvider` trait + plugin-loadable registry (UC16 #3, 2026-05-02):** define `AiProvider` trait at `src/gateway/ai/provider.rs` following the existing `Compressor` (`src/middleware/compression/compressor.rs:70-127`) and `WafEngine` (`src/middleware/waf/engine.rs:10-40`) separate-trait pattern (NOT extending the request-pipeline `Plugin` trait at `src/plugin/trait_def.rs:35-100`). Built-in providers (OpenAI, Anthropic) register statically at startup. Plugin loader paths (FFI dylib via `src/plugin/ffi.rs`; WASM via `src/plugin/wasm.rs`) wire up but **defer third-party plugin loading to Phase 3** to let the trait shape soak — same evolution path Compressor took. Provider list, default model, and per-provider endpoint configured via `HIGHPER_AI_PROVIDERS` / `HIGHPER_AI_<PROVIDER>_*` env vars. Trait shape includes: `name()`, `metadata()`, `estimate_input_tokens()`, `call_streaming()`, optional `health()` and `parse_ratelimit_headers()`. **4 days** (was 3 — plugin loader scaffolding adds 1 day even though third-party loading is deferred).
+- [ ] **`AiStateStore` trait + 3 backend impls (UC16 #4, 2026-05-02):** define `AiStateStore` trait at `src/gateway/ai/state_store/mod.rs`. Ship three impls: `redb` (pure-Rust embedded; single-node default), `rocksdb` (mature embedded; alternative), `scylladb` (Cassandra-compatible; multi-node). Operator chooses via `HIGHPER_AI_STATE_BACKEND={redb|rocksdb|scylladb}`. Trait surface: virtual-key CRUD, budget read/decrement, usage record append, audit log append. **5 days** (1 day trait + 1.5 day ReDB + 1 day RocksDB + 1.5 day ScyllaDB). Migration / export tool from ReDB to ScyllaDB is queued for Phase 3 per UC16 §12 #16.
 
 #### 2.2 Translators (week 2)
 
@@ -1058,7 +1059,7 @@ UC16 item that doesn't fit cleanly inside the MVP six weeks.
 2. **End of Phase 1:** does v1.0 launch with UC13 (GraphQL) marked "passthrough only, federation deferred"? Or block on shipping real federation in Phase 1? Recommendation: defer to v1.1.
 3. **Before Phase 2 start (UC16 scope gate):** confirm the §3.1 in-scope/out-of-scope fence; revise `docs/planning/USECASE_16_AI_LLM_GATEWAY.md` to remove out-of-scope items (guardrails, AI observability product, in-memory cache product, vLLM); answer the remaining design questions that survive the scope fence. **Phase 2 cannot begin without this.**
 4. **End of Phase 3 (HA architecture gate, revised 2026-05-02):** decision recorded — the four-cluster-type model is the design (Type 1 Stateless / Type 2 +Valkey / Type 3 +etcd / Type 4 +Valkey+etcd); see [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md). Three open sub-decisions remain: **(i)** which Type B backend the cookbooks default to and which CI exercises (Valkey vs Redis — same protocol, mostly cookbook + CI choice); **(ii)** which Type C backend ships first as a code path (etcd already coded, Consul already coded, raft-rs not yet — recommendation: etcd default, raft-rs Phase 4.2); **(iii)** whether highper drives peer discovery for clustering or delegates to the chosen infrastructure (K8s headless service / Consul / etc.). Affects Phase 4 enterprise tier feasibility and the UC16 storage gate (#5 below). Per the HA research's "most-restrictive HA logic wins" rule, a deployment that enables UC3 or UC12 must include the etcd layer — that's a runtime validation enforced by §11.2, not a decision.
-5. **Before Phase 2.4 (UC16 storage-backend gate, added 2026-05-02):** decide the durable backend for virtual keys / budgets / usage / sessions. Candidates: PostgreSQL, ScyllaDB, foundationdb, sled+gossip, Redis-only. Single-node MUST work without external deps; multi-node MUST enforce budgets without double-spend. Implication for code: keep `AiStateStore` trait pluggable until decision lands. **Phase 2.4 cannot begin without this.**
+5. **DECIDED 2026-05-02 (UC16 design decision #4):** UC16 storage-backend gate resolved. **Three impls of the `AiStateStore` trait ship**: **ReDB** (pure-Rust embedded, single-node default — zero external deps, matches highper's tooling stack); **RocksDB** (mature embedded, single-node alternative); **ScyllaDB** (Cassandra-compatible, multi-node). Operator chooses per deployment via `HIGHPER_AI_STATE_BACKEND` env var. Single-node deployments accept 0% storage-layer fault tolerance (same semantics as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE`). Multi-node prod uses ScyllaDB which provides its own replication. PostgreSQL is no longer a candidate (heavier than ReDB, not horizontally scalable like ScyllaDB; can be reconsidered as a 4th impl in Phase 4 if operator demand surfaces). New follow-on question (UC16 §12 #16): single-node → multi-node migration path — export tool, dual-write, or fresh-start. Recommended: export tool in Phase 3.
 6. **Before any v1.0 GA tag (added 2026-05-02):** confirm §0.5 reconciliation banners are still consistent with then-current code; KNOWN_LIMITATIONS / README / CHANGELOG / ARCHITECTURE may need refresh again at tag time.
 7. **Multi-region commitment (added 2026-05-02 — `HA_ARCHITECTURE.md` §6.5):** decide *when* multi-region ships as a single-button deployment (recommended: not in v1.0; Phase 4.x ecosystem alongside xDS / K8s operator). Until then, single-region-multi-AZ is the v1.0 default and multi-region patterns are documented but not productized. Decision affects UC15 footprint expectations and UC16 cross-region budget enforcement (gate #5 follow-on).
 
@@ -1347,7 +1348,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - ROADMAP Phase 1.2 gains a per-type RPS benchmark task that replaces
     the placeholder `(unsourced inference)` numbers in HA `§1.5`.
   - §13 status snapshot extended with 6 new rows for the review fold-in.
-- **2026-05-02 (seventh revision, current):** post-review HA consistency pass
+- **2026-05-02 (seventh revision):** post-review HA consistency pass
   applying R1 + R2 + R5 + R8 (in HA_ARCHITECTURE.md) plus R3 + R4 + R6 + R7
   (here in ROADMAP) per the review report. Net: 4 new ROADMAP tasks land —
   Phase 0.J cluster-security env vars (R2, 1.5 days), Phase 0.C
@@ -1357,6 +1358,30 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   three small clarifications (stale §11.7 ref → §11.3; "Full HA at N=1" →
   "No HA at N=1"; §7.4 hardening overstatement softened). No new sections
   added in either doc — this is purely a consistency-fix pass.
+- **2026-05-02 (eighth revision, current):** UC16 design decisions #1–#4
+  resolved and folded into `USECASE_16_AI_LLM_GATEWAY.md` (now 588+ lines
+  after pruning + new §3.3 + storage updates).
+  - **#1 Scope-fence pruning:** §8 Guardrails section deleted (replaced
+    with external-integration note); guardrail module entries removed from
+    §3.2; `guardrails {}` DSL block replaced with `plugin {…}` references;
+    semantic-cache embedding-model clarified as operator's choice; AI
+    observability platforms confirmed external.
+  - **#2 OpenAI + Anthropic dual-shape MVP:** Anthropic-shape inbound
+    moved from Beta to MVP per owner direction (Anthropic API key already
+    held). Phase 2.1 inbound-parse task grew from 2→3 days.
+  - **#3 AiProvider plugin architecture:** new §3.3 in UC16 doc documenting
+    separate trait + existing FFI / WASM loader infrastructure reuse.
+    Phase 2.1 AiProvider task updated to add plugin-scaffolding day; trait
+    shape stabilises during MVP, third-party `.so` / `.wasm` plugin
+    loading opens in Phase 3.
+  - **#4 AiStateStore trait + ReDB / RocksDB / ScyllaDB:** §6 owner gate
+    #5 marked DECIDED. PostgreSQL / FoundationDB / sled / Redis-AOF
+    dropped from candidate list. New Phase 2.1 task "AiStateStore trait
+    + 3 backend impls" (5 days). Single-node → multi-node migration via
+    export tool queued for Phase 3 (UC16 §12 #16). HA_ARCHITECTURE.md §3.5
+    cookbook table rewritten.
+  - §13 status snapshot: 2 new rows (UC16 decisions; storage gate closure).
+  - Memory `uc16_scope.md` updated with the four decisions.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1397,6 +1422,8 @@ and planning**. No source code has changed. Phase 0 has not started.
 | Multi-region patterns documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §6.5 | per-type behaviour, 5 recommended patterns, UC16 multi-region considerations; ships single-region in v1.0 |
 | Cluster security baseline documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §7.4 | per-type required controls (Valkey AUTH, etcd mTLS, network isolation); `docs/SECURITY_CLUSTER_BASELINE.md` queued in Phase 1.3 |
 | Per-cloud-provider front-LB matrix documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §7.5 | AWS / GCP / Azure don't support Keepalived (no L2); cloud-LB is the cloud default |
+| UC16 design decisions #1–#4 recorded 2026-05-02 | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §1 / §2.1–§2.2 / §3.3 / §7 / §12 | (1) scope-fence pruned (no guardrails / vLLM / AI-observability product / in-memory cache product); (2) OpenAI + Anthropic dual-shape MVP; (3) AiProvider plugin architecture (separate trait, plugin-loadable via existing FFI/WASM, third-party loading opens Phase 3); (4) AiStateStore trait + ReDB / RocksDB / ScyllaDB impls |
+| UC16 storage gate (#5) closed | ROADMAP §6 #5 | ReDB / RocksDB / ScyllaDB selected; Postgres + FDB + sled dropped |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
@@ -1428,7 +1455,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | #2 v1.0 GA includes / excludes UC13 federation? | v1.0 tag | **answered 2026-05-02 — defer; passthrough only**; see `GRAPHQL_FEDERATION.md` |
 | #3 UC16 scope + design-doc revision | Phase 2 start | open — §3.1 fence written; doc revision pending |
 | #4 HA architecture (default persona + Type B + Type C backends) | Phase 4 enterprise scope | open — three personas defined per §11; defaults TBD |
-| #5 UC16 storage backend (PostgreSQL vs alternative) | Phase 2.4 | open — soft tilt to Valkey for hot path per `HA_ARCHITECTURE.md` §2.2 |
+| #5 UC16 storage backend | — | **DECIDED 2026-05-02 (UC16 #4)** — `AiStateStore` trait + ReDB / RocksDB / ScyllaDB impls; per-deployment via `HIGHPER_AI_STATE_BACKEND` |
 | #6 Re-confirm §0.5 banners at GA tag time | v1.0 tag | open — re-runs at tag |
 
 **P1 — Cheap hygiene (Phase 1.6, < 2 days each):** `DefaultHasher` swap;
