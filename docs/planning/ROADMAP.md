@@ -464,10 +464,11 @@ the cancel token).
 ### 4.4 Interface-first architecture audit (added 2026-05-02)
 
 The interface-first architecture audit identified **5 capabilities already
-trait-driven** (Cache, Service Discovery, WAF, Plugin, Compression) and
-**8 capabilities concrete / weakly-bounded**. UC16 will compound the cost of
-extending into the weak boundaries; we extract them now and bake the trait
-shapes into Phases 0–4. Effort estimates assume one engineer with full context.
+trait-driven** (Cache, Service Discovery, WAF, Plugin, Compression),
+**8 retrofit boundaries** (rows 1–8 below — concrete or weakly-bounded
+today; refactored during Phases 0–4), and **2 greenfield UC16 traits**
+(rows 9–10 — built from scratch in Phase 2.1). Total: 10 trait
+extractions in flight. Effort estimates assume one engineer with full context.
 
 | # | Boundary | Current shape | Impact | Refactor effort | Phase placement |
 |---|---|---|---|---|---|
@@ -479,15 +480,24 @@ shapes into Phases 0–4. Effort estimates assume one engineer with full context
 | 6 | `GeoProvider` | concrete struct, MaxMind / IP2Location hardwired (`src/proxy/geographic.rs`) | UC15 P0 fixes already opening this file; trait-extract while we're there | 0.5 wk | **0.I** (UC15 P0 fixes) |
 | 7 | `MetricsBackend` / `LogBackend` | hardcoded prometheus + tracing crates; no pluggable backend | OTLP exporter + UC16 cost metering both want a single seam | 1 wk | **1.4** (before OTLP work) |
 | 8 | `ConfigSource` | YAML / JSON / TOML / DSL all hardcoded loaders (`src/config/loader.rs`) | GitOps and xDS (Phase 4) want a unified `ConfigSource` | 1 wk | **4.2** (lowest priority; current loader works) |
+| 9 | **`AiStateStore` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Operator selects backend per deployment via `HIGHPER_AI_STATE_BACKEND={redb\|rocksdb\|scylladb}`; trait must be in place from day-one of UC16 work or each impl forks | 1 wk trait + impls (folded into the 5-day Phase 2.1 task) | **2.1** (UC16 design decision #4) |
+| 10 | **`AiProvider` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Built-in providers (OpenAI, Anthropic) register statically; third-party `.so` / `.wasm` plugin loading opens Phase 3 once trait shape soaks (UC16 design decision #3); same evolution path as `Compressor` | 4 days (folded into Phase 2.1 AiProvider task) | **2.1** (UC16 design decision #3) |
 
-**Total effort to reach interface-first:** ~9.5 person-weeks, distributed across
-phases so no single phase pays the full cost.
+**Total effort to reach interface-first:** ~10.5 person-weeks across all 10
+boundaries, distributed across phases so no single phase pays the full cost.
+Rows 9 and 10 land in Phase 2.1 alongside other UC16 MVP work, so they're
+greenfield rather than retrofit — cheaper per row but they must ship
+together with the UC16 module skeleton.
 
-**UC16 acceptance criterion (added):** define an `AiProvider` trait following
-the existing `Compressor` / `WafEngine` registry pattern (those already work
-well in `src/middleware/compression/` and `src/middleware/waf/`). Provider
-implementations register at startup; routing layer takes `Arc<dyn AiProvider>`.
-This is a Phase 2 entry, not part of the §4.4 catch-up.
+**`AiProvider` and `AiStateStore` traits both follow the established
+separate-trait-plus-registry pattern** of `Compressor`
+(`src/middleware/compression/compressor.rs:70-127`) and `WafEngine`
+(`src/middleware/waf/engine.rs:10-40`). They are deliberately *not*
+extending the request-pipeline `Plugin` trait at
+`src/plugin/trait_def.rs:35-100` (that's headers/body shaped); but they
+*do* reuse the existing `src/plugin/` FFI + WASM loader machinery for
+out-of-process plugins. See
+[`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.3.
 
 ### 4.5 Cookbook infrastructure — already in repo (added 2026-05-02)
 
@@ -705,6 +715,8 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] Create `docs/CONFIG_ENV.md` (NEW) — exhaustive table of every `HIGHPER_*` var with default, valid range, subsystem owner, and citation to where it's read. **1 day; updated alongside every PR that adds a new var.**
 - [ ] CI lint: forbid bare `std::env::var` in `src/**/*.rs` outside `src/config/`; forbid literal `Duration::from_secs(..)` and `* 1024 * 1024` in production code (allowed in tests). **1 day.**
 - [ ] **Cluster security env vars (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** add the following to the `Settings::cluster` sub-struct with refuse-to-start-on-missing semantics: `HIGHPER_CLUSTER_TYPEB_AUTH` (Valkey AUTH password, file path, or secrets-resolver ref); `HIGHPER_CLUSTER_TYPEB_TLS` (`true`/`false`); `HIGHPER_CLUSTER_TYPEC_CLIENT_CERT`, `_CLIENT_KEY`, `_CA` (file paths or secrets-resolver refs for etcd mTLS); `HIGHPER_CLUSTER_ALLOW_INSECURE` (default `false`; required `true` to start a Type 2/3/4 deployment without AUTH/mTLS — dev escape hatch). Validation: when `_TYPEB_BACKEND ≠ none`, `_TYPEB_AUTH` is required unless `_ALLOW_INSECURE=true`; same shape for Type C cert chain. **1.5 days.**
+- [ ] **UC16 virtual-key pepper env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3):** add `HIGHPER_AI_KEY_PEPPER` to the `Settings::ai` sub-struct. 32-byte secret loaded as raw bytes (or hex-decoded) from env var or via the secrets-manager resolver (`HIGHPER_SECRETS_PROVIDER` from Phase 1.4). Used as the HMAC-SHA-256 key for virtual-key hashing. **Refuse to start** when UC16 features are enabled and pepper is empty unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true`. Documented in `docs/CONFIG_ENV.md`; rotation guidance in `docs/SECURITY_CLUSTER_BASELINE.md`. **0.5 day.**
+- [ ] **Plugin drain-window env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.3.7):** move the hardcoded 30 s timeout in `src/plugin/manager.rs:252 wait_for_plugin_idle()` to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 rule. Default 30 s. Validates ≥ 5 s. **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -872,7 +884,7 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 2.4 Auth + budgets + cache (week 4)
 
-- [ ] Virtual-key store (sled MVP) + `sk-hpgw-…` issuance + Argon2id hash. **3 days.**
+- [ ] Virtual-key store on the configured `AiStateStore` (UC16 #4) + `sk-hpgw-…` issuance + **HMAC-SHA-256 hash with `HIGHPER_AI_KEY_PEPPER` server pepper** (UC16 #5; replaces the original Argon2id approach — see `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3 for rationale). Constant-time compare. Soft-disable revocation (`enabled=false`) by default; hard-delete is a separate scoped admin action. **3 days.**
 - [ ] Per-key budget enforcement (day/month) backed by Redis counters + sled durable rollup. **3 days.**
 - [ ] RPM + TPM (token-denominated) buckets — extends `src/gateway/ratelimit/token_bucket.rs` to support dynamic-cost consumption. **3 days.**
 - [ ] Exact cache (canonical-JSON key) layered over `src/cache/manager.rs`. **2 days.**
@@ -1358,7 +1370,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   three small clarifications (stale §11.7 ref → §11.3; "Full HA at N=1" →
   "No HA at N=1"; §7.4 hardening overstatement softened). No new sections
   added in either doc — this is purely a consistency-fix pass.
-- **2026-05-02 (eighth revision, current):** UC16 design decisions #1–#4
+- **2026-05-02 (eighth revision):** UC16 design decisions #1–#4
   resolved and folded into `USECASE_16_AI_LLM_GATEWAY.md` (now 588+ lines
   after pruning + new §3.3 + storage updates).
   - **#1 Scope-fence pruning:** §8 Guardrails section deleted (replaced
@@ -1382,6 +1394,31 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     cookbook table rewritten.
   - §13 status snapshot: 2 new rows (UC16 decisions; storage gate closure).
   - Memory `uc16_scope.md` updated with the four decisions.
+- **2026-05-02 (ninth revision, current):** UC16 topic #5 fold-in (tenant
+  model + key hashing) + plugin lifecycle clarifications + interface-first
+  audit extended.
+  - **UC16 design decision #5 (tenant + hash):** USECASE_16 §12 #4 marked
+    DECIDED. Flat keys + tags MVP (hierarchy at Beta). HMAC-SHA-256 +
+    server pepper replaces Argon2id; saves ~10 000× per-request validation
+    cost vs Argon2id while providing equivalent security against the
+    threat model (256-bit random keys). USECASE_16 §7.1 rewritten with
+    three sub-sections.
+  - **Plugin lifecycle (hot-load):** new USECASE_16 §3.3.7 documenting
+    capability matrix. Reuses existing `src/plugin/hot_reload.rs` notify
+    watcher + 30 s drain in `manager.rs:252`. Built-in provider config
+    updates (key rotation, model alias, RPM tuning) hot-reload via
+    Phase 0 config reloader; third-party WASM/FFI plugin code updates
+    hot-load in Phase 3 Beta when third-party loading opens.
+  - **§4.4 interface-first audit extended from 8 to 10 boundaries** —
+    `AiStateStore` (row 9, greenfield, Phase 2.1) and `AiProvider`
+    (row 10, greenfield, Phase 2.1) added. Total project trait-extraction
+    effort: 9.5 → 10.5 person-weeks.
+  - **Phase 0.J** gains `HIGHPER_AI_KEY_PEPPER` (0.5 day) and
+    `HIGHPER_PLUGIN_DRAIN_SECS` (0.5 day).
+  - **Phase 2.4** virtual-key task updated to use HMAC + pepper +
+    `AiStateStore` instead of sled+Argon2id.
+  - **§13 status snapshot** to be extended next iteration; this revision
+    adds 4 changed lines and 1 new sub-section (§3.3.7) to USECASE_16.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1424,6 +1461,9 @@ and planning**. No source code has changed. Phase 0 has not started.
 | Per-cloud-provider front-LB matrix documented | [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md) §7.5 | AWS / GCP / Azure don't support Keepalived (no L2); cloud-LB is the cloud default |
 | UC16 design decisions #1–#4 recorded 2026-05-02 | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §1 / §2.1–§2.2 / §3.3 / §7 / §12 | (1) scope-fence pruned (no guardrails / vLLM / AI-observability product / in-memory cache product); (2) OpenAI + Anthropic dual-shape MVP; (3) AiProvider plugin architecture (separate trait, plugin-loadable via existing FFI/WASM, third-party loading opens Phase 3); (4) AiStateStore trait + ReDB / RocksDB / ScyllaDB impls |
 | UC16 storage gate (#5) closed | ROADMAP §6 #5 | ReDB / RocksDB / ScyllaDB selected; Postgres + FDB + sled dropped |
+| UC16 design decision #5 recorded 2026-05-02 (tenant + key hashing) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §7.1 / §12 #4 | flat keys+tags MVP; **HMAC-SHA-256 + `HIGHPER_AI_KEY_PEPPER` server pepper** replaces Argon2id (saves ~10 000× per-request validation cost); soft-disable revocation default |
+| Plugin hot-load capability matrix documented for AI providers | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.3.7 | reuses `src/plugin/hot_reload.rs` + `manager.rs:252` 30 s drain; built-in providers update via Phase 0 config reload; third-party WASM/FFI plugin code hot-loads from Phase 3 Beta |
+| §4.4 interface-first audit extended from 8 to 10 boundaries | ROADMAP §4.4 | rows 9 (`AiStateStore`) and 10 (`AiProvider`) added — both greenfield, both Phase 2.1; total trait-extraction effort 9.5 → 10.5 person-weeks |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |

@@ -334,11 +334,52 @@ companies can build, sign, and distribute `.so` / `.wasm` files for their
 LLMs without merging into highper's repo. That's an explicit
 differentiator vs. monolithic gateway competitors.
 
+#### 3.3.7 Plugin lifecycle and hot-load capability (added 2026-05-02)
+
+Highper-gateway already ships a hot-reload monitor for plugins at
+`src/plugin/hot_reload.rs` (gated behind the `plugin-hot-reload` Cargo
+feature; uses the `notify` crate to watch the plugin directory) plus a
+graceful drain in `src/plugin/manager.rs:226 reload_plugin()` and
+`manager.rs:252 wait_for_plugin_idle()` (30 s default timeout).
+
+`AiProvider` plugins reuse this infrastructure. The capability matrix:
+
+| Operation | Hot-loadable? | Mechanism | When available |
+|---|---|---|---|
+| Update **built-in** provider configuration (model alias, endpoint URL, provider API key rotation, RPM/TPM tuning) | ✅ Yes | Existing `src/config/{watcher,reloader}.rs` config hot-reload (Phase 0) | MVP |
+| Update **built-in** provider *code* (e.g. fix a translator bug in OpenAI integration) | ❌ No — requires rebuild + redeploy | Built-ins are statically linked into the highper binary | n/a |
+| **Add** a new third-party WASM provider plugin (drop a `.wasm` into the plugin dir) | ✅ Yes | `notify` watcher → `manager.rs:226` reload | Phase 3 Beta (opens with third-party plugin loading) |
+| **Upgrade** an existing third-party WASM provider | ✅ Yes | Replace file → old plugin drains via `wait_for_plugin_idle` (30 s) → new loads | Phase 3 Beta |
+| **Add / upgrade** an FFI dylib provider | ✅ Yes (with caveats) | Same flow; FFI plugin authors must respect drain semantics — possible to crash highper if old plugin holds outstanding allocations when unloaded; the 30 s drain mitigates | Phase 3 Beta |
+| **Remove** a provider plugin | ✅ Yes | Delete file → watcher fires → drain → unload; in-flight requests against that provider drain or error after timeout | Phase 3 Beta |
+| **Toggle** the `plugin-hot-reload` Cargo feature | ❌ No | Build-time | n/a |
+
+**Operational implication.** Day-to-day operator tasks — rotating provider
+API keys, adding a new model alias, retuning rate-limit envelopes,
+disabling a misbehaving provider — are all configuration changes that
+hot-reload via Phase 0 work; **no plugin reload is required for these**.
+Plugin reload kicks in only when the operator wants to ship new *code*
+(third-party-maintained translator, custom on-prem provider integration,
+etc.). Both classes of change happen without a highper restart.
+
+**Drain timeout knob.** The 30 s default in `manager.rs:252` is a
+constant today; Phase 0.J will move it to env-var
+`HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 (no hardcoded tunables).
+
+**Interaction with the four cluster types** (`HA_ARCHITECTURE.md` §1):
+plugin reload is **per-replica** — each highper-gateway replica reloads
+independently as the file appears in its own plugin dir. For a multi-node
+deployment (Type 2 / 3 / 4), the operator's deployment tooling (Helm
+rolling, Ansible playbook, K8s ConfigMap mount sync) is responsible for
+landing the new plugin file on every replica. Type 3 / 4 deployments could
+*also* push plugins via etcd in Phase 4.2 once the `ConfigSource` trait
+extraction lands (`ROADMAP.md` §4.4 #8).
+
 ---
 
 ## 4. Canonical request / response types
 
-The shape translators all funnel through a single in-process representation so middleware (cache, guardrails, accounting) is shape-agnostic.
+The shape translators all funnel through a single in-process representation so middleware (cache, accounting, plugin hooks) is shape-agnostic.
 
 ```rust
 // Sketch — final lives in src/gateway/ai/shape.rs
@@ -438,31 +479,131 @@ When forwarding to providers that support native prompt caching (Anthropic `cach
 
 ## 7. Virtual keys, budgets, multi-tenant
 
-### 7.1 Key model
+### 7.1 Key model (UC16 design decisions #4 + #5, 2026-05-02)
+
+#### 7.1.1 Shape — flat keys + tags (MVP)
+
+The original draft sketched a four-level hierarchy
+(`tenant → workspace → project → key`). MVP ships **flat keys + tags**;
+hierarchy lands at Beta.
+
+Why flat for MVP: most operators starting on highper-gateway have a small
+number of consumers and want a quick path to issuing keys. Hierarchy is
+useful for billing rollups and admin UI organisation but isn't on the
+critical path for a working gateway. Flat keys + arbitrary tags
+(`env=prod`, `team=growth`, `cost_center=ai-r&d`, …) deliver the same
+filtering / rollup capability with much less schema and admin surface.
 
 ```
-tenant ─┬─ workspace ─┬─ project ─┬─ key (sk-hpgw-...)
-        │             │           │
-        └─ rbac role  │           ├─ scopes:
-                      │           │    models_allow=[...]
-                      │           │    rpm=, tpm=, rpd=, tpd=
-                      │           │    budget_usd_day=, _month=
-                      │           │    expires_at=
-                      │           │    enabled=
-                      │           └─ tags:
-                      │                env, team, cost_center
-                      └─ kms_key_ref (BYOK + CMEK, GA tier)
+key (sk-hpgw-...)
+├─ scopes:
+│    models_allow = [...]
+│    rpm = ..., tpm = ..., rpd = ..., tpd = ...
+│    budget_usd_day = ..., budget_usd_month = ..., lifetime_usd_cap = ...
+│    expires_at = ...
+│    enabled = true | false                  (soft-disable; not deleted; preserves audit)
+├─ tags (free-form key/value, indexable):
+│    env = prod | staging | dev
+│    team = growth | platform | ...
+│    cost_center = ai-r&d | ...
+│    (anything else the operator wants)
+└─ kms_key_ref          (GA tier — BYOK + per-tenant CMEK)
 ```
 
-Storage (UC16 design decision #4, 2026-05-02):
-- All durable state — virtual keys, budgets, usage records, audit, prompt registry — lives behind an `AiStateStore` trait. Three impls ship; operator picks per deployment.
-- **MVP single-node:** `redb` embedded KV (pure-Rust, zero external deps). Default for dev and small prod.
-- **MVP single-node alternative:** `rocksdb` embedded KV (mature, widely deployed in etcd / CockroachDB / TiKV). Operator can switch via `HIGHPER_AI_STATE_BACKEND=rocksdb`.
-- **MVP multi-node:** `scylladb` (Cassandra-compatible, distributed, horizontally scalable). For production multi-tenant fleets.
-- HA story: ReDB / RocksDB are single-node only — cluster fault tolerance is 0% on the storage layer (acknowledged trade-off; same as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE` semantics in HA_ARCHITECTURE.md §11.2). ScyllaDB provides multi-node fault tolerance via its own replication.
-- See `HA_ARCHITECTURE.md` §3.5 for how this layer fits into Type 2 / Type 4 cluster deployments (UC16 is "Type 2 + UC16 state-store" or "Type 4 + UC16 state-store").
+**Revocation semantics:** `enabled = false` is the default revocation —
+the key stops working but the row stays for audit. Hard delete is a
+separate explicit admin action, gated by an `admin:keys:hard-delete` scope.
 
-Key format: `sk-hpgw-<base64url(rand 32B)>`. Stored as Argon2id hash with salt; only prefix (8 chars) shown in UI. Hash + metadata in whichever `AiStateStore` impl is configured.
+**Hierarchy at Beta:** add `tenant_id`, `workspace_id`, `project_id`
+columns; flat keys map to a default tenant during the migration. Existing
+tags continue to work; hierarchy becomes a *secondary* organisation axis
+on top of tags rather than replacing them.
+
+#### 7.1.2 Storage — `AiStateStore` trait (UC16 design decision #4)
+
+All durable state — virtual keys, budgets, usage records, audit, prompt
+registry — lives behind the `AiStateStore` trait (interface-first per
+ROADMAP §4.4). Three impls ship; operator selects via env var:
+
+| Backend | When to pick | Env var |
+|---|---|---|
+| **ReDB** (pure-Rust embedded) | Single-node default; dev and small prod; zero external deps | `HIGHPER_AI_STATE_BACKEND=redb` |
+| **RocksDB** (mature C++ embedded with Rust bindings) | Single-node alternative; operator already has RocksDB ops experience | `HIGHPER_AI_STATE_BACKEND=rocksdb` |
+| **ScyllaDB** (Cassandra-compatible distributed) | Multi-node prod | `HIGHPER_AI_STATE_BACKEND=scylladb` |
+
+ReDB / RocksDB are single-node — cluster fault tolerance is 0% on the
+storage layer (acknowledged; same semantics as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE`
+in `HA_ARCHITECTURE.md` §11.2). ScyllaDB provides its own replication for
+multi-node prod. See `HA_ARCHITECTURE.md` §3.5 for how this slots into the
+four cluster types (UC16 is "Type 2 + UC16 state-store" or "Type 4 + UC16
+state-store").
+
+#### 7.1.3 Hash design — HMAC-SHA-256 + server pepper (UC16 design decision #5)
+
+**Decision recorded.** Virtual keys are stored as **HMAC-SHA-256 with a
+server-side pepper**, NOT Argon2id.
+
+Why HMAC-SHA-256 instead of Argon2id:
+
+| Property | Argon2id (original draft) | HMAC-SHA-256 + pepper (now) |
+|---|---|---|
+| Search space of a `sk-hpgw-<base64url(rand 32B)>` key | 2²⁵⁶ — astronomical | 2²⁵⁶ — astronomical |
+| Brute-forceable from leaked DB hash? | No | No |
+| Latency cost of validation | ~50–500 ms (default tuning) | ~10 µs |
+| Validations per request | 1 | 1 |
+| At 10 k RPS, validation CPU cost | ~5–500 vCPU | ~0.0001 vCPU |
+| What an attacker who steals just the DB (no pepper) can do | Brute-force impossible (already) | Brute-force impossible AND can't even check candidate keys without pepper |
+| Industry use for high-entropy random API keys | rare | standard (AWS, Stripe, OpenAI, Vault) |
+
+Argon2id is the gold-standard for hashing **low-entropy human passwords**
+where brute force is the realistic attack. For 256-bit random API keys
+the search space is already astronomical; the slow hash buys nothing
+against the threat model and costs ~10 000× more on every request.
+
+**Storage row layout:**
+
+```
+key_record {
+    id               = "sk-hpgw-7Ab2…"   // first 12 chars; fast lookup, UI display
+    full_hash        = HMAC-SHA-256(server_pepper, full_key_bytes)
+    metadata         = { scopes, tags, enabled, expires_at, … }   // per §7.1.1
+    created_at       = …
+    last_used_at     = …
+}
+```
+
+**Validation flow (per request, target ≤10 µs):**
+
+1. Parse incoming `sk-hpgw-XXXXXXXX…` → extract 12-char prefix.
+2. Index lookup by prefix (one O(1) `AiStateStore` read; an LRU cache in
+   front for hot keys).
+3. HMAC-SHA-256 the full presented key with `server_pepper`.
+4. Constant-time compare against stored `full_hash`.
+5. Return: invalid (401) | valid + metadata.
+
+**Server pepper.** A 32-byte random secret loaded from
+`HIGHPER_AI_KEY_PEPPER` env var (or via the secrets-manager resolver
+landing in Phase 1.4 — Vault / AWS Secrets / K8s Secret). The pepper
+provides defense-in-depth: an attacker who steals just the database
+without the pepper cannot even check candidate keys against the hashes.
+**Refuse to start** if UC16 features are enabled and pepper is empty,
+unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true` (dev only).
+
+**Pepper rotation:** rotating the pepper invalidates all existing virtual
+keys. Operators do this only after a confirmed pepper compromise. Not a
+routine operation. Future enhancement (Phase 3+): support two peppers
+(active + previous) during a rotation window so existing keys keep
+working until they're regenerated.
+
+**Why not just SHA-256 (no pepper)?** A pepper-less hash is fine if the
+DB is properly secured; the pepper is defense-in-depth. The marginal
+operational cost (one secret to manage) is small compared to the
+incremental safety. AWS / Stripe / OpenAI all use a pepper-equivalent
+construction for their API keys.
+
+Key format: `sk-hpgw-<base64url(rand 32B)>` — 256 bits of entropy.
+Generated server-side, returned to the operator/admin **once** at
+creation; never logged in plaintext anywhere.
 
 ### 7.2 Budgets
 
@@ -632,7 +773,7 @@ YAML-equivalent shipped alongside. Hot-reloadable via existing watcher + admin A
 
 ## 11. Security
 
-- Virtual keys hashed (Argon2id), constant-time comparison.
+- Virtual keys hashed with **HMAC-SHA-256 + server pepper** (`HIGHPER_AI_KEY_PEPPER`), constant-time comparison. See §7.1.3 for the design rationale (Argon2id was dropped — overkill for 256-bit random keys).
 - Provider keys at rest: AES-GCM with master key from env or KMS; with CMEK at GA per-tenant key wrap.
 - Outbound TLS validates provider certs (no skip-verify); pin rustls roots.
 - Bedrock SigV4 signing implemented per AWS spec; no use of long-term creds where IRSA / instance profile available (AWS SDK chain).
@@ -652,7 +793,17 @@ and reference the design-decision number.
 1. **DECIDED (UC16 #2)** — Inbound shape priority: **OpenAI + Anthropic both at MVP.** §2.1 / §2.2 above.
 2. **DECIDED (UC16 #3)** — Provider integration architecture: **AiProvider trait, plugin-loadable via existing src/plugin/ FFI + WASM infrastructure.** Built-in providers (OpenAI, Anthropic) ship at MVP; Bedrock + Gemini join in Phase 3. Third-party `.so` / `.wasm` plugin loading opens in Phase 3 once the trait shape has soaked. §3.3 above.
 3. **DECIDED (UC16 #4)** — Storage backend: **`AiStateStore` trait with three impls.** ReDB (pure-Rust embedded, single-node default), RocksDB (mature embedded, single-node alternative), ScyllaDB (distributed, multi-node). §7.1 above. Single-node deployments use ReDB/RocksDB with 0% storage-layer fault tolerance (acknowledged); multi-node deployments use ScyllaDB.
-4. **Tenant model** — `tenant→workspace→project→key`, or flat `key+tags`? Recommended: **flat keys + tags** for MVP; full hierarchy at Beta. Hierarchy mostly matters for billing rollups and admin UI.
+4. **DECIDED (UC16 #5, 2026-05-02)** — Tenant model + key hashing.
+   - **Tenant shape:** **flat keys + tags** for MVP; hierarchy
+     (`tenant → workspace → project → key`) lands at Beta as a secondary
+     organisation axis on top of tags. §7.1.1 above.
+   - **Hash design:** **HMAC-SHA-256 with server pepper** (from
+     `HIGHPER_AI_KEY_PEPPER` env var). Argon2id (original draft) was
+     dropped — for 256-bit random keys, slow hashing buys nothing against
+     the threat model and adds ~10 000× per-request validation latency.
+     Industry-standard approach (AWS, Stripe, OpenAI, Vault). §7.1.3 above.
+   - **Revocation:** soft-disable (`enabled = false`) by default;
+     hard-delete is a separate scoped admin action.
 5. **Vector index backend** for semantic cache — Qdrant / Redis-Stack / PgVector / in-process HNSW? Recommended: **Redis-Stack** (already a likely dep for distributed rate-limit / Type B Valkey) for MVP; pluggable `VectorIndex` trait so Qdrant can be added later. The embedding **model** itself is operator's choice via the AiProvider registry (§6.2).
 6. **Token-counter posture** — bake all vocabs (tiktoken + Llama BPE + SentencePiece — adds ~30 MB to binary) vs. lazy fetch? Recommended: **bake** for fully-offline operation; expose feature flag for size-conscious builds.
 7. **Reasoning-token billing default** — count as output (charged) or not? Recommended: **count as output** (matches provider pricing); per-key opt-out flag.
@@ -761,4 +912,11 @@ See `ROADMAP.md` §5 for sequencing.
   - **#3 AiProvider as plugin architecture**: new §3.3 documenting separate trait pattern (not extending `Plugin` — same architectural choice as `WafEngine` / `Compressor` today), plugin-loadable via existing `src/plugin/` FFI + WASM infrastructure. Built-in providers ship at MVP; third-party `.so` / `.wasm` plugin loading opens Phase 3 once trait shape soaks. ROADMAP Phase 2.1 task updated.
   - **#4 AiStateStore trait + ReDB / RocksDB / ScyllaDB impls**: §7 storage subsection rewritten; PostgreSQL / FoundationDB / sled / Redis-AOF dropped from candidates. §13 acceptance criteria #12 added. Single-node → multi-node migration becomes new §12 #16. ROADMAP §6 #5 gate marked DECIDED. HA_ARCHITECTURE.md §3.5 cookbook table updated.
   - Memory `uc16_scope.md` updated to record all four decisions.
+- **2026-05-02 (decision #5 + plugin lifecycle clarifications, current):** topic-#5 fold-in.
+  - **Decision #5 — tenant model + key hashing:** §12 #4 marked DECIDED. **Flat keys + tags MVP** (hierarchy lands at Beta as a secondary axis on top of tags). **HMAC-SHA-256 + server pepper** replaces Argon2id (overkill for 256-bit random keys; saves ~10 000× per-request validation cost; matches AWS / Stripe / OpenAI / Vault industry practice). Soft-disable revocation default; hard-delete is a separate scoped admin action. §7.1 fully rewritten with three sub-sections (7.1.1 shape, 7.1.2 storage, 7.1.3 hash design).
+  - **Plugin lifecycle clarifications:** new §3.3.7 documenting hot-load capability matrix for `AiProvider` plugins. Reuses existing `src/plugin/hot_reload.rs` infrastructure (notify-watcher + 30 s drain via `manager.rs:252 wait_for_plugin_idle()`); built-in providers update via Phase 0 config reload (no plugin reload needed for key rotation / model alias / RPM tuning); third-party plugin code updates hot-load in Phase 3 Beta. Plugin drain timeout moved to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1.
+  - **§11 Security row** updated: HMAC-SHA-256+pepper replaces Argon2id reference.
+  - **ROADMAP §4.4 interface-first table** extended to 10 boundaries: `AiStateStore` (row 9, greenfield, Phase 2.1) and `AiProvider` (row 10, greenfield, Phase 2.1). Both follow the established separate-trait + plugin-loadable pattern of `Compressor` / `WafEngine`. Total trait-extraction effort grows from 9.5 to 10.5 person-weeks across the project.
+  - **ROADMAP Phase 0.J** gains two env vars: `HIGHPER_AI_KEY_PEPPER` (0.5 day) and `HIGHPER_PLUGIN_DRAIN_SECS` (0.5 day).
+  - **ROADMAP Phase 2.4** virtual-key task updated: HMAC + pepper instead of Argon2id; AiStateStore-backed instead of sled-MVP.
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.
