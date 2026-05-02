@@ -426,18 +426,84 @@ The translators implement `Translator<P>` traits with `to_provider(req: &AiReque
 
 ---
 
-## 5. Tokenization & cost
+## 5. Tokenization & cost (UC16 design decision #6, 2026-05-02)
+
+### 5.1 Posture — bake all vocabularies
+
+**Decision recorded.** Tokenizer vocabularies are **baked into the
+binary at build time**. Adds ~30 MB to the binary; gives the gateway
+fully-offline / air-gap operation; eliminates first-request latency
+from lazy-fetch; removes a runtime supply-chain dependency on a
+vocabulary registry.
+
+Lazy-fetch from a vocabulary registry was considered and **dropped**
+— it fails air-gapped deployments common in regulated industries and
+introduces a SPOF / attack vector. Hybrid (top-N baked, long-tail lazy)
+was considered and **dropped** — two code paths and the "which N is
+top" debate isn't worth the ~24 MB savings on a binary that already
+ships in the 50–200 MB range.
+
+**Cargo feature flags:**
+
+| Feature | What ships | Binary size delta | When to pick |
+|---|---|---|---|
+| Default (no flags) | All MVP+Beta provider vocabularies (OpenAI cl100k + o200k, Anthropic, Gemini SentencePiece, Llama-3 BPE, Cohere, DeepSeek, Qwen, …) | +~30 MB | Production deployments |
+| `ai-tokenizers-minimal` | OpenAI cl100k_base + o200k_base only | +~4 MB | Size-conscious / single-provider deployments |
+| `ai-tokenizers-only=…` | Operator-selected subset | varies | Custom / regulated builds |
+
+### 5.2 Library choice — split between two crates
+
+**Decision recorded.** Two tokenizer crates, each used for what it
+does well:
+
+| Provider family | Crate | Vocabulary | On-disk size |
+|---|---|---|---|
+| OpenAI / Azure (GPT-3.5 → GPT-4o-mini, GPT-4o, o1, o3) | `tiktoken-rs` | `cl100k_base`, `o200k_base` | ~4 MB |
+| Anthropic (Claude 2 / 3 / 3.5 / 3.7) | `tokenizers` (HuggingFace) | Anthropic BPE | ~2 MB |
+| Google Gemini | `tokenizers` | SentencePiece | ~4 MB |
+| Llama / Mistral / Mixtral | `tokenizers` | Llama-3 BPE | ~9 MB |
+| Cohere Command | `tokenizers` | Cohere BPE | ~4 MB |
+| DeepSeek / Qwen / others | `tokenizers` | their BPE | ~7 MB combined |
+
+`tiktoken-rs` is faster and narrower for OpenAI-family models;
+`tokenizers` is HuggingFace's unified Rust crate covering everything
+else. Both are mature, both have permissive licences. No reason to
+force one for both.
+
+### 5.3 Pre-call estimate vs post-call truth
 
 | Concern | Decision |
 |---|---|
-| OpenAI / Azure tokenizer | `tiktoken-rs` crate, `cl100k_base` + `o200k_base` baked in; ~1µs/token. |
-| Anthropic | Anthropic's tokenizer (Claude 2/3/3.5/3.7 share same vocab); use `tokenizers` crate with downloaded vocab; cache vocab on disk. |
-| Gemini | SentencePiece via `tokenizers`; vocab from HF. |
-| Llama / Mistral | Llama-3 BPE via `tokenizers`. |
-| Pre-call estimate vs post-call truth | Estimate with local tokenizer for budget gate. Post-call: prefer provider-returned `usage.{input,output}_tokens`; fall back to local tokenizer on output stream. |
-| Streaming TPM enforcement | Hard-stop = inject SSE error frame + close upstream; soft = warn + log (default). Configurable per-key. |
-| Cost source | Boot-load `model_prices.json` from LiteLLM (MIT) — `model_prices_and_context_window.json` — refreshed weekly via signed download. Admin can override per row. |
-| Reasoning tokens | Anthropic `thinking`, OpenAI `reasoning_content`, DeepSeek `reasoning_content` — counted as output by default; per-key flag `count_reasoning_in_output: bool`. |
+| Pre-call estimate | Local tokenizer counts input tokens; used for budget gate, RPM/TPM check, route eligibility. Estimate is exact for non-multimodal inputs; ±5 % for content with images / audio (where token cost is content-specific). |
+| Post-call truth | Prefer provider-returned `usage.{input,output}_tokens` field. Fall back to local-tokenizer count of the output stream when the provider does not return usage (some streaming endpoints, some proxies). Local-only is acceptable for billing because the search space matches provider's billing model when vocabularies match. |
+| Streaming TPM enforcement | Default: post-stream warning (log + metric, no inline action). Hard-stop opt-in per virtual key — when set, gateway injects an SSE error frame and closes upstream once token budget is exhausted mid-stream. Hard-stop is jarring for end-users; default-off is intentional. |
+
+### 5.4 Reasoning tokens — count as output (UC16 design decision #7)
+
+**Decision recorded.** Reasoning tokens (Anthropic `thinking` blocks,
+OpenAI `reasoning_content`, DeepSeek `reasoning_content`, …) are
+**counted as output tokens by default**. This matches every provider's
+own pricing model — they bill operators for reasoning tokens, so the
+gateway charging the same to its end-users is the correct default.
+
+**Per-key opt-out.** Virtual-key scope gains a `count_reasoning_in_output:
+bool` flag. When `false`, the gateway records reasoning tokens in
+metrics / logs but does not include them in the per-key budget
+decrement. Useful when the operator absorbs reasoning costs as a
+quality-of-service investment and bills end-users only on visible
+output.
+
+| Field | Default | Per-key override |
+|---|---|---|
+| Reasoning tokens count toward TPM bucket | Yes | `count_reasoning_in_output=false` excludes |
+| Reasoning tokens count toward $ budget | Yes | same |
+| Reasoning tokens emitted as `ai_output_tokens_total` metric | Yes (with `kind=reasoning` label) | always emitted, regardless of billing |
+
+### 5.5 Cost source
+
+| Concern | Decision |
+|---|---|
+| Cost source | Boot-load `model_prices.json` from LiteLLM (MIT) — `model_prices_and_context_window.json` — refreshed weekly via signed download. Admin can override per row at runtime. Detail in §12 #12 (still open) — vendored snapshot vs live feed. |
 
 ---
 
@@ -805,8 +871,8 @@ and reference the design-decision number.
    - **Revocation:** soft-disable (`enabled = false`) by default;
      hard-delete is a separate scoped admin action.
 5. **Vector index backend** for semantic cache — Qdrant / Redis-Stack / PgVector / in-process HNSW? Recommended: **Redis-Stack** (already a likely dep for distributed rate-limit / Type B Valkey) for MVP; pluggable `VectorIndex` trait so Qdrant can be added later. The embedding **model** itself is operator's choice via the AiProvider registry (§6.2).
-6. **Token-counter posture** — bake all vocabs (tiktoken + Llama BPE + SentencePiece — adds ~30 MB to binary) vs. lazy fetch? Recommended: **bake** for fully-offline operation; expose feature flag for size-conscious builds.
-7. **Reasoning-token billing default** — count as output (charged) or not? Recommended: **count as output** (matches provider pricing); per-key opt-out flag.
+6. **DECIDED (UC16 #6, 2026-05-02)** — Token-counter posture: **bake all vocabularies into the binary**. Lazy-fetch and hybrid both dropped. Default Cargo feature ships all (~30 MB binary growth); `ai-tokenizers-minimal` ships only OpenAI's two for size-conscious builds. Library choice: **`tiktoken-rs` for OpenAI** (faster, narrower) + **`tokenizers` (HuggingFace) for everything else** (Anthropic, Gemini SentencePiece, Llama BPE, Cohere, DeepSeek). §5.1 + §5.2 above.
+7. **DECIDED (UC16 #6, 2026-05-02)** — Reasoning-token billing default: **count as output**, matches provider pricing. Per-virtual-key opt-out via `count_reasoning_in_output: bool` scope flag. Metrics still emit reasoning-token counts with a `kind=reasoning` label regardless of billing inclusion. §5.4 above.
 8. **Cancellation semantics** — on client SSE close, do we (a) cancel upstream immediately (saves $, may lose audit trail), (b) drain upstream silently and record full usage, or (c) configurable per-key? Recommended: **(c) configurable, default (a)**.
 9. **Hard-stop on TPM enforcement** — break stream with error frame, or only post-stream warning? Recommended: **post-stream warning** by default; hard-stop opt-in (hard-stop semantics are jarring in practice).
 10. **Prompt registry storage** — durable layer in `AiStateStore` rows vs Git-backed text vs both? Recommended: **`AiStateStore` rows MVP**, expose `git push` adapter at GA for GitOps users.
@@ -919,4 +985,23 @@ See `ROADMAP.md` §5 for sequencing.
   - **ROADMAP §4.4 interface-first table** extended to 10 boundaries: `AiStateStore` (row 9, greenfield, Phase 2.1) and `AiProvider` (row 10, greenfield, Phase 2.1). Both follow the established separate-trait + plugin-loadable pattern of `Compressor` / `WafEngine`. Total trait-extraction effort grows from 9.5 to 10.5 person-weeks across the project.
   - **ROADMAP Phase 0.J** gains two env vars: `HIGHPER_AI_KEY_PEPPER` (0.5 day) and `HIGHPER_PLUGIN_DRAIN_SECS` (0.5 day).
   - **ROADMAP Phase 2.4** virtual-key task updated: HMAC + pepper instead of Argon2id; AiStateStore-backed instead of sled-MVP.
+- **2026-05-02 (decision #6 — tokenization posture, current):** topic-#6 fold-in.
+  - **§5 Tokenization & cost** rewritten with five sub-sections (5.1
+    posture / 5.2 library choice / 5.3 estimate-vs-truth /
+    5.4 reasoning-tokens / 5.5 cost source). Bake all vocabularies into
+    the binary (~30 MB at Phase 3 GA); lazy-fetch and hybrid both
+    dropped (fail air-gap deployments + first-request latency).
+  - **`tiktoken-rs` for OpenAI** + **`tokenizers` (HuggingFace) for
+    everything else** — different crates, each used for what they do
+    well, both mature with permissive licences.
+  - **Reasoning tokens default to output billing**, with per-virtual-key
+    `count_reasoning_in_output: bool` opt-out. Metrics still emit
+    reasoning-token counts unconditionally.
+  - **Cargo feature flags**: default ships all; `ai-tokenizers-minimal`
+    ships OpenAI-only.
+  - **§12 #6 and #7 marked DECIDED.**
+  - ROADMAP Phase 2.3 token-counter task expanded to 3 days
+    (OpenAI + Anthropic at MVP per UC16 #2); new 1-day "reasoning-token
+    billing rule" task added; Phase 3 vocabulary additions noted as
+    bundled with respective `AiProvider` impls.
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.

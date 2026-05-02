@@ -878,7 +878,9 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 - [ ] Model registry loader (`model_prices_and_context_window.json` from LiteLLM, vendored). **1 day.**
 - [ ] Router with priority-list fallback and rate-limit-aware skip. **3 days.**
-- [ ] Token counter (tiktoken cl100k+o200k bake-in). **2 days.**
+- [ ] **Token counter — bake-in posture (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.1 / §5.2):** `tiktoken-rs` crate for OpenAI `cl100k_base` + `o200k_base`; `tokenizers` (HuggingFace) crate for Anthropic BPE at MVP. Vocabularies baked into the binary; ~6 MB delta for these two providers. Default Cargo feature includes both. New `ai-tokenizers-minimal` Cargo feature ships only OpenAI's two for size-conscious builds. Implementation site: `src/gateway/ai/tokens.rs`. **3 days** (was 2 — adds Anthropic at MVP per UC16 #2). |
+- [ ] **Reasoning-token billing rule (UC16 #6, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §5.4):** virtual-key scope gains `count_reasoning_in_output: bool` (default `true`). Token counter records reasoning tokens (Anthropic `thinking`, OpenAI `reasoning_content`, DeepSeek `reasoning_content`) and the accounting layer respects the flag for budget / TPM decrement. Metrics emit `ai_output_tokens_total` with a `kind={prompt|completion|reasoning}` label regardless of billing inclusion. **1 day.**
+- [ ] **Phase 3 follow-on — additional provider tokenizers (added 2026-05-02):** when Bedrock + Gemini + the 9 more Phase 3 providers ship, their vocabularies join the bake set: Gemini SentencePiece (~4 MB), Llama-3 BPE (~9 MB), Cohere (~4 MB), DeepSeek + Qwen + others (~7 MB combined). Total binary growth at Phase 3 GA: ~30 MB. Tracked under Phase 3.1 ("9 more providers") rather than as separate work — vocabularies ship alongside their respective `AiProvider` impls.
 - [ ] Cost calculator (post-stream + on-cancel). **1 day.**
 - [ ] Per-(provider, region) HTTP/2 connection pool wired from `src/proxy/connection_pool.rs`. **2 days.**
 
@@ -1394,7 +1396,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     cookbook table rewritten.
   - §13 status snapshot: 2 new rows (UC16 decisions; storage gate closure).
   - Memory `uc16_scope.md` updated with the four decisions.
-- **2026-05-02 (ninth revision, current):** UC16 topic #5 fold-in (tenant
+- **2026-05-02 (ninth revision):** UC16 topic #5 fold-in (tenant
   model + key hashing) + plugin lifecycle clarifications + interface-first
   audit extended.
   - **UC16 design decision #5 (tenant + hash):** USECASE_16 §12 #4 marked
@@ -1419,6 +1421,31 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     `AiStateStore` instead of sled+Argon2id.
   - **§13 status snapshot** to be extended next iteration; this revision
     adds 4 changed lines and 1 new sub-section (§3.3.7) to USECASE_16.
+- **2026-05-02 (tenth revision, current):** UC16 topic #6 fold-in
+  (tokenization posture).
+  - **UC16 design decision #6 (tokenization):** USECASE_16 §12 #6 and
+    #7 marked DECIDED. Bake all tokenizer vocabularies (~30 MB binary
+    growth at Phase 3 GA); lazy-fetch and hybrid both dropped to support
+    air-gap / regulated deployments and avoid first-request latency.
+    Library split: `tiktoken-rs` for OpenAI `cl100k_base` + `o200k_base`;
+    HuggingFace `tokenizers` for Anthropic BPE at MVP, plus
+    Gemini SentencePiece / Llama-3 BPE / Cohere / DeepSeek / Qwen at
+    Phase 3.
+  - **Reasoning tokens** count as output by default (matches provider
+    pricing); per-virtual-key `count_reasoning_in_output: bool` opt-out
+    flag for operators absorbing reasoning costs as quality-of-service
+    investment. Metrics still emit reasoning-token counts unconditionally
+    with a `kind=reasoning` label.
+  - **Cargo feature flags:** default ships all baked vocabularies;
+    `ai-tokenizers-minimal` ships OpenAI-only (~4 MB) for size-conscious
+    builds; `ai-tokenizers-only=…` for custom subsets.
+  - **Phase 2.3 token-counter task** updated to ship OpenAI + Anthropic
+    at MVP (was OpenAI-only at 2 days; now 3 days). New 1-day task
+    "Reasoning-token billing rule" added. Phase 3 follow-on note for
+    the additional provider vocabularies (~24 MB delta) — bundled with
+    the respective `AiProvider` impls.
+  - **§13 status snapshot** gains 1 row recording decision #6.
+  - Memory `uc16_scope.md` updated with the tokenization rule.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1464,6 +1491,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #5 recorded 2026-05-02 (tenant + key hashing) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §7.1 / §12 #4 | flat keys+tags MVP; **HMAC-SHA-256 + `HIGHPER_AI_KEY_PEPPER` server pepper** replaces Argon2id (saves ~10 000× per-request validation cost); soft-disable revocation default |
 | Plugin hot-load capability matrix documented for AI providers | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.3.7 | reuses `src/plugin/hot_reload.rs` + `manager.rs:252` 30 s drain; built-in providers update via Phase 0 config reload; third-party WASM/FFI plugin code hot-loads from Phase 3 Beta |
 | §4.4 interface-first audit extended from 8 to 10 boundaries | ROADMAP §4.4 | rows 9 (`AiStateStore`) and 10 (`AiProvider`) added — both greenfield, both Phase 2.1; total trait-extraction effort 9.5 → 10.5 person-weeks |
+| UC16 design decision #6 recorded 2026-05-02 (tokenization posture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §5.1–§5.4 / §12 #6, #7 | bake all vocabularies (~30 MB binary at Phase 3 GA); `tiktoken-rs` for OpenAI + `tokenizers` (HuggingFace) for everything else; reasoning tokens count as output by default with per-virtual-key `count_reasoning_in_output: bool` opt-out; air-gap / regulated deployments fully supported |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
