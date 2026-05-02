@@ -1,0 +1,18 @@
+highper gateway 
+
+15 usecase scenario deployments:
+  - ✅ 01: Layer 4 TCP - Pure TCP Proxying
+  - ✅ 02: Layer 7 HTTP - HTTP/1.1 Load Balancing
+  - ✅ 03: HTTPS/TLS Termination (with ACME, mTLS, OCSP)
+  - ✅ 04: API Gateway with Rate Limiting (Token Bucket, Sliding Window)
+  - ✅ 05: HTTP/3 QUIC (using Cloudflare quiche)
+  - ✅ 06: WebSocket Load Balancer
+  - ✅ 07: gRPC Gateway (HTTP/2, streaming support)
+  - ✅ 08: Database Load Balancer (MySQL, PostgreSQL, Redis)
+  - ✅ 09: WAF + mTLS (4 WAF engines, client cert validation)
+  - ✅ 10: Hybrid Multi-Protocol
+  - ✅ 11: CDN Edge Caching (InMemory, Redis, MultiTier)
+  - ✅ 12: Microservices Discovery (Consul, etcd, circuit breaker)
+  - ✅ 13: GraphQL Gateway (schema stitching, federation)
+  - ✅ 14: Static + PHP-FPM (FastCGI protocol implementation)
+  - ✅ 15: Geographic Load Balancing (MaxMind, IP2Location)

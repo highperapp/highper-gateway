@@ -1,8 +1,40 @@
 # Highper Gateway - Known Limitations
 
-**Version:** 1.1.0
-**Last Updated:** January 24, 2026
+**Version:** 1.1.0 (superseded for release tracking)
+**Last Updated:** January 24, 2026 (revised 2026-05-02)
 **Repository:** https://github.com/highperapp/highper-gateway
+
+---
+
+> ## ⚠️ Reconciliation banner — 2026-05-02
+>
+> **This document's "only 1 remaining item" summary (line 42) is OUT OF DATE for release tracking.**
+>
+> The 2026-05-02 audit (`docs/AUDIT_2026-05-02.md`) and the consolidated roadmap
+> (`docs/planning/ROADMAP.md` §4.1) identify **14 release blockers** (B1–B14) that
+> must close before any v1.0 GA tag. They include:
+>
+> - **B1** UC10 Hybrid not wired (Runtime never starts TCP server)
+> - **B2** Admin API stubbed (~20 TODOs)
+> - **B3** OCSP request body never built; stapling never attached; ACME `needs_renewal()` always `false`
+> - **B4** Distributed rate-limiter fails open silently; `X-Forwarded-For` blindly trusted
+> - **B5** GraphQL depth/complexity not enforced; stitcher is acknowledged-stub
+> - **B6** PostgreSQL pool validation is `peek()` only — broken connections returned
+> - **B7** gRPC: fresh hyper client per request, no pooling
+> - **B8** HTTP/3: `unwrap()` in receive loop; backend response fully buffered; migration disabled
+> - **B9** 9 of 15 use cases never validated against real cloud backends
+> - **B10** No 7-day or 30-day soak data at the 1M+ connection target
+> - **B11** 8 `unbounded_channel()` sites without backpressure caps (OOM-under-abuse risk)
+> - **B12** Hardcoded body-size limits duplicated across 10+ files; no central env-driven config
+> - **B13** Optional `openidconnect` dep transitively pulls vulnerable `rsa` crate (RUSTSEC-2023-0071)
+> - **B14** Federation executor + HTTP/3 worker pool spawn tasks with no graceful drain
+>
+> **Authoritative source for current release status:** `docs/planning/ROADMAP.md`.
+> The "Fixed in v1.1.0" tables below remain accurate for the items they describe;
+> they do **not** describe everything blocking v1.0 GA.
+>
+> The list of items below is preserved as historical reference. **Do not** read this
+> document as the current limitation set.
 
 ---
 

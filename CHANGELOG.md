@@ -5,9 +5,29 @@ All notable changes to Highper Gateway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+> **Reconciliation note (2026-05-02).** The `[1.0.0] - 2026-01-10` entry below described
+> the codebase as "Complete Production Release". The 2026-05-02 audit
+> (`docs/AUDIT_2026-05-02.md`) and consolidated roadmap (`docs/planning/ROADMAP.md` §4.1)
+> identify **14 release blockers** (B1–B14) that must close before any v1.0 GA tag.
+> The historical `[1.0.0]` entry below is **retained as authored** for changelog
+> integrity but should be read as **v1.0-rc**, not GA. The next GA tag will land
+> after Phase 0 of the roadmap completes.
 
-### Planned
+## [Unreleased] — v1.0-rc trajectory
+
+### Tracking
+
+All in-flight work is tracked in [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md). Highlights:
+
+- Phase 0 — close 14 release blockers B1–B14.
+- Phase 1 — cloud-validation matrix, 7-/30-day soak, SBOM (Trivy + syft+Grype),
+  DAST (Dastardly + OWASP ZAP), OTLP, Vault/Secrets integration.
+- Phase 2 — UC16 AI/LLM Gateway MVP (conditional on owner-finalized design;
+  see `docs/planning/USECASE_16_AI_LLM_GATEWAY.md`).
+- Phases 3 & 4 — UC16 Beta/GA + competitor-feature catch-up + ecosystem
+  (xDS, K8s operator, kTLS, post-quantum TLS).
+
+### Planned (legacy entries, retained for reference)
 - Static service discovery implementation
 - Directory listing for static file server
 - Complete OAuth2 implementation (PKCE, token refresh, revocation)
@@ -17,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-01-10
+## [1.0.0] - 2026-01-10 *(re-classified as v1.0-rc on 2026-05-02 — see banner above)*
 
 ### Added
 - **Complete Production Release:** All 15 use case scenarios fully implemented and production-ready

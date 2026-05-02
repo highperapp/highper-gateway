@@ -1,5 +1,11 @@
 # Highper Gateway - Comprehensive .gitignore
-# Last Updated: 2026-01-10
+# Last Updated: 2026-05-02
+
+# ============================================
+# PRIVATE / LOCAL-ONLY NOTES
+# ============================================
+# Running session notes — kept local only, not for public repo
+docs/reverse-proxy-quick-progress-notes.txt
 
 # ============================================
 # BUILD ARTIFACTS

@@ -2,6 +2,12 @@
 
 A high-performance reverse proxy and API gateway written in Rust, designed for extreme throughput and low latency.
 
+> **Release status (2026-05-02):** v1.0 has not been GA-tagged. The codebase is **v1.0-rc**;
+> 14 release blockers (B1–B14) are tracked in [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md)
+> §4.1 and must close before any v1.0 announcement. Earlier statements implying
+> production-ready / v1.0 status in this README and `CHANGELOG.md` predate that audit
+> and are being reconciled.
+
 ## Performance
 
 - **200,000+ RPS** on a single node (DigitalOcean Premium AMD, 4 vCPU)

@@ -1,0 +1,60 @@
+Mapping your 16 use cases into structured cluster personas allows users to select the right architecture based on their specific technical requirements.
+## Cluster Persona Definitions
+
+* Type A: The Edge (Independent): Focuses on raw throughput and protocol handling. No shared state is required for core operations.
+* Type B: The Coordinator (Stateless+Valkey): Required for features that need a "global memory" (e.g., global rate limits, shared caches) across all nodes.
+* Type C: The Trusted (Raft/Consensus): Required for sensitive configuration state where every node must be in 100% agreement (e.g., SSL certificates, service discovery). [1, 2, 3, 4, 5] 
+
+## Architectural Matrix: Use Case Mapping
+
+| # [1, 4, 6, 7, 8, 9, 10, 11, 12, 13] | Use Case | Cluster Type | HA Logic | Single Node | Active / Standby | Distributed HA | K8s / VM / Bare Metal |
+|---|---|---|---|---|---|---|---|
+| 01 | L4 TCP Proxy | Type A | VRRP / Anycast | ✅ | VIP Failover | Anycast / LB | All |
+| 02 | L7 HTTP/1.1 | Type A | Round Robin | ✅ | VIP Failover | Active-Active | All |
+| 03 | HTTPS (ACME/mTLS) | Type C | Raft Storage | ✅* | Shared Disk | Raft Cluster | K8s/VM |
+| 04 | Rate Limiting | Type B | Global Counter | ✅ | Local Sync | Valkey Cluster | All |
+| 05 | HTTP/3 QUIC | Type A | Anycast / UDP | ✅ | VIP Failover | UDP Steering | Bare Metal |
+| 06 | WebSockets | Type B | Session Stickiness | ✅ | Sticky VIP | Valkey Backend | All |
+| 07 | gRPC Gateway | Type B | L7 Steering | ✅ | Health Checks | Envoy/Valkey | K8s/VM |
+| 08 | DB Load Balancer | Type A | Peer Sync | ✅ | Keepalived | Stick Tables | VM/BM |
+| 09 | WAF + mTLS | Type A | Policy Engine | ✅ | Local Sync | Node-local | Bare Metal |
+| 10 | Hybrid Multi-Protocol | Type A+B | Dual Stack | ✅ | Multi-VIP | Multi-Tier | All |
+| 11 | CDN Edge Cache | Type B | Cache Purge Bus | ✅ | N/A | Valkey Sync | BM (Performance) |
+| 12 | Microservices Disc. | Type C | Quorum | ✅* | Consensus | etcd/Consul | K8s/VM |
+| 13 | GraphQL Gateway | Type B | Schema Sync | ✅ | Push Sync | Valkey Metadata | K8s/VM |
+| 14 | Static + PHP-FPM | Type A | Process Manager | ✅ | File Sync | Shared FS | VM/BM |
+| 15 | Geo Load Balancer | Type A | IP Databases | ✅ | Local DB | GeoDNS/Anycast | All |
+| 16 | AI/LLM Gateway | Type B | Token Quota | ✅ | Async Sync | Valkey Cluster | K8s/BM (GPU) |
+
+*Note: Single-node Raft or Valkey works but offers 0% fault tolerance. [5] 
+## Deployment Insights
+
+* Kubernetes: Native support for Active-Active and Type B/C through StatefulSets and operators.
+* Virtual Machines: Ideal for Active/Standby using Keepalived for a Virtual IP (VIP). Scaling is slower than K8s but more predictable.
+* Bare Metal: Recommended for Type A (L4/L7 throughput) and AI/LLM Gateways (GPU access), offering up to 2x efficiency over virtualised environments. [14, 15, 16] 
+
+## Decision Hierarchy
+If a user combines multiple use cases:
+
+   1. Rule of Thumb: The most restrictive HA logic wins. If you need Type C for certificates (03) but only Type A for TCP (01), the whole cluster must support Type C architecture.
+   2. Resource Isolation: For "Mixed Mode," use Valkey Sharding to isolate high-frequency rate-limiting traffic (04) from critical AI token quotas (16) to avoid race conditions and latency spikes. [17] 
+
+Should we proceed with configuration blueprints for a specific deployment mode, such as Distributed HA on Kubernetes?
+
+[1] [https://kubernetes.io](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/)
+[2] [https://medium.com](https://medium.com/@pawanchoudhary276437/layer-4-load-balancers-a-complete-deep-dive-guide-03fa1053f4c9)
+[3] [https://cloud.google.com](https://cloud.google.com/discover/what-is-valkey#:~:text=Valkey%20is%20an%20in%2Dmemory%20key%2Dvalue%20datastore%20which,RAM%20for%20fast%20read%20and%20write%20speeds.)
+[4] [https://valkey.io](https://valkey.io/topics/introduction/)
+[5] [https://www.youtube.com](https://www.youtube.com/watch?v=NNKrl0XfKgA&t=7)
+[6] [https://medium.com](https://medium.com/@daveandrewnathaniel48/master-kubernetes-step-by-step-guide-to-setting-up-your-own-fully-functional-kubernetes-07980cc66298)
+[7] [https://www.haproxy.com](https://www.haproxy.com/blog/layer-4-and-layer-7-proxy-mode)
+[8] https://caddyserver.com
+[9] [https://www.tara.sh](https://www.tara.sh/posts/2025/2025-08-29_kubernetes_baremetal_vm/)
+[10] [https://www.gonuclei.com](https://www.gonuclei.com/blog/grpc-load-balancing-and-ingress-gateway)
+[11] [https://www.reddit.com](https://www.reddit.com/r/homelab/comments/1rpwoqk/architecture_diagram_bare_metal_ha_kubernetes/)
+[12] [https://www.haproxy.com](https://www.haproxy.com/products/haproxy-edge)
+[13] [https://dev.to](https://dev.to/freakynit/network-security-cdn-technologies-and-performance-optimization-cf6)
+[14] [https://thenewstack.io](https://thenewstack.io/does-kubernetes-really-perform-better-on-bare-metal-vs-vms/)
+[15] [https://docs.cloud.google.com](https://docs.cloud.google.com/kubernetes-engine/distributed-cloud/bare-metal/docs/troubleshooting/known-issues)
+[16] [https://www.net2secure.com](https://www.net2secure.com/kb/understanding-kubernetes-pricing-bare-metal-vs-virtual-machines)
+[17] [https://valkey.io](https://valkey.io/topics/cluster-spec/)
