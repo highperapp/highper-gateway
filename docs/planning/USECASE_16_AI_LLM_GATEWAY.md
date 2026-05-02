@@ -192,7 +192,9 @@ Client (SSE complete)
 | `src/gateway/ai/accounting.rs` | NEW | Cost calc, spend rollups |
 | `src/gateway/ai/keys.rs` | NEW | Virtual-key store (Postgres or sled), scopes, hashing |
 | `src/gateway/ai/cache_exact.rs` | NEW | Wraps `cache::manager` with canonical key |
-| `src/gateway/ai/cache_semantic.rs` | NEW | Embed + ANN, threshold-gated; embedding model via configured AiProvider |
+| `src/gateway/ai/cache_semantic.rs` | NEW | Engine layer — embed + ANN search, threshold-gated; embedding model via configured AiProvider; vector backend via `VectorIndex` trait |
+| `src/gateway/ai/vector_index/mod.rs` | NEW | `VectorIndex` trait — the stable plugin ABI for vector backends (see §6.2 + ROADMAP §4.4 row 11) |
+| `src/gateway/ai/vector_index/{qdrant,redis_stack,pgvector,hnsw}.rs` | NEW | Built-in `VectorIndex` impls behind Cargo features (`ai-vector-qdrant`, `ai-vector-redis-stack`, `ai-vector-pgvector`, `ai-vector-hnsw`) |
 | `src/gateway/ai/sse.rs` | NEW | SSE-aware chunker; per-chunk callback |
 | `src/gateway/ai/prompts.rs` | NEW | Versioned prompt registry |
 | `src/gateway/ai/mcp.rs` | NEW | MCP server passthrough |
@@ -631,39 +633,126 @@ For every (provider, model) row, the registry tracks:
 
 ---
 
-## 6. Caching
+## 6. Caching (UC16 design decision #8, 2026-05-02)
 
-### 6.1 Exact cache
+### 6.0 Engine-plus-pluggable posture
+
+**Decision recorded.** Highper-gateway ships the **cache engine** built-in:
+canonical request hashing, lookup / write-back orchestration, TTL handling,
+admin invalidation API (tag + pattern + per-tenant), streaming-replay logic,
+and metrics emission. Backend storage and the embedding model used for
+semantic cache are **operator's choice**, configured per deployment via
+pluggable traits. Highper does not bundle a cache backend or embedding model
+as a product feature.
+
+This is the same architectural pattern as `AiProvider` (engine in highper;
+providers as plugins) and `AiStateStore` (engine in highper; backends as
+trait impls). Strategically, it differentiates highper from cache-as-a-product
+peers (Portkey / Helicone / Cloudflare AI Gateway) and matches the
+configure-don't-code operator effort of LiteLLM while removing backend
+lock-in.
+
+**Three layers operators can wire independently:**
+
+| Layer | What it provides | Where it lives |
+|---|---|---|
+| **Engine** | Canonical request hashing; lookup + write-back orchestration; TTL; tag-based + pattern invalidation; streaming replay; metrics; per-tenant key-space isolation | Built-in (`src/gateway/ai/cache_exact.rs`, `cache_semantic.rs`); ships with the binary |
+| **KV backend** | Where exact-cache entries are stored | Existing `src/cache/` trait — InMemory / Disk / Redis-protocol (works against Valkey) / MultiTier / Tiered. Operator picks via DSL `cache.backend` field. |
+| **Vector backend** (semantic cache only) | Where embeddings + responses are indexed | New `VectorIndex` trait (§3.2 + ROADMAP §4.4 row 11). Operator picks via DSL `semantic_cache.backend` field. |
+| **Embedding model** (semantic cache only) | Which provider embeds the request | Operator's `AiProvider` registry choice — same registry as outbound calls. No bundled embedding model. |
+
+### 6.1 Exact cache (MVP)
 
 Key = `sha256(canonical_json({model, messages, tools, tool_choice, temperature, top_p, max_tokens, stop, response_format, seed}))`.
 
-Canonical JSON = serde with `preserve_order` + sorted keys + no float reformat (preserve original byte representation). This is required for **provider prompt-cache compatibility** (Anthropic/OpenAI/Bedrock will only cache if request bytes are stable across calls).
+Canonical JSON = serde with `preserve_order` + sorted keys + no float reformat (preserve original byte representation). This is required for **provider prompt-cache compatibility** (Anthropic/OpenAI/Bedrock will only cache if request bytes are stable across calls; see §6.3).
 
-Backend: existing `cache::manager` (memory + Redis + disk).
+Backend: existing `src/cache/` trait — operator picks via DSL `cache.backend = "valkey" | "redis" | "memory" | "disk" | "multi-tier"`. Default for Type B deployments: the cluster's Type B Valkey (already configured at the cluster level, no separate cache-backend setup needed).
 
-TTL: per-route default 1h; clients can override via `x-cache-ttl` header.
+TTL: per-route default 1 h; per-request override via `x-cache-ttl` header.
 
-`x-cache: HIT|MISS|BYPASS|SEMANTIC` response header.
+Response header: `x-cache: HIT | MISS | BYPASS | SEMANTIC`.
+
+**Streaming behaviour:** cache stores complete responses (after `[DONE]`), replayed as SSE on hit so client sees stream regardless of cache state.
+
+**Tenant isolation:** key prefixed with virtual-key tenant + (optional) per-route namespace. No cross-tenant lookups possible.
+
+**Admin invalidation API:**
+
+```
+POST /admin/ai/cache/invalidate
+  body: { "tag": "model_alias=smart" }      # tag-based
+  body: { "pattern": "tenant:abc:*" }       # pattern-based
+  body: { "tenant_id": "xyz" }              # per-tenant flush
+```
 
 ### 6.2 Semantic cache (Beta)
 
-1. On cache miss, embed the **last user message** (or a configured slice) using a **configured embedding provider** — chosen by the operator via the same `AiProvider` registry that handles outbound calls (§3.3). Highper ships **no bundled embedding model**; operators point at OpenAI's `text-embedding-3-small`, Bedrock Titan, a local Sentence-Transformers service, or anything else they prefer.
-2. ANN search against per-tenant index; threshold default 0.92 cosine.
-3. On hit above threshold: return the cached response as-if-fresh; record cache_type=semantic.
-4. On miss or below threshold: forward to provider, then on completion store `(embedding, response)` in index.
+1. On exact-cache miss, embed the **last user message** (or a configured slice) using a **configured embedding provider** — chosen by the operator via the same `AiProvider` registry that handles outbound calls (§3.3). Highper ships **no bundled embedding model**; operators point at OpenAI's `text-embedding-3-small`, Bedrock Titan, a local Sentence-Transformers service via custom plugin, or anything else they prefer.
+2. ANN search against per-tenant index in the configured `VectorIndex` impl; threshold default 0.92 cosine; per-tenant override.
+3. On hit above threshold: return the cached response as-if-fresh; emit `x-cache: SEMANTIC` (visibly different from exact `HIT` so clients can detect).
+4. On miss or below threshold: forward to provider, then on completion store `(embedding, response, request_metadata)` in the vector index.
 
-Vector index backend (Section 12 question — operator chooses, highper does not bundle):
+**Vector index backend (operator chooses; highper ships impls behind Cargo features):**
 
-- **Qdrant** — separate process; common operator choice
-- **Redis-Stack** (Vector Set + RedisJSON) — co-located with Type B Valkey if already deployed
-- **PgVector** — operator already running PostgreSQL
-- **In-process HNSW** (`hnsw_rs`) — single-node only; for dev / small-scale
+| Backend | Cargo feature | Best for |
+|---|---|---|
+| **Qdrant** | `ai-vector-qdrant` | Most common; separate process; HA via Qdrant cluster |
+| **Redis-Stack** (Vector Set + RedisJSON) | `ai-vector-redis-stack` | Co-located with Type B Valkey if operator chose Redis-Stack as their Type B backend |
+| **PgVector** | `ai-vector-pgvector` | Operator already running PostgreSQL |
+| **In-process HNSW** (`hnsw_rs`) | `ai-vector-hnsw` | Single-node only; dev / small-scale |
 
-Highper exposes a `VectorIndex` trait so any of the above can plug in; the choice is per-deployment configuration, not a built-in product feature.
+**`VectorIndex` trait** lives at `src/gateway/ai/vector_index/mod.rs` (added 2026-05-02 per UC16 #8; tracked as row 11 in ROADMAP §4.4 interface-first audit). Surface: `search(query, topk) → Vec<Match>`, `upsert(id, embedding, payload)`, `delete(id)`, `delete_by_tag(tag)`. Same separate-trait + plugin-loadable pattern as `AiProvider` and `AiStateStore`.
+
+**Tenant isolation:** per-tenant index (no cross-tenant lookups); enforced at trait layer.
 
 ### 6.3 Provider prompt-cache passthrough
 
 When forwarding to providers that support native prompt caching (Anthropic `cache_control`, OpenAI `prompt_cache_key` / fixed-prefix automatic, Bedrock prompt caching), preserve the user-supplied `cache_control` markers verbatim. Do NOT re-serialize JSON in a way that changes byte order; do NOT touch float formatting.
+
+**Operator-facing metrics** for the provider's prompt cache:
+
+- `ai_input_tokens_total{kind=prompt_cached}` — input tokens served from the *provider's* cache (cheaper)
+- `ai_input_tokens_total{kind=prompt_uncached}` — full-priced input tokens
+- `ai_provider_cache_savings_usd_total{provider}` — running total of savings from the provider's prompt cache, computed against §5.5 pricing rows for cached vs uncached input
+
+Highper-side cache and provider-side prompt cache compose: highper's exact-cache (§6.1) checks first; on miss, the provider's own prompt cache may still serve at lower input price. Both layers tracked independently in metrics.
+
+### 6.4 What's NOT in scope for cache (added 2026-05-02 — per UC16 #1 scope fence + #8 confirmation)
+
+Mirroring §8 (guardrails), this section pins down the boundary so future
+contributors don't accidentally bundle a cache backend or embedding model
+as a product feature.
+
+| Concern | Why out of scope | Where it lives instead |
+|---|---|---|
+| **A bundled cache backend product** ("highper Cache Cloud", vendored Redis-as-a-feature) | Operators run their own KV / vector backend; highper ships no SaaS cache layer | Operator's choice — Valkey / Redis / Qdrant / etc. |
+| **A bundled embedding model** (sentence-transformers binary, OpenAI API client as a built-in dep) | Embedding-model choice is workload-specific (latency / cost / quality / data-residency); operator picks via the `AiProvider` registry | `AiProvider` registry — operator registers an embedding provider |
+| **A SaaS cache dashboard** (UI for cache hit-rate visualisation, à la Portkey / Helicone) | Dashboard is a separate product layer; operators bring Grafana / Langfuse / Helicone-OSS / etc. | External — highper exposes Prometheus + OTLP per §9 |
+| **Cache-policy automation** (auto-tune TTL based on observed hit rate, ML-based eviction) | Out-of-scope research direction; operators with that need build it on top of the metrics surface | External — operator's analytics / ML layer reads `ai_cache_*` metrics |
+| **Cache-warming as a product** (pre-load cache from training data) | Operator-side concern; highper exposes admin-API write endpoints if operators want to script cache-warming | External — operator scripts via admin API |
+| **A managed vector database service** | Operators run Qdrant / Redis-Stack / PgVector themselves | Operator's choice |
+| **Built-in PII redaction in cached prompts** | Out per UC16 §8 (guardrails are external); operator wires PII redaction via the §3.1 plugin hooks **before** the cache layer; redacted prompt becomes the cache key | Operator-side guardrail plugin |
+
+**Why this boundary matters:**
+- Keeps highper-gateway as a *thin orchestration layer* — same operator effort as LiteLLM, none of the backend lock-in of Portkey / Helicone / Cloudflare.
+- Lets operators evolve their cache stack independently of highper releases (swap Valkey → Dragonfly, add a new vector backend) by implementing the existing traits.
+- Makes the comparison story crisp: highper ships *the engine*, the operator owns *the backend*.
+
+### 6.5 Operator effort summary (added 2026-05-02)
+
+For an operator deploying highper-gateway with **Valkey** as exact-cache
+backend and **Qdrant** as semantic-cache backend:
+
+| Effort | Magnitude |
+|---|---|
+| Rust code | **0 lines** |
+| Env vars | ~10–15 (cluster type + Valkey addrs / auth + AiStateStore + AI key pepper + provider API keys) |
+| DSL config | ~30 lines exact-only; ~50 lines including semantic |
+| Operations | Stand up Valkey cluster (already part of Type 2 cluster requirement); stand up Qdrant if semantic enabled; stand up `AiStateStore` (ReDB single-node or ScyllaDB multi-node) |
+| Admin operations (ad hoc) | HTTP calls to `/admin/ai/cache/invalidate`, `/admin/ai/keys`, etc. |
+
+No code is written by the operator for cache integration. Valkey works against the existing `src/cache/backends.rs:182-326` Redis client (Valkey is wire-compatible with the Redis protocol; verified 2026-05-02). Qdrant requires the `ai-vector-qdrant` Cargo feature at build time but no runtime code.
 
 ---
 
@@ -994,7 +1083,7 @@ and reference the design-decision number.
      Industry-standard approach (AWS, Stripe, OpenAI, Vault). §7.1.3 above.
    - **Revocation:** soft-disable (`enabled = false`) by default;
      hard-delete is a separate scoped admin action.
-5. **Vector index backend** for semantic cache — Qdrant / Redis-Stack / PgVector / in-process HNSW? Recommended: **Redis-Stack** (already a likely dep for distributed rate-limit / Type B Valkey) for MVP; pluggable `VectorIndex` trait so Qdrant can be added later. The embedding **model** itself is operator's choice via the AiProvider registry (§6.2).
+5. **DECIDED (UC16 #8, 2026-05-02)** — Cache architecture: **engine-plus-pluggable**. Highper ships the cache *engine* (canonical hashing, lookup/write-back orchestration, TTL, tag-based invalidation, streaming replay, metrics). Backends are operator's choice via traits: existing `src/cache/` for KV (Valkey / Redis / disk / in-memory / multi-tier); new `VectorIndex` trait (row 11 of §4.4 audit) for semantic-cache vector backend (Qdrant / Redis-Stack / PgVector / HNSW behind Cargo features). Embedding model is operator's choice via `AiProvider` registry (§6.2). §6.4 codifies what's NOT in scope (no bundled backends, no SaaS dashboard, no cache-policy automation). Mirrors §8 boundary table for guardrails.
 6. **DECIDED (UC16 #6, 2026-05-02)** — Token-counter posture: **bake all vocabularies into the binary**. Lazy-fetch and hybrid both dropped. Default Cargo feature ships all (~30 MB binary growth); `ai-tokenizers-minimal` ships only OpenAI's two for size-conscious builds. Library choice: **`tiktoken-rs` for OpenAI** (faster, narrower) + **`tokenizers` (HuggingFace) for everything else** (Anthropic, Gemini SentencePiece, Llama BPE, Cohere, DeepSeek). §5.1 + §5.2 above.
 7. **DECIDED (UC16 #6, 2026-05-02)** — Reasoning-token billing default: **count as output**, matches provider pricing. Per-virtual-key opt-out via `count_reasoning_in_output: bool` scope flag. Metrics still emit reasoning-token counts with a `kind=reasoning` label regardless of billing inclusion. §5.4 above.
 8. **Cancellation semantics** — on client SSE close, do we (a) cancel upstream immediately (saves $, may lose audit trail), (b) drain upstream silently and record full usage, or (c) configurable per-key? Recommended: **(c) configurable, default (a)**.
@@ -1159,4 +1248,32 @@ See `ROADMAP.md` §5 for sequencing.
     pre-/post-call guardrail items (per UC16 #1), deferred Anthropic-shape
     inbound (now Phase 2.1 MVP per UC16 #2), updated prompt-registry
     storage to `AiStateStore`.
+- **2026-05-02 (decision #8 — cache architecture, current):** topic-#8 fold-in.
+  - **§6 fully rewritten** with six sub-sections: 6.0 engine-plus-pluggable
+    posture / 6.1 exact cache (MVP) / 6.2 semantic cache (Beta) with
+    `VectorIndex` trait / 6.3 provider prompt-cache passthrough /
+    **6.4 explicit boundary table — what's NOT in scope for cache**
+    (mirrors §8 guardrails section) / 6.5 operator effort summary.
+  - **Engine-plus-pluggable posture recorded:** highper ships the cache
+    *engine* (canonical hashing, lookup / write-back, TTL, tag invalidation,
+    streaming replay, metrics, per-tenant isolation); KV backend via
+    existing `src/cache/` trait, vector backend via new `VectorIndex`
+    trait, embedding model via `AiProvider` registry — all operator-chosen.
+    Same architectural pattern as `AiProvider` plugins and `AiStateStore`.
+    Strategically: same configure-don't-code operator effort as LiteLLM,
+    none of the backend lock-in of Portkey / Helicone / Cloudflare AI
+    Gateway.
+  - **§3.2 module map** gains: `provider.rs`,
+    `vector_index/{mod,qdrant,redis_stack,pgvector,hnsw}.rs`.
+  - **§12 #5 marked DECIDED.**
+  - **§6.4 boundary table** (new) explicitly fences six concerns out of
+    scope: bundled cache backend product, bundled embedding model,
+    SaaS cache dashboard, cache-policy automation, cache-warming as
+    product, managed vector DB. Operator integrates externally.
+  - **§6.5 operator effort summary** added: ~0 lines Rust code, ~10–15
+    env vars, ~30–50 lines DSL for a deployment with Valkey + Qdrant.
+  - ROADMAP §4.4 audit table extended to 11 boundaries (`VectorIndex`
+    row 11). Phase 0.J gains 4 cache + vector env vars. Phase 2.4
+    gains 3 exact-cache tasks. Phase 3.1 gains `VectorIndex` trait +
+    Qdrant impl + semantic-cache engine + 3 more `VectorIndex` impls.
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.

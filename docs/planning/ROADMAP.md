@@ -466,8 +466,8 @@ the cancel token).
 The interface-first architecture audit identified **5 capabilities already
 trait-driven** (Cache, Service Discovery, WAF, Plugin, Compression),
 **8 retrofit boundaries** (rows 1–8 below — concrete or weakly-bounded
-today; refactored during Phases 0–4), and **2 greenfield UC16 traits**
-(rows 9–10 — built from scratch in Phase 2.1). Total: 10 trait
+today; refactored during Phases 0–4), and **3 greenfield UC16 traits**
+(rows 9–11 — built from scratch in Phase 2.1 / 2.4). Total: 11 trait
 extractions in flight. Effort estimates assume one engineer with full context.
 
 | # | Boundary | Current shape | Impact | Refactor effort | Phase placement |
@@ -482,12 +482,12 @@ extractions in flight. Effort estimates assume one engineer with full context.
 | 8 | `ConfigSource` | YAML / JSON / TOML / DSL all hardcoded loaders (`src/config/loader.rs`) | GitOps and xDS (Phase 4) want a unified `ConfigSource` | 1 wk | **4.2** (lowest priority; current loader works) |
 | 9 | **`AiStateStore` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Operator selects backend per deployment via `HIGHPER_AI_STATE_BACKEND={redb\|rocksdb\|scylladb}`; trait must be in place from day-one of UC16 work or each impl forks | 1 wk trait + impls (folded into the 5-day Phase 2.1 task) | **2.1** (UC16 design decision #4) |
 | 10 | **`AiProvider` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Built-in providers (OpenAI, Anthropic) register statically; third-party `.so` / `.wasm` plugin loading opens Phase 3 once trait shape soaks (UC16 design decision #3); same evolution path as `Compressor` | 4 days (folded into Phase 2.1 AiProvider task) | **2.1** (UC16 design decision #3) |
+| 11 | **`VectorIndex` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Operator selects vector backend per deployment (`ai-vector-qdrant` / `ai-vector-redis-stack` / `ai-vector-pgvector` / `ai-vector-hnsw` Cargo features). Surface: `search` / `upsert` / `delete` / `delete_by_tag`. Same separate-trait pattern as `AiProvider` and `AiStateStore`. UC16 design decision #8. | 1 wk trait + Qdrant impl (folded into Phase 2.4 semantic-cache task); other 3 impls in Phase 3.1 (1 day each) | **2.4** trait + Qdrant; **3.1** for Redis-Stack / PgVector / HNSW |
 
-**Total effort to reach interface-first:** ~10.5 person-weeks across all 10
+**Total effort to reach interface-first:** ~11 person-weeks across all 11
 boundaries, distributed across phases so no single phase pays the full cost.
-Rows 9 and 10 land in Phase 2.1 alongside other UC16 MVP work, so they're
-greenfield rather than retrofit — cheaper per row but they must ship
-together with the UC16 module skeleton.
+Rows 9–11 are greenfield with UC16 work — cheaper per row than retrofits
+but they must ship with the UC16 module skeleton.
 
 **`AiProvider` and `AiStateStore` traits both follow the established
 separate-trait-plus-registry pattern** of `Compressor`
@@ -718,6 +718,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **UC16 virtual-key pepper env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3):** add `HIGHPER_AI_KEY_PEPPER` to the `Settings::ai` sub-struct. 32-byte secret loaded as raw bytes (or hex-decoded) from env var or via the secrets-manager resolver (`HIGHPER_SECRETS_PROVIDER` from Phase 1.4). Used as the HMAC-SHA-256 key for virtual-key hashing. **Refuse to start** when UC16 features are enabled and pepper is empty unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true`. Documented in `docs/CONFIG_ENV.md`; rotation guidance in `docs/SECURITY_CLUSTER_BASELINE.md`. **0.5 day.**
 - [ ] **Plugin drain-window env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.3.7):** move the hardcoded 30 s timeout in `src/plugin/manager.rs:252 wait_for_plugin_idle()` to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 rule. Default 30 s. Validates ≥ 5 s. **0.5 day.**
 - [ ] **UC16 pricing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §5.5):** five env vars on the `Settings::ai.pricing` sub-struct: `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream, operator can self-host), `HIGHPER_AI_PRICING_FEED_SIGN_KEY` (Ed25519 public key path or sigstore ref; refresh refuses unsigned feed when set), `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default 604 800 = 7 days; minimum 3600), `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` (`last_known_good` default / `fail_closed` opt-in), `HIGHPER_AI_ALLOW_FREE_TIER` (default `false`; required `true` to allow requests for models with no pricing entry). Documented in `docs/CONFIG_ENV.md`. **0.5 day.**
+- [ ] **UC16 cache + vector backend env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §6.0):** `HIGHPER_AI_CACHE_BACKEND` (default `valkey` → uses cluster Type B Valkey; alternatives: `redis` / `memory` / `disk` / `multi-tier` — same set as existing `src/cache/` trait); `HIGHPER_AI_VECTOR_BACKEND` (default `none`; one of `qdrant` / `redis-stack` / `pgvector` / `hnsw` — only required when semantic cache is enabled); `HIGHPER_AI_VECTOR_ADDRS` (host:port comma-list for non-`hnsw` backends); `HIGHPER_AI_VECTOR_AUTH` (auth token / file path / secrets-resolver ref). Refuse-to-start when an `ai_route` block enables `semantic_cache` and the vector backend / addrs are not set. **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -892,9 +893,11 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 #### 2.4 Auth + budgets + cache (week 4)
 
 - [ ] Virtual-key store on the configured `AiStateStore` (UC16 #4) + `sk-hpgw-…` issuance + **HMAC-SHA-256 hash with `HIGHPER_AI_KEY_PEPPER` server pepper** (UC16 #5; replaces the original Argon2id approach — see `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3 for rationale). Constant-time compare. Soft-disable revocation (`enabled=false`) by default; hard-delete is a separate scoped admin action. **3 days.**
-- [ ] Per-key budget enforcement (day/month) backed by Redis counters + sled durable rollup. **3 days.**
+- [ ] Per-key budget enforcement (day/month) backed by **Type B Valkey counters + `AiStateStore` durable rollup** (was "Redis counters + sled"; updated 2026-05-02 per UC16 #4). **3 days.**
 - [ ] RPM + TPM (token-denominated) buckets — extends `src/gateway/ratelimit/token_bucket.rs` to support dynamic-cost consumption. **3 days.**
-- [ ] Exact cache (canonical-JSON key) layered over `src/cache/manager.rs`. **2 days.**
+- [ ] **Exact cache engine (UC16 #8, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §6.0–§6.1):** module at `src/gateway/ai/cache_exact.rs` with canonical-JSON key (sorted, no float reformat, byte-stable for §6.3 provider prompt-cache compatibility), TTL handling, streaming replay, per-tenant key-space isolation. Backed by the existing `src/cache/` trait — operator picks KV backend (Valkey via existing Redis client / disk / memory / multi-tier) via DSL `cache.backend`. Admin invalidation API: `POST /admin/ai/cache/invalidate` (tag / pattern / per-tenant). **2 days.**
+- [ ] **`x-cache` response header + `x-cache-ttl` request header (UC16 #8):** wire response header `HIT | MISS | BYPASS | SEMANTIC` and per-request TTL override. **0.5 day.**
+- [ ] **Admin cache-invalidation endpoint (UC16 #8):** `POST /admin/ai/cache/invalidate` with `{tag}` / `{pattern}` / `{tenant_id}` body shapes. Audit event per call into `AiStateStore` audit log. **1 day.**
 
 #### 2.5 Streaming + admin + tests (week 5)
 
@@ -920,7 +923,9 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 3.1 UC16 Beta features
 
-- [ ] Semantic cache (Redis-Stack vector or HNSW; pluggable). **5 days.**
+- [ ] **`VectorIndex` trait + Qdrant impl (UC16 #8, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §6.2 + ROADMAP §4.4 row 11):** define trait at `src/gateway/ai/vector_index/mod.rs` (`search` / `upsert` / `delete` / `delete_by_tag`); ship default Qdrant impl behind `ai-vector-qdrant` Cargo feature at `src/gateway/ai/vector_index/qdrant.rs`. Same separate-trait pattern as `AiProvider` and `AiStateStore`. **4 days.**
+- [ ] **Semantic cache engine (UC16 #8):** module at `src/gateway/ai/cache_semantic.rs` — embed last user message via configured `AiProvider` embedding model; ANN search via `VectorIndex` trait; threshold default 0.92 cosine (per-tenant override); per-tenant index isolation; emits `x-cache: SEMANTIC` on hit. **3 days.**
+- [ ] **Additional `VectorIndex` impls (UC16 #8):** `src/gateway/ai/vector_index/{redis_stack,pgvector,hnsw}.rs` behind Cargo features `ai-vector-redis-stack` / `ai-vector-pgvector` / `ai-vector-hnsw`. **3 days total** (1 day each).
 - [ ] Provider prompt-caching passthrough with byte-stable serializer + CI byte-stability test. **3 days.**
 - [k] ~~Pre-call guardrails: PII regex set, OpenAI moderation, Bedrock Guardrails, Llama-Guard via configured upstream.~~ **Killed 2026-05-02 per UC16 #1 scope fence — guardrails are operator-side services wired via `src/plugin/` hooks; highper does not ship guardrail logic. See `USECASE_16_AI_LLM_GATEWAY.md` §8.**
 - [k] ~~Post-call guardrails (streaming): output PII redact, JSON-schema validate, regex deny.~~ **Killed 2026-05-02 per UC16 #1 scope fence — same as above. JSON-schema validation for non-AI traffic still ships as competitor parity item N4 (Phase 4.1).**
@@ -1452,7 +1457,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     the respective `AiProvider` impls.
   - **§13 status snapshot** gains 1 row recording decision #6.
   - Memory `uc16_scope.md` updated with the tokenization rule.
-- **2026-05-02 (eleventh revision, current):** UC16 topic #7 fold-in
+- **2026-05-02 (eleventh revision):** UC16 topic #7 fold-in
   (cost / pricing source) + Phase 3.1 scope-fence cleanup.
   - **UC16 design decision #7:** USECASE_16 §12 #12 marked DECIDED.
     Vendored LiteLLM `model_prices_and_context_window.json` snapshot
@@ -1487,6 +1492,48 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 3 rows (decision #7; Phase 3.1
     cleanup; per-tenant overrides queued).
   - Memory `uc16_scope.md` updated with the pricing-source rule.
+- **2026-05-02 (twelfth revision, current):** UC16 topic #8 fold-in
+  (cache architecture).
+  - **UC16 design decision #8:** USECASE_16 §12 #5 marked DECIDED.
+    Engine-plus-pluggable posture confirmed: highper ships the cache
+    *engine* (canonical hashing, lookup / write-back, TTL, tag-based
+    + pattern invalidation, streaming replay, metrics, per-tenant key
+    isolation); operator picks KV backend via existing `src/cache/`
+    trait; new `VectorIndex` trait covers semantic-cache vector
+    backend (Qdrant / Redis-Stack / PgVector / HNSW behind Cargo
+    features); embedding model is operator's `AiProvider` choice.
+    Mirrors `AiProvider` plugin and `AiStateStore` trait architectural
+    patterns. Same configure-don't-code operator effort as LiteLLM
+    with no backend lock-in.
+  - **§6 fully rewritten** with six sub-sections: 6.0 engine-plus-
+    pluggable posture / 6.1 exact cache (MVP) / 6.2 semantic cache
+    (Beta) with `VectorIndex` trait / 6.3 provider prompt-cache
+    passthrough / **6.4 explicit boundary table — what's NOT in scope
+    for cache** (mirrors §8 guardrails section) / 6.5 operator effort
+    summary.
+  - **§3.2 module map** gains four new entries: `provider.rs`,
+    `vector_index/{mod,qdrant,redis_stack,pgvector,hnsw}.rs`.
+  - **§4.4 interface-first audit extended from 10 to 11 boundaries** —
+    `VectorIndex` (row 11, greenfield UC16 trait, Phase 2.4 trait +
+    Qdrant impl, Phase 3.1 for the other 3 impls). Total project
+    trait-extraction effort: 10.5 → 11 person-weeks.
+  - **Phase 0.J** gains 4 cache + vector backend env vars
+    (`HIGHPER_AI_CACHE_BACKEND`, `HIGHPER_AI_VECTOR_BACKEND`,
+    `HIGHPER_AI_VECTOR_ADDRS`, `HIGHPER_AI_VECTOR_AUTH`) — 0.5 day.
+  - **Phase 2.4** gains 3 new exact-cache tasks (engine, headers,
+    invalidation API) totalling ~3.5 days; replaces old 2-day
+    "Exact cache" line.
+  - **Phase 3.1** gains 3 new tasks: `VectorIndex` trait + Qdrant
+    impl (4 days), semantic-cache engine (3 days), additional
+    `VectorIndex` impls (3 days). Replaces old single 5-day
+    "Semantic cache" line.
+  - **Phase 2.4 budget enforcement task** updated: was "Redis
+    counters + sled durable rollup"; now "Type B Valkey counters +
+    `AiStateStore` durable rollup" per UC16 #4.
+  - **§13 status snapshot** gains 2 rows (decision #8; §4.4
+    extension).
+  - Memory `uc16_scope.md` updated with engine-plus-pluggable rule
+    and the no-bundled-backends-or-embedding-models guidance.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1535,6 +1582,8 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #6 recorded 2026-05-02 (tokenization posture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §5.1–§5.4 / §12 #6, #7 | bake all vocabularies (~30 MB binary at Phase 3 GA); `tiktoken-rs` for OpenAI + `tokenizers` (HuggingFace) for everything else; reasoning tokens count as output by default with per-virtual-key `count_reasoning_in_output: bool` opt-out; air-gap / regulated deployments fully supported |
 | UC16 design decision #7 recorded 2026-05-02 (cost / pricing source) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §5.5 (six sub-sections) / §12 #12 | vendored LiteLLM snapshot baked into binary + weekly signed refresh + admin override at runtime via `PATCH /admin/ai/models/{alias}`; refresh failure default `last_known_good`; zero-price default-reject; per-tenant overrides queued for Phase 3 |
 | Phase 3.1 scope-fence cleanup 2026-05-02 | ROADMAP Phase 3.1 | killed pre-/post-call guardrail items per UC16 #1 scope fence; moved Anthropic-shape inbound to Phase 2.1 MVP per UC16 #2; updated prompt-registry storage to `AiStateStore` per UC16 #4 |
+| UC16 design decision #8 recorded 2026-05-02 (cache architecture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §6.0–§6.5 / §12 #5 | engine-plus-pluggable: highper ships canonical hashing / lookup / write-back / TTL / tag invalidation / streaming replay / metrics; KV backend via existing `src/cache/` trait, vector backend via new `VectorIndex` trait, embedding model via `AiProvider` registry — all operator-chosen per deployment. New §6.4 explicit "what's NOT in scope" boundary table mirrors §8 (guardrails). |
+| §4.4 interface-first audit extended from 10 to 11 boundaries | ROADMAP §4.4 | row 11 (`VectorIndex`) added — greenfield UC16 trait, Phase 2.4 trait + Qdrant impl, Phase 3.1 for Redis-Stack / PgVector / HNSW; total trait extractions 10.5 → 11 person-weeks |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
