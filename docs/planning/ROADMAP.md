@@ -2513,6 +2513,19 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     re-applicable to a different blocker (B11) with no scaffold work
     needed — adding fields to existing sections + per-site call-site
     edits + per-site overflow-policy decisions. The pattern is mature.
+- **2026-05-03 (thirty-fifth revision, current):** **B4.1 (Workstream
+  0.C, partial) landed.** XFF trust mode wired into
+  `rate_limit::extract_client_ip`. Single commit `3d5f4dc` (2 files;
+  +40 / −6). Security fix: previous behavior trusted first hop in
+  `X-Forwarded-For` unconditionally; now reads
+  `runtime_config::current().ratelimit.xff_trust_mode` (default `none`
+  — secure default ignores XFF entirely). Module-visibility fix:
+  `runtime_config/mod.rs` re-exports `RatelimitMode`/`RedisFailMode`/
+  `XffTrustMode` as public top-level types so consumers don't cross
+  the private `sections::` boundary. **B4.2** (distributed-mode
+  `key_shards` + `redis_fail_mode` consumer migration in
+  `src/gateway/ratelimit/`) remains. Image `highper-gateway:b4-1-rc`
+  boots cleanly with `HIGHPER_RATELIMIT_XFF_TRUST=last`.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
