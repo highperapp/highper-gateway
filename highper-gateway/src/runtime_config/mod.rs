@@ -29,6 +29,10 @@ pub use sections::{
     ObservabilityRuntimeConfig, PluginRuntimeConfig, RatelimitRuntimeConfig,
     SecretsRuntimeConfig, ShutdownRuntimeConfig, SignalsRuntimeConfig, TlsRuntimeConfig,
 };
+// Re-export inner enums + types that consumers reference. Add new ones
+// here when consumer code outside `runtime_config` needs to match against
+// the variants.
+pub use sections::ratelimit::{RatelimitMode, RedisFailMode, XffTrustMode};
 
 use arc_swap::ArcSwap;
 use std::sync::{Arc, OnceLock};

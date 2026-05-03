@@ -158,13 +158,43 @@ impl RateLimiter {
     }
 }
 
-/// Extract client IP from request
+/// Extract client IP from request, honoring the operator's
+/// `HIGHPER_RATELIMIT_XFF_TRUST` policy:
+///
+/// - `none` — don't read `X-Forwarded-For` at all. Returns `"unknown"`
+///   when no peer addr is available at this layer (B4 security fix:
+///   prevents an attacker from spoofing client IP via `X-Forwarded-For`
+///   when no proxy is in front). The connection layer should pass the
+///   real peer addr through `RequestContext` for production use; until
+///   that's wired (separate workstream), `none` falls back to
+///   `"unknown"`.
+/// - `first` — trust the first hop in `X-Forwarded-For` (matches "single
+///   trusted load balancer in front"). Pre-B4 behaviour.
+/// - `last` — trust the last hop (matches "trust only the closest
+///   proxy"; useful for service-mesh sidecar deployments).
+///
+/// `X-Real-IP` is honored as a secondary lookup when XFF is empty,
+/// regardless of trust mode (operators who set X-Real-IP have already
+/// taken responsibility for it; if they want to ignore it, the
+/// recommendation is to strip it at the load balancer).
 pub fn extract_client_ip(req: &Request<Incoming>) -> String {
-    // Check X-Forwarded-For header first
-    if let Some(xff) = req.headers().get("x-forwarded-for") {
-        if let Ok(xff_str) = xff.to_str() {
-            if let Some(first_ip) = xff_str.split(',').next() {
-                return first_ip.trim().to_string();
+    use crate::runtime_config::XffTrustMode;
+
+    let trust_mode = crate::runtime_config::try_current()
+        .map(|c| *c.ratelimit.xff_trust_mode.get())
+        .unwrap_or(XffTrustMode::None);
+
+    if trust_mode != XffTrustMode::None {
+        if let Some(xff) = req.headers().get("x-forwarded-for") {
+            if let Ok(xff_str) = xff.to_str() {
+                let chosen = match trust_mode {
+                    XffTrustMode::First => xff_str.split(',').next(),
+                    XffTrustMode::Last => xff_str.split(',').next_back(),
+                    XffTrustMode::None => None, // unreachable per outer guard
+                };
+                if let Some(ip) = chosen {
+                    return ip.trim().to_string();
+                }
             }
         }
     }
