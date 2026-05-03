@@ -221,6 +221,12 @@ impl AdminServer {
             (&Method::GET, "/api/config") => self.get_config().await,
             (&Method::POST, "/api/config/reload") => self.reload_config().await,
 
+            // RuntimeConfig endpoints (Workstream 0.J Stage 3c)
+            // Per RUNTIME_CONFIG_STAGE3_PR_PLAN.md §11 #5, the path follows
+            // the existing /api/... convention used by AdminServer.
+            (&Method::GET, "/api/runtime-config") => self.get_runtime_config().await,
+            (&Method::GET, "/api/runtime-config/diff") => self.get_runtime_config_diff().await,
+
             // Stats
             (&Method::GET, "/api/stats") => self.get_stats().await,
 
@@ -448,6 +454,56 @@ impl AdminServer {
                     "metrics_enabled": config.observability.metrics.enabled,
                 },
                 "timestamp": chrono::Utc::now().to_rfc3339()
+            }),
+        )
+    }
+
+    /// Get the current `RuntimeConfig` (env-var-driven runtime tunables).
+    ///
+    /// Returns a sanitized `Debug` rendering of `runtime_config::current()`.
+    /// `SecretRef::Literal` variants are pre-redacted as `(***)` by the
+    /// custom `Debug` impl in `src/runtime_config/secret_ref.rs`, so this
+    /// endpoint never leaks secret values.
+    ///
+    /// Workstream 0.J Stage 3c per `RUNTIME_CONFIG_STAGE3_PR_PLAN.md` §4.
+    async fn get_runtime_config(&self) -> Response<Full<Bytes>> {
+        let cfg = crate::runtime_config::current();
+        json_response(
+            StatusCode::OK,
+            json!({
+                "current": format!("{:#?}", cfg),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        )
+    }
+
+    /// Get the latest `RuntimeConfig` reload diff.
+    ///
+    /// Returns the section-level diff produced by the most recent
+    /// SIGHUP-triggered `reload_now()`. Multi-node operators' pre-flight
+    /// scripts can `GET` this against each node before initiating a rolling
+    /// restart to verify the proposed env-var changes are accepted.
+    ///
+    /// Empty diff (no changes) until at least one SIGHUP fires after boot.
+    /// `changed_sections` lists the top-level `RuntimeConfig` sections
+    /// whose `Debug` output differs from the prior snapshot. Per-field
+    /// granularity is a future enhancement; section-level is sufficient
+    /// for the current operator workflow.
+    ///
+    /// Workstream 0.J Stage 3c per `RUNTIME_CONFIG_STAGE3_PR_PLAN.md` §4.
+    async fn get_runtime_config_diff(&self) -> Response<Full<Bytes>> {
+        let diff = crate::runtime_config::latest_diff();
+        let timestamp_unix = diff
+            .timestamp
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        json_response(
+            StatusCode::OK,
+            json!({
+                "changed_sections": diff.changed_sections,
+                "timestamp_unix_secs": timestamp_unix,
+                "changed_count": diff.changed_sections.len(),
             }),
         )
     }
