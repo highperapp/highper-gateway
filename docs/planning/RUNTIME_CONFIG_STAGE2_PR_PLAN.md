@@ -1,6 +1,6 @@
 # Workstream 0.J Stage 2 — PR plan (AI + Body + Shutdown + Secrets sections + cross-subsystem validator)
 
-**Status:** **draft for sign-off.** No code lands until the §11 sign-off questions are answered. Once signed off, this doc is the implementation contract for the Stage 2 PR.
+**Status:** **signed off 2026-05-03.** All 7 §11 questions answered (see §11 below). This doc is now the implementation contract for the Stage 2 PR.
 
 **Companion docs:**
 
@@ -564,16 +564,18 @@ project-wide lint + B12/B14 literal migrations.
 
 ---
 
-## 11. Sign-off questions (answer before Stage 2 PR begins)
+## 11. Decisions (signed off 2026-05-03)
 
-1. Plan approved as-is, or specific changes?
-2. Single PR for all of Stage 2, or split (e.g., `ai` PR first, then `body`+`shutdown`+`secrets`+validator)?
-3. Add `temp_env` dev-dep for env-var test isolation, or keep `serial_test` only (Stage 1 sign-off picked the latter; reconsider given Stage 2's larger test surface)?
-4. Should `validate_against_config` also fire on SIGHUP (when Tier 1 reload lands in Stage 3) — i.e., re-run cross-subsystem checks against the live `Config` — or only at startup?
-5. `Secrets://` variant: ship the parse path + stub error (current draft) or defer the entire variant to Phase 1.4 to keep Stage 2 scope tighter?
-6. `src/plugin/types.rs:181` per-execution timeout (currently waived) — migrate to `PluginRuntimeConfig` in Stage 2, or leave as per-route override (out of scope)?
-7. CI lint scope: Stage 2 widens to `src/plugin/` + `src/cluster/` + `src/cache/` + `src/ai/`. Add others now (e.g., `src/proxy/`, `src/middleware/`) or wait for Stage 3?
+| # | Question | Decision | Notes |
+|---|---|---|---|
+| 1 | Plan as-is or changes? | **As-is** | No revisions to §0–§10 before code begins. |
+| 2 | Single PR or split? | **Single PR** | Stage 2 stays one reversible unit; splitting would double review overhead for ~900–1100 LoC. |
+| 3 | `temp_env` vs `serial_test` only? | **`serial_test` only** | Stage 1 pattern works; one fewer dev-dep. |
+| 4 | `validate_against_config` on SIGHUP? | **Startup-only** | Revisit when Tier 1 SIGHUP runtime ships in Stage 3 — until then, re-running cross-subsystem checks under traffic has no caller. |
+| 5 | `Secrets://` variant scope | **Ship parse path + struct field with loud "not implemented" stub** | A clear runtime error guides operators away from `secrets://` until Phase 1.4 ships the actual Vault/AWS/K8s clients. Better than a silent gap in the URI grammar. |
+| 6 | `src/plugin/types.rs:181` per-execution timeout | **Leave** | Per-route override is the right model; not operator-tunable globally. Existing `// allow:` waiver stays. |
+| 7 | Lint scope | **Stage 2 = `src/plugin/` + `src/cluster/` + `src/cache/` + `src/ai/`** | `src/proxy/` + `src/middleware/` widening waits for Stage 3 to keep this PR's scope contained. |
 
 ---
 
-*Plan author: claude-opus-4-7-1m, 2026-05-03. Owner sign-off required on §11 questions before any source code lands. Per CLAUDE.md rules.*
+*Plan author: claude-opus-4-7-1m, 2026-05-03. Owner sign-off 2026-05-03 on §11 decisions table. Stage 2 PR ready to begin against this doc. Per CLAUDE.md rules.*

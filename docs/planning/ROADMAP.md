@@ -16,7 +16,7 @@
   - `docs/planning/OWNER_GATES_2026-05-03.md` — version-controlled decision log for the 6 owner gates closed 2026-05-03 (Phase 0 unblocked + Phase 2 conditionally unblocked). Future gate batches follow the `OWNER_GATES_YYYY-MM-DD.md` pattern.
   - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
   - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (signed off + landed 2026-05-03 in commits `6897310` + `c8e1e8c` + `c9f1304`; verified end-to-end in Rancher Desktop / containerd). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint.
-  - `docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md` — Stage 2 PR implementation contract (draft 2026-05-03, awaiting sign-off on 7 §11 questions). 4 new sections (`ai` 25 env vars, `body` 3, `shutdown` 3, `secrets` 5), cross-subsystem validator (AI/Cluster invariants + §11.2 rules 1/2/3/5 via new `validate_against_config(&Config, &RuntimeConfig)` entry point), `Secrets://` `SecretRef` variant, `hot_reload.rs:181` migration, CI lint widening. ~900–1100 LoC across 5 new + 7 modified files.
+  - `docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md` — Stage 2 PR implementation contract (signed off 2026-05-03; all 7 §11 decisions captured). 4 new sections (`ai` 25 env vars, `body` 3, `shutdown` 3, `secrets` 5), cross-subsystem validator (AI/Cluster invariants + §11.2 rules 1/2/3/5 via new `validate_against_config(&Config, &RuntimeConfig)` entry point), `Secrets://` `SecretRef` variant (parse + stub error), `hot_reload.rs:181` migration, CI lint widening. ~900–1100 LoC across 5 new + 7 modified files. Stage 2 PR ready to begin.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -2038,7 +2038,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **Net effect:** Workstream 0.J Stage 1 is implementation-ready
     pending the 5 sign-off questions. No source code lands until
     those answers come back.
-- **2026-05-03 (twenty-third revision, current):** Workstream 0.J
+- **2026-05-03 (twenty-third revision):** Workstream 0.J
   Stage 1 **landed and verified end-to-end** + Stage 2 PR plan drafted.
   - **Stage 1 land + verify (3 commits):**
     - `6897310` — `runtime_config` Stage 1 source: 8 new files in
@@ -2100,6 +2100,35 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     Stage 3 (~4 days: remaining 9 sections + Tier 1 SIGHUP reload +
     admin diff endpoint + project-wide CI lint + B12/B14 literal
     migrations) follows Stage 2.
+- **2026-05-03 (twenty-fourth revision, current):** Workstream 0.J
+  Stage 2 PR plan **signed off**. All 7 §11 questions answered as
+  recommended by the planning agent and approved by the owner.
+  Decisions captured in `RUNTIME_CONFIG_STAGE2_PR_PLAN.md` §11
+  (replaces the prior "open questions" section). Implementation
+  begins immediately:
+  1. Plan as-is (no §0–§10 revisions).
+  2. Single PR (~900–1100 LoC stays as one reversible unit).
+  3. `serial_test` only (no `temp_env` dev-dep added).
+  4. `validate_against_config` startup-only for now; revisit when
+     Tier 1 SIGHUP runtime lands in Stage 3.
+  5. `Secrets://` `SecretRef` variant ships parse path + struct field +
+     loud "not implemented" `RuntimeConfigError::InvalidCombination`
+     when an operator actually tries `secrets://` URI. Phase 1.4 wires
+     the actual Vault / AWS Secrets Manager / K8s Secret clients.
+  6. `src/plugin/types.rs:181` per-execution timeout stays waived;
+     per-route override is the right model (not operator-tunable
+     globally via `RuntimeConfig`).
+  7. CI lint scope Stage 2 = `src/plugin/` + `src/cluster/` +
+     `src/cache/` + `src/ai/`. `src/proxy/` + `src/middleware/`
+     widening waits for Stage 3 (project-wide).
+  - **§13 status snapshot** gains 1 row recording the sign-off.
+  - **Tasks #84–#89 created** for the Stage 2 implementation work
+     (sign-off docs; ai section; body+shutdown+secrets; cross-subsystem
+     validator + main.rs wiring + Secrets:// + hot_reload migration;
+     CI lint widening + CONFIG_ENV.md; build + test + commit).
+  - **Net effect:** Stage 2 implementation begins now. Estimated ~5
+     days of work; ~900–1100 LoC. Will be verified end-to-end in
+     `nerdctl` build (per Stage 1 pattern) before commit.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2166,6 +2195,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Workstream 0.J Stage 1 PR plan drafted 2026-05-03** (awaiting §10 sign-off) | [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md) + ROADMAP §5 Phase 0.J + §12 (22nd revision) | File-by-file diff outline: 8 new files in `src/runtime_config/` (mod / error / loader / reload / secret_ref + `sections/{cluster, plugin}.rs`) + 4 modified (`src/lib.rs` +1 line, `src/main.rs` +5 lines, `src/plugin/manager.rs` :254 + :265 migrated, `Cargo.toml` `arc-swap = "1.7"`). ~600–800 LoC across new files; ~150 LoC of new tests. CI lint scoped to `src/plugin/` only. 5 sign-off questions in §10 (PR shape, single-PR-vs-split, arc-swap dep, temp_env dep, lint shell). All concrete identifiers verified via `Read` of `manager.rs:240-267` + `env_override.rs:55-139` + `lib.rs:1-43` + `main.rs:1-80` + `Cargo.toml:12,76,167` 2026-05-03. |
 | **Workstream 0.J Stage 1 LANDED 2026-05-03** — verified end-to-end in containerd | commits `6897310` (runtime_config + xtask + manager.rs migration), `c8e1e8c` (.dockerignore + Dockerfile xtask handling), `c9f1304` (6 pre-existing Dockerfile blockers fixed) | Image `highper-gateway:stage1-rc` (55.21 MB) built via `nerdctl` on Rancher Desktop. End-to-end verification: `HIGHPER_PLUGIN_DRAIN=2s` → exact `RuntimeConfigError::OutOfRange` flowed back ("HIGHPER_PLUGIN_DRAIN=\"2s\" is out of range (valid: >= 5s)"); `HIGHPER_PLUGIN_DRAIN=45s` → `RuntimeConfig loaded and installed` log line at main.rs:322 confirms full wiring. Six Dockerfile blockers documented inline with reasons (rust 1.86 base bump, cmake+nasm+perl for boringssl, dummy bench files, build.rs copy, benches/ retention). |
 | **Workstream 0.J Stage 2 PR plan drafted 2026-05-03** (awaiting §11 sign-off) | [`RUNTIME_CONFIG_STAGE2_PR_PLAN.md`](RUNTIME_CONFIG_STAGE2_PR_PLAN.md) + ROADMAP §5 Phase 0.J + §12 (23rd revision) | 4 new sections: `AiRuntimeConfig` (25 env vars across state/storage/routing/streaming/pricing per UC16 §3.4–§3.6 + §5.5), `BodyRuntimeConfig` (B12 — 3 fields), `ShutdownRuntimeConfig` (B14 — 3 fields), `SecretsRuntimeConfig` (Phase 1.4 prep — provider selector + 5 fields). Cross-subsystem validator: AI cache=valkey requires Cluster Type B (unless allow_single_node); AI cooldown=valkey requires Type B. New `validate_against_config(&RuntimeConfig, &Config)` entry point closes §11.2 rules 1/2/3/5 once `Config` is loaded. `Secrets://` `SecretRef` variant lands (parse path + struct field; actual resolver Phase 1.4). `hot_reload.rs:181` migrated to `PluginRuntimeConfig::hot_reload_settle`. CI lint widens to `src/plugin/` + `src/cluster/` + `src/cache/` + `src/ai/`. Tests ~250 LoC. 7 sign-off questions in §11 (PR split shape, dev-dep, validator-on-SIGHUP, Secrets:// scope, types.rs:181 migration, lint scope, plan-as-is). |
+| **Workstream 0.J Stage 2 PR plan signed off 2026-05-03** (all 7 §11 questions answered) | [`RUNTIME_CONFIG_STAGE2_PR_PLAN.md`](RUNTIME_CONFIG_STAGE2_PR_PLAN.md) §11 + ROADMAP §12 (24th revision) | Decisions: (1) plan as-is; (2) single PR (~900–1100 LoC kept as one reversible unit); (3) `serial_test` only (no `temp_env` dev-dep); (4) `validate_against_config` startup-only (revisit when Tier 1 SIGHUP runtime ships in Stage 3); (5) `Secrets://` ships parse path + loud "not implemented" stub (Phase 1.4 wires actual Vault/AWS/K8s clients); (6) `src/plugin/types.rs:181` per-execution timeout stays waived (per-route override is the right model, not RuntimeConfig); (7) lint scope Stage 2 = `src/plugin/` + `src/cluster/` + `src/cache/` + `src/ai/` (`src/proxy/` + `src/middleware/` widening waits for Stage 3). Implementation begins immediately. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
