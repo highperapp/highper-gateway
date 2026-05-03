@@ -762,7 +762,13 @@ Workstreams **0.A, 0.B, 0.D, 0.G** are largely independent. **0.I** is independe
 - [ ] Sample systemd unit, container image, Helm chart, compose file (baseline single-node, persona-agnostic). **3 days.**
 - [ ] `SECURITY.md` (project root, 3.6 KB, `SECURITY.md`) updated with disclosure policy + bounty link. **0.5 day.**
 - [ ] **`docs/SECURITY_CLUSTER_BASELINE.md` (NEW) (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** per-type security hardening templates. Sections: Valkey AUTH config + TLS setup; etcd client/peer mTLS config + RBAC role examples; K8s `NetworkPolicy` YAML templates per cluster type; VM/BM firewall-rules templates (iptables / nftables / ufw); secrets-rotation playbook (Valkey password, etcd certs); recovery procedures. **3 days.**
-- [ ] **`docs/INTEGRATION_GUIDE.md` (NEW) (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §11.5):** operator-facing guide consolidating all five UC16 integration surfaces with concrete examples. Sections: (1) plugin hooks — Presidio PII redactor (WASM), custom validator (FFI dylib), Bedrock-Guardrails caller (HTTP via plugin); (2) metrics consumption — sample Prometheus scrape config, sample OTLP collector config, screenshots of Langfuse / Helicone dashboards wired to highper's OTLP output; (3) audit-log export — sample S3-forwarder cron, sample syslog-forwarder, NDJSON schema doc; (4) inference engine integration — example wrapping vLLM as an `AiProvider` plugin (HTTP shape), reference to UC17 design when it lands; (5) configuration sources — etcd config push (Phase 4.2+), GitOps pattern, admin-API push pattern. UC16-and-beyond complement to existing `docs/DEPLOYMENT_GUIDE.md` (which covers UC1–UC15). **4 days.**
+- [ ] **`docs/INTEGRATION_GUIDE.md` (NEW) (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §11.5; expanded 2026-05-03 per gap-analysis R6):** operator-facing guide consolidating all five UC16 integration surfaces with concrete examples. **Six sections** (was five; sixth added per R6):
+      1. Plugin hooks — Presidio PII redactor (WASM), custom validator (FFI dylib), Bedrock-Guardrails caller (HTTP via plugin).
+      2. Metrics consumption — sample Prometheus scrape config, sample OTLP collector config, screenshots of Langfuse / Helicone dashboards wired to highper's OTLP output.
+      3. Audit-log export — sample S3-forwarder cron, sample syslog-forwarder, NDJSON schema doc.
+      4. Inference engine integration — example wrapping vLLM as an `AiProvider` plugin (HTTP shape), reference to UC17 design when it lands.
+      5. Configuration sources — etcd config push (Phase 4.2+), GitOps pattern, admin-API push pattern.
+      6. **"Migrate from LiteLLM / Portkey to highper" walkthrough** — operator's #1 question per the 2026-05-03 deep gap-analysis. Show: (a) how the Python `openai` SDK switches from `base_url=portkey.ai/v1` (or `localhost:4000` for LiteLLM) to `base_url=https://highper-gateway-instance/v1` with zero application-code changes; (b) how to map LiteLLM's `litellm_settings.cache_params` block to highper's `cache { … }` DSL; (c) how to map Portkey's per-request `x-portkey-cache: simple` header to highper's per-route `cache { kind = exact }` block; (d) how to migrate virtual keys / budgets / spend-rollups across (CSV export → admin-API import). UC16-and-beyond complement to existing `docs/DEPLOYMENT_GUIDE.md` (which covers UC1–UC15). **5 days** (was 4 — 1 day added for the migrate-from-peers section).
 
 ##### 1.3.1 Cluster deployment templates — 3 personas × 3 infrastructures (added 2026-05-02)
 
@@ -945,7 +951,12 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] Migration test: existing OpenAI client (Python `openai==1.x`) talks to gateway against Anthropic upstream — verify zero client-code changes. **2 days.**
 - [ ] **Prompt registry on `AiStateStore` (added 2026-05-03 — gap-audit H1 fix; UC16 §12 #10):** versioned prompt-template store with create / list / get-version / promote-default endpoints (`POST/GET /admin/ai/prompts`, `GET /admin/ai/prompts/{id}/versions`, `POST /admin/ai/prompts/{id}/promote`). Backed by configured `AiStateStore` (UC16 #4) under `ai/prompts/{tenant}/{id}/{version}` namespace. Hash-chain audit on every change per §7.3. **3 days.**
 - [ ] **MCP passthrough `/v1/mcp/{server}` (added 2026-05-03 — gap-audit H2 fix; UC16 §12 #11):** forward MCP JSON-RPC (HTTP+SSE) to a configured backing server. Auth enforced at the gateway via virtual key; body forwarded byte-stable. Operator declares MCP backing servers via DSL `mcp_server "<name>" { url = ..., auth = ... }` blocks. Proxy-only at MVP; in-process MCP server deferred to Phase 3.1. **3 days.**
-- [ ] **UC16 cookbook entry (added 2026-05-03):** `examples/configs/scenarios/scenario-16-ai-llm-gateway.{proxy,yaml}` + `examples/configs/scenarios/scenario-16-ai-llm-gateway/README.md` covering the Valkey + ReDB single-node default deployment + minimal `ai_route` block. Closes the §4.5 cookbook coverage matrix gap (UC16 currently the only UC missing an entry). **2 days.**
+- [ ] **UC16 cookbook scenarios — 4 variants (added 2026-05-03; expanded 2026-05-03 per gap-analysis R3 from 1 → 4 scenarios — UC16 complexity rivals UC9's 5 examples):** four `examples/configs/scenarios/scenario-16-*` entries (each as `.proxy` + `.yaml` + per-scenario README, matching UC9 conventions):
+      • `scenario-16-ai-llm-gateway-minimal.{proxy,yaml}` — Valkey + ReDB single-node default + minimal `ai_route` block. **2 days.**
+      • `scenario-16-ai-llm-gateway-semantic-cache.{proxy,yaml}` — Valkey + ReDB + Qdrant; demonstrates `semantic_cache { embedding_provider, threshold }` + embedding-provider registration. **1.5 days.**
+      • `scenario-16-ai-llm-gateway-multi-tenant.{proxy,yaml}` — flat keys + tags MVP per UC16 #5; demonstrates per-key `models_allow`, budgets, RPM/TPM, soft-disable revocation, audit-log hash chain. **1.5 days.**
+      • `scenario-16-ai-llm-gateway-ha-type4.{proxy,yaml}` — Type 4 cluster (Valkey + ScyllaDB + etcd + mTLS); production AI gateway with mTLS to providers + ACME (UC3) + UC9 WAF; demonstrates plugin hooks for Presidio. **1 day.**
+      Closes the §4.5 cookbook coverage matrix gap (UC16 was the only UC missing an entry). **6 days total** (was 2 days for single scenario).
 
 #### Phase 2 exit criteria
 
@@ -1707,7 +1718,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     once owner gates #1 (Phase 0 priority), #3 (UC16 scope+design
     revision against fence), and #4 (HA architecture sub-decisions)
     clear.
-- **2026-05-03 (seventeenth revision, current):** UC16 gap-audit fix-up
+- **2026-05-03 (seventeenth revision):** UC16 gap-audit fix-up
   pass. Two parallel agents ran: (A) gap audit on UC16 design vs ROADMAP
   + HA_ARCHITECTURE — surfaced 16 issues (3 high / 5 medium / 8 low);
   (B) competitor comparison vs LiteLLM / Portkey / Helicone / Cloudflare /
@@ -1742,6 +1753,60 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - 8 low-severity items skipped (cosmetic / minor verification).
   - Competitor comparison report retained in conversation log; not
     folded into doc (it's analysis, not a design artefact).
+- **2026-05-03 (eighteenth revision, current):** UC16 deep gap-analysis
+  fix-up pass (R1–R6). A second-pass agent reviewed UC16 design across
+  three deeper dimensions — architectural soundness, configurability
+  completeness, cookbook conventions — and surfaced 14 issues
+  (5 high / 6 medium / 3 low) plus 6 actionable recommendations.
+  All 6 applied:
+  - **R1 — UC16 §10.5 formal DSL grammar reference (NEW).** ~1 hour
+    doc edit. 9 sub-sections covering every DSL block introduced by
+    UC16: `ai_route`, `cache`, `semantic_cache`, `rate_limit`,
+    `plugin`, `provider`, `mcp_server`, virtual-key scope fields
+    (admin-API only), YAML equivalence note. Operators read §10.5 to
+    write a config; §3.x for semantics. Resolves D1 (DSL grammar
+    incompleteness) + C2 (DSL not versioned as a spec).
+  - **R2 — UC16 §0.2 day-one setup checklist (NEW).** ~1 hour doc
+    edit. 6 sub-sections: decisions before deployment, ~18 required
+    env vars, ~15 recommended env vars, ~10 hardening env vars,
+    minimum DSL config, pre-flight validation checklist. Consolidates
+    operator-facing setup that was previously scattered across UC16,
+    HA_ARCHITECTURE, and ROADMAP. Resolves D2 (env-var fragmentation)
+    + D3 (no day-one checklist).
+  - **R3 — Phase 2.6 cookbook expanded from 1 → 4 scenarios.** Was
+    "scenario-16-ai-llm-gateway.{proxy,yaml}" (2 days). Now four
+    scenarios: minimal (2d), semantic-cache (1.5d), multi-tenant
+    (1.5d), HA-Type-4 (1d). +4 days to Phase 2.6 (total 6 days).
+    Resolves C1 (single-scenario under-resourced — UC16 complexity
+    rivals UC9's 5 examples).
+  - **R4 — UC16 §3.6.2 failure-mode matrix +3 rows.** ~30 min doc
+    edit. New rows: embedding-provider unavailable (semantic cache
+    falls through to miss; `x-cache: BYPASS`); VectorIndex
+    unavailable (same fall-through; doesn't store new embeddings
+    until index returns); MCP backing-server outage (returns 502
+    with structured error body). Resolves A1 + A2 + MCP coverage
+    gap.
+  - **R5 — HA_ARCHITECTURE.md §3.5.1 ScyllaDB + cluster-type
+    validation rule (NEW).** ~20 min doc edit. Refuse-to-start
+    error when UC16 features enabled with `HIGHPER_CLUSTER_TYPE=1`.
+    Documents the validator rule + clear error message + edge
+    case (single-node dev still needs local Valkey). Resolves C4
+    (validation gap) + clarifies that ScyllaDB is for *durable*
+    state, Valkey for *hot-path* counters; both required for
+    multi-node UC16.
+  - **R6 — `docs/INTEGRATION_GUIDE.md` Phase 1.3 scope gains 6th
+    section.** Operator's #1 question: "wire existing
+    Portkey/LiteLLM app to highper". Walkthrough covers SDK
+    base_url switch, cache config mapping, virtual-key migration.
+    +1 day to Phase 1.3 task (4 → 5 days). Resolves B1.
+  - **Net new work added:** ~3 hours doc edits (this commit) +
+    +5 days expanded scope across Phase 1.3 + Phase 2.6.
+  - **§13 status snapshot** gains 1 row recording the deep
+    gap-analysis fix-up.
+  - **3 low-severity items skipped** (ALLOW_SINGLE_NODE
+    interaction; dual-format DSL/YAML schema parity verification;
+    YAML schema update for new UC16 blocks — all deferred to
+    Phase 2.6 implementation surface).
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1798,6 +1863,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #12 recorded 2026-05-03 (external integrations contract) — **closes the 12-topic UC16 design sequence** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §11.5 (five sub-sections) / §12 #19 | five integration surfaces (plugin hooks / metrics / audit-log export / inference engine via `AiProvider` plugin / configuration sources via `ConfigSource` trait); semver-style stability promise on operator-facing surfaces (metrics, plugin traits, admin API, DSL, env vars); `docs/INTEGRATION_GUIDE.md` (NEW) Phase 1.3 deliverable; CI compatibility test matrix in Phase 1.5 guards the stability promises |
 | **UC16 12-topic design sequence complete** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §12 entries #1–#19 | all 12 topics from the original 2026-05-02 design plan resolved over the 2026-05-02 → 2026-05-03 sessions; UC16 ready for Phase 2.1 implementation work; 19 §12 questions either DECIDED or queued for owner-side decisions before respective phases |
 | UC16 gap-audit fixes applied 2026-05-03 (8 items: 3 high + 5 medium) | ROADMAP Phase 0.J / 2.4 / 2.6 / 3.1 / §6 gate #7 | H1 prompt-registry task (Phase 2.6, 3 days); H2 MCP passthrough MVP (Phase 2.6, 3 days) + in-process server Beta (Phase 3.1, 5 days); H3 AiStateStore export tool (Phase 3.1, 3 days); M1 `HIGHPER_AI_STATE_PATH` env var (Phase 0.J, 0.1 day); M2 `HIGHPER_CLUSTER_TYPEB_BACKEND` cross-ref clarification; M3 owner gate #7 candidate phase = 4.1 or 4.2; M4 Beta tenant hierarchy (Phase 3.1, 4 days); M5 LRU virtual-key cache enumerated in Phase 2.4 (now 4 days, was 3); UC16 cookbook entry added to Phase 2.6 (2 days) — closes §4.5 coverage gap |
+| UC16 deep gap-analysis fixes applied 2026-05-03 (6 recommendations R1-R6) | UC16 §0.2 + §10.5 + §3.6.2; HA §3.5.1; ROADMAP Phase 1.3 + 2.6 | R1 §10.5 formal DSL grammar reference (~1h doc; 9 sub-sections covering ai_route + cache + semantic_cache + rate_limit + plugin + provider + mcp_server + virtual-key scope + YAML equivalence); R2 §0.2 UC16 day-one setup checklist (~1h doc; 6 sub-sections; ~18 required + ~15 optional + ~10 hardening env vars + minimum DSL + pre-flight validator checklist); R3 Phase 2.6 cookbook expanded 1 → 4 scenarios (minimal / semantic / multi-tenant / HA-Type-4; +4 days); R4 §3.6.2 +3 failure-mode rows (embedding-provider unavailable, VectorIndex unavailable, MCP backing-server outage); R5 HA §3.5.1 ScyllaDB + cluster-type validation rule (refuse-to-start when UC16 enabled with Type 1); R6 INTEGRATION_GUIDE.md gains 6th section (Migrate-from-LiteLLM/Portkey walkthrough; Phase 1.3 task 4 → 5 days) |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |

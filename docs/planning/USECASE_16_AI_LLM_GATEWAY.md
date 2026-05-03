@@ -18,6 +18,165 @@
 
 ---
 
+## 0.2 UC16 day-one setup checklist (added 2026-05-03 — gap-analysis R2 fix)
+
+This section consolidates the minimum operator setup for UC16 in one
+place. Read this before §1 if you're an operator deploying highper-gateway
+with UC16 enabled. Read §1 onwards if you're contributing design or
+implementation.
+
+### 0.2.1 Decisions before deployment
+
+1. **Cluster type** — pick per `HA_ARCHITECTURE.md` §1: Type 2 (UC16 + Group A UCs) or Type 4 (UC16 + Group A + Group C UCs like UC3 ACME / UC12 service discovery). Type 1 alone cannot serve UC16.
+2. **Infrastructure** — K8s, VM, or Bare Metal per `HA_ARCHITECTURE.md` §7. UC16 footprint preference is K8s or BM-GPU per HA research line 27.
+3. **Type B backend choice** — Valkey (recommended; default) or Redis (Redis-protocol-compatible). Cookbooks ship for Valkey.
+4. **AiStateStore backend choice** — ReDB (single-node default), RocksDB (single-node alternative), or ScyllaDB (multi-node prod). See §7.1.2.
+5. **Inbound API shape** — OpenAI-compatible, Anthropic-compatible, or both (default: both per UC16 #2). See §2.
+6. **Provider list** — which AI providers to wire up. Built-in at MVP: OpenAI + Anthropic. Bedrock + Gemini + 9 more in Phase 3.
+
+### 0.2.2 Required env vars (~18) — UC16 will not start without these
+
+```bash
+# Cluster (HA_ARCHITECTURE.md §11.6 — operator-chosen)
+HIGHPER_CLUSTER_INFRA=k8s                                       # or vm | baremetal | single
+HIGHPER_CLUSTER_TYPEB_BACKEND=valkey                            # or redis
+HIGHPER_CLUSTER_TYPEB_ADDRS=valkey-0:6379,valkey-1:6379,valkey-2:6379
+HIGHPER_CLUSTER_TYPEB_AUTH=${VALKEY_PASSWORD}                   # required in prod (HA §7.4)
+
+# UC16 state store (UC16 §7.1.2)
+HIGHPER_AI_STATE_BACKEND=redb                                   # or rocksdb | scylladb
+HIGHPER_AI_STATE_PATH=/var/lib/highper/ai                       # absolute path; for embedded backends only
+# OR for ScyllaDB:
+# HIGHPER_AI_STATE_ADDRS=scylla-0:9042,scylla-1:9042,scylla-2:9042
+
+# UC16 virtual-key signing (UC16 §7.1.3)
+HIGHPER_AI_KEY_PEPPER=${AI_KEY_PEPPER_HEX_OR_RAW}               # 32-byte secret; refuse-to-start if empty
+
+# Single-node opt-in if non-HA Valkey or embedded AiStateStore (HA §11.6)
+HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=false                         # set true only for dev / staging
+
+# Provider keys (operator's actual provider API keys; NOT highper-issued)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+# Add the keys for whichever providers your DSL `provider { … }` blocks register
+```
+
+### 0.2.3 Recommended env vars (~15) — sane defaults; override only when needed
+
+```bash
+# Pricing (UC16 §5.5)
+HIGHPER_AI_PRICING_FEED_URL=https://...                         # default: vendored LiteLLM upstream
+HIGHPER_AI_PRICING_FEED_SIGN_KEY=/etc/highper/pricing.pub       # Ed25519 public key path
+HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS=604800                 # default 7 days
+HIGHPER_AI_PRICING_REFRESH_FAIL_MODE=last_known_good            # or fail_closed
+HIGHPER_AI_ALLOW_FREE_TIER=false                                # true only if you run free / self-hosted models
+
+# Cache + vector (UC16 §6)
+HIGHPER_AI_CACHE_BACKEND=valkey                                 # inherits cluster Type B by default
+HIGHPER_AI_VECTOR_BACKEND=none                                  # set qdrant | redis-stack | pgvector | hnsw if semantic cache
+HIGHPER_AI_VECTOR_ADDRS=qdrant-0:6333                           # required if VECTOR_BACKEND ≠ none
+HIGHPER_AI_VECTOR_AUTH=${QDRANT_API_KEY}
+
+# Routing (UC16 §3.4)
+HIGHPER_AI_RETRY_BUDGET=3
+HIGHPER_AI_COOLDOWN_BACKEND=auto                                # auto = Valkey when Type B configured
+
+# Streaming (UC16 §3.5)
+HIGHPER_PLUGIN_CHUNK_BUDGET_US=500                              # plugin per-chunk budget; fail-open over budget
+HIGHPER_AI_STREAM_BUFFER_DEPTH=64
+HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY=drop_oldest
+
+# Cluster behaviour (UC16 §3.6)
+HIGHPER_AI_VALKEY_FAIL_MODE=local_fallback
+HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS=1                             # set ≥4 for moderate traffic
+HIGHPER_AI_KEY_CACHE_TTL_SECS=300
+```
+
+### 0.2.4 Optional security hardening env vars (production only)
+
+```bash
+# Cluster security (HA §7.4)
+HIGHPER_CLUSTER_TYPEB_TLS=true
+HIGHPER_CLUSTER_ALLOW_INSECURE=false                            # never true in prod
+# For Type 4 (etcd / Consul):
+HIGHPER_CLUSTER_TYPEC_BACKEND=etcd
+HIGHPER_CLUSTER_TYPEC_ADDRS=etcd-0:2379,etcd-1:2379,etcd-2:2379
+HIGHPER_CLUSTER_TYPEC_CLIENT_CERT=/etc/highper/etcd-client.crt
+HIGHPER_CLUSTER_TYPEC_CLIENT_KEY=/etc/highper/etcd-client.key
+HIGHPER_CLUSTER_TYPEC_CA=/etc/highper/etcd-ca.crt
+
+# Plugin lifecycle (UC16 §3.3.7)
+HIGHPER_PLUGIN_DRAIN_SECS=30
+```
+
+### 0.2.5 Minimum DSL config
+
+```dsl
+# /etc/highper/config.dsl
+
+provider "openai" {
+    kind     = "builtin:openai"
+    base_url = "https://api.openai.com/v1"
+    api_key  = ${OPENAI_API_KEY}
+}
+
+provider "anthropic" {
+    kind     = "builtin:anthropic"
+    base_url = "https://api.anthropic.com"
+    api_key  = ${ANTHROPIC_API_KEY}
+}
+
+ai_route "default" {
+    inbound = [openai_chat, anthropic_messages]
+
+    model_alias_map {
+        "fast"  -> openai/gpt-4o-mini
+        "smart" -> [
+            anthropic/claude-3-5-sonnet-latest,
+            openai/gpt-4o
+        ]
+    }
+
+    cache {
+        kind = exact
+        ttl  = 1h
+    }
+}
+```
+
+That's it for a minimum viable UC16 deployment. With this config + the
+required env vars, an operator can:
+
+1. Start highper-gateway.
+2. Call `POST /admin/ai/keys` to issue a virtual key (`sk-hpgw-…`).
+3. Use the virtual key with the OpenAI Python SDK pointed at
+   `https://localhost/v1` (or the Anthropic Python SDK at `/v1/messages`).
+4. Watch metrics on `/metrics`.
+
+For more sophisticated deployments (semantic cache, multi-tenant
+budgeting, plugin hooks, MCP passthrough), see §10.5 DSL grammar
+reference.
+
+### 0.2.6 Pre-flight validation checklist
+
+Run before starting highper-gateway in production:
+
+- [ ] All required env vars (§0.2.2) set.
+- [ ] `HIGHPER_AI_KEY_PEPPER` is a 32-byte secret (not empty, not a placeholder).
+- [ ] `HIGHPER_CLUSTER_TYPEB_AUTH` set unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true` (dev only).
+- [ ] If `HIGHPER_AI_STATE_BACKEND=scylladb`, then `HIGHPER_CLUSTER_TYPE` resolves to Type 2 or Type 4 (NOT Type 1) — see HA §3.5 validation rule.
+- [ ] If `HIGHPER_AI_VECTOR_BACKEND` is set (semantic cache enabled), `_ADDRS` is non-empty (except `hnsw`).
+- [ ] Provider API keys set for every `provider { … }` block referenced in DSL.
+- [ ] Filesystem `HIGHPER_AI_STATE_PATH` is writable (for embedded backends).
+- [ ] `HIGHPER_CLUSTER_TYPEB_TLS=true` in production (Valkey AUTH alone is not enough on a shared network).
+- [ ] If Type 4: etcd cert files exist at the configured paths.
+
+The Phase 0.J `Settings` loader enforces most of these — if a required
+var is missing or contradictory, highper refuses to start with a clear
+error. This checklist is for operators planning ahead.
+
+---
+
 ## 1. Goal
 
 Deliver a self-hostable AI gateway inside highper-gateway as a **technical
@@ -725,6 +884,9 @@ What happens to UC16 traffic when each cluster component fails:
 | One provider down (e.g. OpenAI 503) | Routing layer per §3.4 falls through to next candidate; circuit breaker opens for that provider | `ai_route_circuit_breaker_open` gauge; `ai_route_fallback_taken_total` counter |
 | All providers in a model alias down | Routing exhausts candidates; structured 503 to client (§3.4.4) | `ai_route_exhausted_total` counter |
 | Pricing refresh fails | Per `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` — `last_known_good` (default; keep current prices) or `fail_closed` (refuse new requests with 503) | `ai_pricing_refresh_failed_total{reason}` counter; `/health/ai/pricing` endpoint reports staleness |
+| Embedding-provider unavailable (semantic cache enabled, embedding `AiProvider` returns error / 5xx / network timeout — added 2026-05-03 per gap-analysis R4) | Semantic-cache lookup falls through to "treat as miss"; request proceeds to the configured outbound provider as if no semantic-cache layer existed; emits `x-cache: BYPASS` to client; `ai_embedding_provider_unavailable_total{provider}` counter increments. Exact-cache (§6.1) is unaffected. | `ai_embedding_provider_unavailable_total{provider}` counter; `x-cache: BYPASS` response header |
+| `VectorIndex` backend unavailable (Qdrant / Redis-Stack / PgVector cluster down — added 2026-05-03 per gap-analysis R4) | Same fall-through as above — semantic-cache treated as miss; request proceeds; `x-cache: BYPASS` emitted. Subsequent retries do not store new embeddings until the index returns. | `ai_vectorindex_unavailable_total{backend}` counter; `x-cache: BYPASS` response header |
+| MCP backing-server outage (configured `mcp_server` block's `url` returns error — added 2026-05-03 per gap-analysis R4) | MCP requests (`/v1/mcp/{server}`) return 502 Bad Gateway with structured body `{error: "mcp_backend_unavailable", server: "<name>"}`; non-MCP requests unaffected | `ai_mcp_backend_unavailable_total{server}` counter |
 | Provider returns malformed response | Translator emits `ai_translator_parse_errors_total{provider}`; routing falls through to next candidate | Same counter; tail-latency may spike |
 
 #### 3.6.3 Valkey fail-mode policy
@@ -1500,6 +1662,118 @@ provider "bedrock-us-east-1" {
 
 YAML-equivalent shipped alongside. Hot-reloadable via existing watcher + admin API. Secrets resolve via existing env-override; Vault/AWS-Secrets/K8s-Secret integration is on the `Phase 1` shopping list of the cross-cutting plan.
 
+### 10.5 Formal DSL grammar reference (added 2026-05-03 — gap-analysis R1 fix)
+
+The example above is illustrative; this section is the **canonical
+reference** for every UC16 DSL block, field, type, default, and example.
+Read this section to write a config; read §3.x / §5.x / §6.x for
+*semantics*.
+
+#### 10.5.1 `ai_route` block
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `inbound` | enum or array of `openai_chat \| anthropic_messages \| native` | required | `inbound = openai_chat` or `inbound = [openai_chat, anthropic_messages]` | §2.1, §2.2 |
+| `model_alias_map` | map of `string -> string` or `string -> array of string` | required (≥1 alias) | `"smart" -> [anthropic/claude-3-7, openai/gpt-4o]` | §3.4.1 |
+| `routing_mode` | enum `priority \| cost_aware \| latency_aware` | `priority` | `routing_mode = cost_aware` | §3.4.1 (priority MVP; cost_aware Beta; latency_aware GA) |
+| `cache` | block (see 10.5.2) | absent (no cache) | `cache { kind = exact, ttl = 1h }` | §6.1 |
+| `semantic_cache` | block (see 10.5.3) | absent (no semantic cache) | see 10.5.3 example | §6.2 |
+| `rate_limit` | block (see 10.5.4) | absent (no per-route limit) | `rate_limit { rpm = 60, tpm = 60000 }` | §7.2 |
+| `length_cap_tokens` | integer | unset (no cap) | `length_cap_tokens = 8000` | §3.4 / §10 |
+| `plugin` blocks (zero or more) | block (see 10.5.5) | absent | one block per pre/post hook | §3.1, §8.1 |
+| `log_capture` | enum `off \| redacted \| full` | `redacted` | `log_capture = full` | §9.2 |
+| `mcp_passthrough` | bool | `false` (MVP) | `mcp_passthrough = true` | §11 #11 (Phase 2.6) |
+
+#### 10.5.2 `cache` block (exact cache)
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `kind` | enum `exact` | required when block present | `kind = exact` | §6.1 |
+| `backend` | enum `valkey \| redis \| memory \| disk \| multi-tier` | inherits from `HIGHPER_AI_CACHE_BACKEND` (default `valkey`) | `backend = "valkey"` | §6.0 |
+| `ttl` | duration string | `1h` | `ttl = 1h` (also supports `30m`, `12h`, `7d`) | §6.1 |
+| `invalidation_tags` | array of string | `[]` (no tag indexing) | `invalidation_tags = ["model_alias", "tenant"]` | §6.1 admin invalidation API |
+
+#### 10.5.3 `semantic_cache` block (Beta)
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `backend` | enum `qdrant \| redis-stack \| pgvector \| hnsw` | inherits from `HIGHPER_AI_VECTOR_BACKEND` | `backend = "qdrant"` | §6.2 |
+| `embedding_provider` | string (registered `provider` block name) | required | `embedding_provider = "embed-openai"` | §6.2 |
+| `embedding_model` | string (model alias from the embedding provider) | required | `embedding_model = "text-embedding-3-small"` | §6.2 |
+| `threshold` | float in `[0.0, 1.0]` | `0.92` | `threshold = 0.85` | §6.2 |
+| `ttl` | duration string | `24h` | `ttl = 24h` | §6.2 |
+| `tenant_isolation` | bool | `true` | `tenant_isolation = true` | §6.2 |
+
+#### 10.5.4 `rate_limit` block (per-route)
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `rpm` | integer (requests per minute) | unset (no RPM cap) | `rpm = 60` | §7.2 |
+| `tpm` | integer (tokens per minute) | unset (no TPM cap) | `tpm = 60000` | §7.2 |
+| `rpd` | integer (requests per day) | unset | `rpd = 100000` | §7.2 |
+| `tpd` | integer (tokens per day) | unset | `tpd = 5000000` | §7.2 |
+| `budget_usd_day` | float | unset (no $ cap) | `budget_usd_day = 50.0` | §7.2 |
+| `budget_usd_month` | float | unset | `budget_usd_month = 1000.0` | §7.2 |
+| `budget_usd_lifetime` | float | unset | `budget_usd_lifetime = 10000.0` | §7.2 |
+| `enforcement` | enum `hard \| soft` | `hard` (returns 402); `soft` warns + passthrough | `enforcement = soft` | §7.2 |
+
+#### 10.5.5 `plugin` block
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `kind` | enum `wasm \| ffi` | required | `kind = wasm` | §3.1 plugin hook surface |
+| `path` | string (filesystem) | required | `path = "/etc/highper/plugins/presidio_pii_redact.wasm"` | §3.3.7 hot-load |
+| `phase` | enum `pre_request \| post_response_headers \| post_response_body` | required | `phase = pre_request` | §3.1 |
+| `on_decision` | enum `stop_on_block \| continue_on_block \| log_only` | `stop_on_block` | `on_decision = stop_on_block` | §8.1 |
+| `config` | map (free-form key/value) | empty | `config = { schema_path = "/etc/highper/schemas/openai_chat.json" }` | (plugin-specific) |
+
+#### 10.5.6 `provider` block
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `kind` | enum `builtin:openai \| builtin:anthropic \| builtin:bedrock \| builtin:gemini \| wasm \| ffi` | required | `kind = "builtin:openai"` | §3.3.5 |
+| `base_url` | string (URL) | provider-specific default | `base_url = "https://api.openai.com/v1"` | §3.3.5 |
+| `api_key` | string (env-override resolved) | required for OpenAI / Anthropic / Gemini; unused for Bedrock (uses SigV4) | `api_key = ${OPENAI_API_KEY}` | §3.3.5 |
+| `region` | string | `global` | `region = "us-east-1"` | §3.3.5 |
+| `role` | enum `chat \| embedding \| moderation` | `chat` | `role = embedding` | §6.2 — selects this provider for embedding calls |
+| `path` | string (filesystem) | required when `kind = wasm \| ffi` | `path = "/etc/highper/plugins/my_corp_llm.wasm"` | §3.3.5 |
+| `config` | map | empty | provider-plugin-specific | §3.3.5 |
+| `sigv4` | block (Bedrock only) | absent | `sigv4 { region, access_key, secret_key }` | §10 example |
+
+#### 10.5.7 `mcp_server` block (added Phase 2.6 per gap-audit H2)
+
+| Field | Type | Default | Example | Reference |
+|---|---|---|---|---|
+| `url` | string (URL) | required | `url = "http://mcp-internal.corp:8080"` | §12 #11 |
+| `auth` | string (env-override resolved) | unset (no auth header) | `auth = ${MCP_INTERNAL_AUTH_TOKEN}` | §12 #11 |
+| `auth_header` | string | `Authorization` | `auth_header = "X-MCP-Auth"` | §12 #11 |
+
+#### 10.5.8 Per-virtual-key scope fields (NOT a DSL block — set via admin API)
+
+Per §7.1.1, virtual keys carry these scope fields. Set via
+`POST /admin/ai/keys` or `PATCH /admin/ai/keys/{id}` (not via DSL — keys
+are runtime data, not config).
+
+| Field | Type | Default | Reference |
+|---|---|---|---|
+| `models_allow` | array of model alias strings | required (≥1) | §7.1.1 |
+| `rpm`, `tpm`, `rpd`, `tpd` | integer | unset | §7.1.1 |
+| `budget_usd_day`, `_month`, `lifetime_usd_cap` | float | unset | §7.1.1 |
+| `expires_at` | RFC3339 timestamp | unset (no expiry) | §7.1.1 |
+| `enabled` | bool | `true` | §7.1.1 (soft-disable revocation) |
+| `retry_budget` | integer | inherits `HIGHPER_AI_RETRY_BUDGET` (3) | §3.4.3 / §7.1.1 |
+| `count_reasoning_in_output` | bool | `true` | §5.4 / §7.1.1 |
+| `cancel_on_close` | bool | `true` | §3.5.1 / §7.1.1 |
+| `tpm_hard_stop` | bool | `false` | §3.5.2 / §7.1.1 |
+| `tags` | map of string -> string | empty | §7.1.1 |
+
+#### 10.5.9 YAML equivalence
+
+Every block above has a 1-to-1 YAML representation with the same field
+names, types, and defaults. The DSL `.proxy` and YAML `.yaml` files in
+`examples/configs/scenarios/scenario-16-*` ship both formats per the
+§4.5 cookbook convention.
+
 ---
 
 ## 11. Security
@@ -1907,4 +2181,27 @@ See `ROADMAP.md` §5 for sequencing.
     all §12 open questions either DECIDED or queued behind respective
     phase owner gates. UC16 design sequence complete; ready for Phase 2.1
     implementation work once owner gates #1, #3, #4 clear.
+- **2026-05-03 (deep gap-analysis fix-up R1–R6, current):** post-12-topic
+  review pass. A second-pass agent reviewed UC16 against three deeper
+  dimensions — architectural soundness, configurability completeness,
+  cookbook conventions — and surfaced 14 issues. 6 recommendations
+  applied:
+  - **§0.2 (NEW) UC16 day-one setup checklist** — 6 sub-sections
+    consolidating ~18 required + ~15 recommended + ~10 hardening env
+    vars + minimum DSL config + pre-flight validator checklist.
+  - **§10.5 (NEW) Formal DSL grammar reference** — 9 sub-sections;
+    every UC16 DSL block, field, type, default, example. Operators
+    read §10.5 to write a config; §3.x for semantics.
+  - **§3.6.2 +3 failure-mode rows** — embedding-provider unavailable
+    (semantic cache falls through to miss; `x-cache: BYPASS`),
+    VectorIndex unavailable (same), MCP backing-server outage
+    (502 with structured error).
+  - HA_ARCHITECTURE.md §3.5.1 NEW validation rule (UC16 + ScyllaDB
+    requires cluster type Type 2 or Type 4); ROADMAP Phase 1.3
+    INTEGRATION_GUIDE.md scope expanded to 6 sections (added
+    Migrate-from-LiteLLM/Portkey walkthrough, +1 day); ROADMAP
+    Phase 2.6 cookbook expanded 1 → 4 scenarios (+4 days).
+  - **3 low-severity items deferred** to Phase 2.6 implementation
+    surface (DSL/YAML schema parity, ALLOW_SINGLE_NODE interaction,
+    YAML schema update for new blocks).
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.

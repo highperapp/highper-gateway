@@ -289,6 +289,50 @@ scale. PostgreSQL and FoundationDB were considered and dropped per the
 ReDB without giving the horizontal scale of ScyllaDB; FoundationDB has a
 smaller community.
 
+#### 3.5.1 Validation rule — UC16 + cluster type (added 2026-05-03 per gap-analysis R5)
+
+UC16 hot-path counters (token quotas, RPM/TPM buckets, cooldown state)
+require a Type B coordination layer (Valkey). UC16 *cannot* run on a
+Type 1 cluster regardless of which `AiStateStore` backend the operator
+selects.
+
+**Validator rule (enforced at `Settings::validate()` per ROADMAP Phase 0.J):**
+
+```
+IF any UC16-enabled `ai_route { … }` block is present in DSL
+   OR HIGHPER_AI_STATE_BACKEND is set
+THEN cluster_type ∈ {Type 2, Type 4} required.
+```
+
+If the operator declares `HIGHPER_CLUSTER_TYPE=auto` (default), the
+auto-resolver promotes to Type 2 when UC16 features are enabled. If the
+operator explicitly declares `HIGHPER_CLUSTER_TYPE=1` while enabling
+UC16, highper refuses to start with the error:
+
+```
+UC16 features are enabled but HIGHPER_CLUSTER_TYPE=1 (Stateless).
+UC16 requires Type 2 (Stateless+Valkey) or Type 4 (Stateless+Valkey+etcd).
+Set HIGHPER_CLUSTER_TYPE=2 (or =4 if also using UC3 ACME / UC12 discovery)
+and provide HIGHPER_CLUSTER_TYPEB_BACKEND + HIGHPER_CLUSTER_TYPEB_ADDRS.
+```
+
+This validator blocks the misconfiguration "ScyllaDB durable store
+without Valkey hot-path layer" — operators sometimes assume ScyllaDB
+alone replaces both layers; it does not. ScyllaDB serves the
+*durable* state; Valkey serves the *hot-path counters*. UC16 needs
+both.
+
+The validator also rejects `HIGHPER_AI_STATE_BACKEND=scylladb` with
+`HIGHPER_CLUSTER_TYPE=1` (UC16 features required by AiStateStore being
+set imply UC16 enabled).
+
+**Edge case:** dev / staging single-node deployments. Operators using
+`HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=true` for dev purposes bypass the
+multi-node-cluster strictness, but the Type B requirement still
+applies — even single-node UC16 dev needs a local Valkey (typically
+`HIGHPER_CLUSTER_TYPEB_ADDRS=localhost:6379`). See §11.6 cluster
+config + UC16 §3.6.5.
+
 ---
 
 ## 4. Per-UC profiles
