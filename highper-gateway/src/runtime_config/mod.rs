@@ -18,7 +18,7 @@ mod sections;
 
 pub use error::RuntimeConfigError;
 pub use loader::{load, validate_against_config};
-pub use reload::Reloadable;
+pub use reload::{compute_diff, install_sighup_handler, reload_now, ReloadDiff, Reloadable};
 pub use secret_ref::{SecretRef, SecretValue};
 pub use sections::{
     AiRuntimeConfig, BodyRuntimeConfig, CacheRuntimeConfig, CircuitBreakerRuntimeConfig,
@@ -57,6 +57,7 @@ impl RuntimeConfig {
 }
 
 static CURRENT: OnceLock<ArcSwap<RuntimeConfig>> = OnceLock::new();
+static LATEST_DIFF: OnceLock<ArcSwap<ReloadDiff>> = OnceLock::new();
 
 /// Install the loaded `RuntimeConfig` as the process-global. Call once from
 /// `main()` after `load()`. Panics if called twice.
@@ -65,9 +66,18 @@ pub fn install(c: RuntimeConfig) {
         .set(ArcSwap::from_pointee(c))
         .map_err(|_| ())
         .expect("runtime_config::install() called twice");
+    let _ = LATEST_DIFF.set(ArcSwap::from_pointee(ReloadDiff::empty()));
 }
 
-/// Read the current `RuntimeConfig`. Panics if `install()` was not called.
+/// Read the current `RuntimeConfig`.
+///
+/// Workers that need a consistent view across multiple field reads should
+/// call `current()` *once* per request and reuse the returned `Arc`. A
+/// later SIGHUP reload (`reload_now()`) will atomically swap the inner
+/// pointer; in-flight workers keep their previously-loaded snapshot, and
+/// subsequent calls see the new struct.
+///
+/// Panics if `install()` was not called.
 pub fn current() -> Arc<RuntimeConfig> {
     CURRENT
         .get()
@@ -75,6 +85,30 @@ pub fn current() -> Arc<RuntimeConfig> {
             "runtime_config not initialized — call runtime_config::install(load()?) in main()",
         )
         .load_full()
+}
+
+/// Internal: the underlying `ArcSwap` for atomic store on reload. Used by
+/// `reload::reload_now`; not part of the public API.
+pub(crate) fn current_arcswap() -> &'static ArcSwap<RuntimeConfig> {
+    CURRENT
+        .get()
+        .expect("runtime_config not initialized — call install() first")
+}
+
+/// Internal: persist the latest reload diff (Stage 3c admin endpoint
+/// reads via `latest_diff()`).
+pub(crate) fn store_latest_diff(diff: ReloadDiff) {
+    if let Some(slot) = LATEST_DIFF.get() {
+        slot.store(Arc::new(diff));
+    }
+}
+
+/// The latest reload diff, or an empty diff if no reload has occurred.
+pub fn latest_diff() -> Arc<ReloadDiff> {
+    LATEST_DIFF
+        .get()
+        .map(|a| a.load_full())
+        .unwrap_or_else(|| Arc::new(ReloadDiff::empty()))
 }
 
 /// Test-only: install a `RuntimeConfig` if no install has happened yet, or

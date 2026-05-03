@@ -321,6 +321,15 @@ async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
     runtime_config::install(rt_cfg);
     info!("RuntimeConfig loaded and installed");
 
+    // Stage 3b: install Tier 1 SIGHUP hot-reload handler. Chained with the
+    // existing config-file reload — both fire on every SIGHUP per the §11
+    // sign-off (existing handler re-reads the YAML/DSL config file; this
+    // one re-reads HIGHPER_* env vars and atomically swaps RuntimeConfig).
+    runtime_config::install_sighup_handler()
+        .await
+        .context("Failed to install SIGHUP handler for RuntimeConfig hot reload")?;
+    info!("SIGHUP handler installed for RuntimeConfig hot reload");
+
     info!("Loading configuration from: {}", config_path.display());
 
     // Load configuration

@@ -9,11 +9,12 @@
 //! - `file:///<path>` — read from filesystem at boot (eager) or first use (lazy)
 //! - `file:///<path>?lazy=true` — defer file read to first use
 
+use std::fmt;
 use std::path::PathBuf;
 
 use crate::runtime_config::error::RuntimeConfigError;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum SecretRef {
     Literal(String),
     File { path: PathBuf, lazy: bool },
@@ -23,6 +24,48 @@ pub enum SecretRef {
     /// "not implemented" error until then).
     Secrets { uri: String, lazy: bool },
 }
+
+/// Custom `Debug` redacts secret values so `format!("{:?}", cfg)` and
+/// reload-diff output never leak plaintext. The `SecretRef::resolve_eager`
+/// call site is the only place the actual value is exposed.
+impl fmt::Debug for SecretRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SecretRef::Literal(_) => f.write_str("SecretRef::Literal(***)"),
+            SecretRef::File { path, lazy } => f
+                .debug_struct("SecretRef::File")
+                .field("path", path)
+                .field("lazy", lazy)
+                .finish(),
+            SecretRef::Secrets { uri, lazy } => f
+                .debug_struct("SecretRef::Secrets")
+                .field("uri", uri)
+                .field("lazy", lazy)
+                .finish(),
+        }
+    }
+}
+
+/// Equality for diff comparison. `Literal` compares its plaintext (so a
+/// rotation is detected) but the values never reach `Debug`.
+impl PartialEq for SecretRef {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (SecretRef::Literal(a), SecretRef::Literal(b)) => a == b,
+            (
+                SecretRef::File { path: a, lazy: la },
+                SecretRef::File { path: b, lazy: lb },
+            ) => a == b && la == lb,
+            (
+                SecretRef::Secrets { uri: a, lazy: la },
+                SecretRef::Secrets { uri: b, lazy: lb },
+            ) => a == b && la == lb,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for SecretRef {}
 
 #[derive(Debug, Clone)]
 pub struct SecretValue(pub String);
