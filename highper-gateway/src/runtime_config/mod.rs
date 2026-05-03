@@ -20,6 +20,9 @@ pub use error::RuntimeConfigError;
 pub use loader::{load, validate_against_config};
 pub use reload::{compute_diff, install_sighup_handler, reload_now, ReloadDiff, Reloadable};
 pub use secret_ref::{SecretRef, SecretValue};
+
+// `try_current` is available as `runtime_config::try_current()` directly
+// (not re-exported here since it's defined in this module's body).
 pub use sections::{
     AiRuntimeConfig, BodyRuntimeConfig, CacheRuntimeConfig, CircuitBreakerRuntimeConfig,
     ClusterRuntimeConfig, ConfigWatcherRuntimeConfig, GeoRuntimeConfig, Http3RuntimeConfig,
@@ -85,6 +88,15 @@ pub fn current() -> Arc<RuntimeConfig> {
             "runtime_config not initialized — call runtime_config::install(load()?) in main()",
         )
         .load_full()
+}
+
+/// Read the current `RuntimeConfig`, returning `None` if `install()` has
+/// not been called yet. Use only for code paths that may run before
+/// `main()` wires the global (e.g., unit tests that exercise modules in
+/// isolation, or library uses that don't go through the binary's
+/// `start_server`). Production hot paths should use `current()`.
+pub fn try_current() -> Option<Arc<RuntimeConfig>> {
+    CURRENT.get().map(|a| a.load_full())
 }
 
 /// Internal: the underlying `ArcSwap` for atomic store on reload. Used by

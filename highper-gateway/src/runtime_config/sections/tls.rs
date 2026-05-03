@@ -10,6 +10,11 @@ pub struct TlsRuntimeConfig {
     pub ocsp_cache_ttl_secs: Reloadable<u64>,            // HIGHPER_TLS_OCSP_CACHE_TTL (default 3600)
     pub acme_renew_check_secs: Reloadable<u64>,          // HIGHPER_TLS_ACME_RENEW_CHECK (default 3600)
     pub min_version: TlsMinVersion,                       // HIGHPER_TLS_MIN_VERSION (default 1.2; Restart)
+    /// `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY` — bounded channel
+    /// capacity for cert-file-modified events. Default 32; events drop on
+    /// full (file-watch is idempotent — the next change re-triggers). B11
+    /// migration of `src/tls/cert_watcher.rs:49` from `unbounded_channel`.
+    pub cert_watcher_event_channel_capacity: Reloadable<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -27,6 +32,7 @@ impl Default for TlsRuntimeConfig {
             ocsp_cache_ttl_secs: Reloadable::new(3600),
             acme_renew_check_secs: Reloadable::new(3600),
             min_version: TlsMinVersion::V1_2,
+            cert_watcher_event_channel_capacity: Reloadable::new(32),
         }
     }
 }
@@ -63,6 +69,11 @@ pub(crate) fn load() -> Result<TlsRuntimeConfig, RuntimeConfigError> {
             });
         }
     };
+    let cert_watcher_event_channel_capacity = parse_u32(
+        "HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY",
+        env_string("TLS_CERT_WATCHER_CHANNEL_CAPACITY").as_deref(),
+        32,
+    )?;
 
     Ok(TlsRuntimeConfig {
         session_cache_size: Reloadable::new(session_cache_size),
@@ -70,6 +81,9 @@ pub(crate) fn load() -> Result<TlsRuntimeConfig, RuntimeConfigError> {
         ocsp_cache_ttl_secs: Reloadable::new(ocsp_cache_ttl_secs),
         acme_renew_check_secs: Reloadable::new(acme_renew_check_secs),
         min_version,
+        cert_watcher_event_channel_capacity: Reloadable::new(
+            cert_watcher_event_channel_capacity,
+        ),
     })
 }
 

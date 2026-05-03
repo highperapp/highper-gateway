@@ -33,11 +33,16 @@ impl CertificateWatcher {
     /// * `key_path` - Path to private key file
     ///
     /// # Returns
-    /// * `Result<(Self, UnboundedReceiver<CertEvent>)>` - Watcher and event receiver
+    /// * `Result<(Self, Receiver<CertEvent>)>` - Watcher and event receiver.
+    ///   Channel capacity is operator-tunable via
+    ///   `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY` (default 32). Events
+    ///   drop on full — file-watch is idempotent, so a dropped event just
+    ///   means the next change re-triggers (B11 migration from
+    ///   `unbounded_channel`).
     pub fn new<P: AsRef<Path>>(
         cert_path: P,
         key_path: P,
-    ) -> anyhow::Result<(Self, mpsc::UnboundedReceiver<CertEvent>)> {
+    ) -> anyhow::Result<(Self, mpsc::Receiver<CertEvent>)> {
         let cert_path = cert_path.as_ref().to_path_buf();
         let key_path = key_path.as_ref().to_path_buf();
 
@@ -46,7 +51,13 @@ impl CertificateWatcher {
             cert_path, key_path
         );
 
-        let (tx, rx) = mpsc::unbounded_channel();
+        // Use try_current so unit tests can exercise this module without
+        // first installing a global RuntimeConfig. Production callers go
+        // through main.rs which installs before any consumer runs.
+        let capacity = crate::runtime_config::try_current()
+            .map(|c| *c.tls.cert_watcher_event_channel_capacity.get() as usize)
+            .unwrap_or(32);
+        let (tx, rx) = mpsc::channel(capacity.max(1));
 
         // Clone paths for the closure
         let cert_path_clone = cert_path.clone();
@@ -84,8 +95,21 @@ impl CertificateWatcher {
                             };
 
                             if let Some(event) = event {
-                                if let Err(e) = tx.send(event) {
-                                    error!("Failed to send certificate event: {}", e);
+                                // Sync closure context — use try_send rather
+                                // than blocking_send / await. Drop on full is
+                                // safe: file-watch is idempotent, the next
+                                // file change will re-trigger.
+                                match tx.try_send(event) {
+                                    Ok(()) => {}
+                                    Err(mpsc::error::TrySendError::Full(_)) => {
+                                        debug!(
+                                            "Cert watcher event channel full ({} cap); dropping event",
+                                            capacity
+                                        );
+                                    }
+                                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                                        error!("Cert watcher event channel closed");
+                                    }
                                 }
                             }
                         }
