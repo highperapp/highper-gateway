@@ -2458,6 +2458,23 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     care about is now driven by `HIGHPER_*` env vars; SIGHUP triggers
     atomic hot reload; admin endpoints expose state for multi-node
     coordination scripts. Workstream 0.J ships its full v1 scope.
+- **2026-05-03 (thirty-third revision, current):** **B11 (Workstream 0.F)
+  started.** B11.1 cert_watcher migration landed in commit `fef5bb4`.
+  The 5 production `unbounded_channel` sites have distinct send-context
+  semantics (sync closure vs async fn) and overflow policies (drop vs
+  block); each is its own focused commit. **B11.1 delivered:**
+  `TlsRuntimeConfig` gains `cert_watcher_event_channel_capacity` (default
+  32; `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY`); new
+  `runtime_config::try_current()` non-panicking accessor for code paths
+  that may run before `install()`; `src/tls/cert_watcher.rs:49` migrated
+  to bounded `mpsc::channel(N)` with sync-closure `try_send` and
+  drop-on-full handling (file-watch idempotent). Public API
+  `UnboundedReceiver<CertEvent>` → `Receiver<CertEvent>`; single caller
+  unaffected. End-to-end verified inside container. **B11.2–B11.5
+  queued** with recommended overflow policies: B11.2 `config/reloader.rs`
+  drop, B11.3 `config/watcher.rs` drop, B11.4/B11.5 `http3_quiche.rs`
+  block (backpressure). Test sites in `runtime/signals.rs` stay
+  unbounded (test fixtures).
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
