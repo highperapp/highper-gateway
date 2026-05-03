@@ -1,6 +1,6 @@
 # Workstream 0.J Stage 3 — PR plan (remaining 9 sections + Tier 1 SIGHUP reload + admin diff + project-wide lint + B12/B14 consumer migrations + CacheRuntimeConfig)
 
-**Status:** **draft for sign-off.** No code lands until the §11 sign-off questions are answered. Once signed off, this doc is the implementation contract for the Stage 3 PR.
+**Status:** **signed off 2026-05-03.** All 7 §11 questions answered (see §11 below). This doc is now the implementation contract for the Stage 3 PR.
 
 **Companion docs:**
 
@@ -404,16 +404,18 @@ code path reads operator-tunable values from a hardcoded literal.
 
 ---
 
-## 11. Sign-off questions (answer before Stage 3 PR begins)
+## 11. Decisions (signed off 2026-05-03)
 
-1. Plan approved as-is, or specific changes?
-2. Single PR for all of Stage 3, or split (e.g., 9 sections in one PR, then SIGHUP + admin diff + B12/B14 in another)?
-3. `derive_enabled_ucs` coverage in Stage 3: just UC4 + UC11 (current draft), or extend to all of UC1–UC15 + UC16 in this PR?
-4. SIGHUP handler interaction with existing config-file-reload: chain (existing handler runs first, then runtime_config), parallel (both fire independently), or serialize via a single coordinator (clean but more refactoring)?
-5. Admin endpoint path: `/admin/config/diff` (current draft) or follow whatever convention `src/admin/` uses today (need to verify before committing)?
-6. CacheRuntimeConfig field names: as drafted in §2.6 (verbose, mirror existing literal sites) or simpler names (e.g., `default_ttl` vs `default_ttl_secs`)? Stages 1/2 used the `_secs` / `_ms` suffix consistently; current draft follows that.
-7. B14 spawned-task drain — Stage 3 implements the supervisor (~80 LoC) inline, or defer to a separate PR after the runtime_config wiring lands? Current draft implements inline.
+| # | Question | Decision | Notes |
+|---|---|---|---|
+| 1 | Plan as-is or changes? | **As-is** | No revisions to §0–§10 before code begins. |
+| 2 | Single PR or split? | **Single PR** | Stage 1+2 pattern works; stays one reversible unit. |
+| 3 | `derive_enabled_ucs` coverage | **UC4 + UC11 only** | Other UCs go in their own PRs as enablement signals become derivable; Stage 3 ships a partial-coverage helper with a `// TODO: per-UC PR` comment for the remaining slots. |
+| 4 | SIGHUP handler interaction | **Chain** — existing config-file-reload handler runs first, then runtime_config | Minimal disruption to existing logic; preserves Config-reload semantics; both handlers fire on every SIGHUP. |
+| 5 | Admin endpoint path | **Verify-and-conform** to existing `src/admin/` convention before committing | No opinion until I read the existing routes; if the convention is e.g. `/api/admin/...`, follow that. |
+| 6 | `CacheRuntimeConfig` field naming | **Keep `_secs` / `_ms` suffix** | Consistency with Stages 1+2 (e.g., `pricing_override_cache_ttl_secs`, `default_cooldown_secs_no_header`). |
+| 7 | B14 spawned-task drain supervisor | **Inline** in this PR (~80 LoC) | Bundles the env-var with the consumer; PR stays self-contained. |
 
 ---
 
-*Plan author: claude-opus-4-7-1m, 2026-05-03. Owner sign-off required on §11 questions before any source code lands. Per CLAUDE.md rules.*
+*Plan author: claude-opus-4-7-1m. Owner sign-off 2026-05-03 on §11 decisions table. Stage 3 PR ready to begin against this doc. Per CLAUDE.md rules.*
