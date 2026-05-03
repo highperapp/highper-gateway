@@ -722,6 +722,8 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **UC16 routing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.4):** `HIGHPER_AI_RETRY_BUDGET` (default `3`; max attempts across providers per request; per-virtual-key override via scope's `retry_budget`); `HIGHPER_AI_COOLDOWN_BACKEND` (`auto` default → Valkey when Type B configured, local otherwise; alternatives `valkey` / `local` for forced override); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN` (default `50`); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX` (default `200`); `HIGHPER_AI_DEFAULT_COOLDOWN_SECS_NO_HEADER` (default `30`; used when provider 429s without `Retry-After`). **0.5 day.**
 - [ ] **UC16 streaming env vars (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.5):** `HIGHPER_PLUGIN_CHUNK_BUDGET_US` (default `500` µs; plugin overshooting budget per chunk is logged + skipped for the rest of the stream — fail-open at chunk level); `HIGHPER_AI_STREAM_BUFFER_DEPTH` (default `64` events per stream); `HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY` (`drop_oldest` default; alternatives `block` / `error`); `HIGHPER_AI_DEFAULT_CANCEL_ON_CLOSE` (default `true`; per-virtual-key override via scope); `HIGHPER_AI_DEFAULT_TPM_HARD_STOP` (default `false`; per-virtual-key override via scope). **0.5 day.**
 - [ ] **UC16 cluster-behaviour env vars (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.6):** `HIGHPER_AI_VALKEY_FAIL_MODE` (`local_fallback` default mirrors UC4 `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`; alternatives `fail_open` / `fail_closed`); `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (default `1`; set ≥4 for moderate traffic, ≥16 for very-high; mirrors UC4 `HIGHPER_RATELIMIT_KEY_SHARDS` from Phase 0.C); `HIGHPER_AI_KEY_CACHE_TTL_SECS` (default `300`; per-replica virtual-key validation cache TTL — serves brief `AiStateStore` outages); `HIGHPER_AI_PRICING_OVERRIDE_CACHE_TTL_SECS` (default `60`; per-replica pricing-override read-through cache). **0.5 day.**
+- [ ] **`HIGHPER_AI_STATE_PATH` env var (added 2026-05-03 — gap-audit M1 fix; supports `USECASE_16_AI_LLM_GATEWAY.md` §3.6.5 single-node deployment):** filesystem path for embedded `AiStateStore` backends (`redb` / `rocksdb`). Default `./data/highper-ai`. Refused when `HIGHPER_AI_STATE_BACKEND=scylladb` (irrelevant). **0.1 day.**
+- [ ] **Cross-reference clarification — `HIGHPER_CLUSTER_TYPEB_BACKEND` for UC16 cooldown selection (added 2026-05-03 — gap-audit M2 fix; supports `USECASE_16_AI_LLM_GATEWAY.md` §3.4.5):** the cooldown-state selection logic in the Phase 2.3 router task reads `HIGHPER_CLUSTER_TYPEB_BACKEND` (already shipped as part of the cluster-bootstrap shape per §11.2 of this doc) — **inheritance, not addition**. Phase 2.3 router task description references this env var; no separate Phase 0.J task. **(0 days — documentation cross-ref only.)**
 
 #### Phase 0 deliverables
 
@@ -912,7 +914,7 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 2.4 Auth + budgets + cache (week 4)
 
-- [ ] Virtual-key store on the configured `AiStateStore` (UC16 #4) + `sk-hpgw-…` issuance + **HMAC-SHA-256 hash with `HIGHPER_AI_KEY_PEPPER` server pepper** (UC16 #5; replaces the original Argon2id approach — see `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3 for rationale). Constant-time compare. Soft-disable revocation (`enabled=false`) by default; hard-delete is a separate scoped admin action. **3 days.**
+- [ ] Virtual-key store on the configured `AiStateStore` (UC16 #4) + `sk-hpgw-…` issuance + **HMAC-SHA-256 hash with `HIGHPER_AI_KEY_PEPPER` server pepper** (UC16 #5; replaces the original Argon2id approach — see `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3 for rationale). Constant-time compare. Soft-disable revocation (`enabled=false`) by default; hard-delete is a separate scoped admin action. **Includes per-replica LRU validation cache** (added 2026-05-03 — gap-audit M5 fix; UC16 §3.6.1) with `HIGHPER_AI_KEY_CACHE_TTL_SECS` TTL (default 300 s) so brief `AiStateStore` outages don't break validation; cache invalidation on key revoke via Type B Valkey pub/sub channel `ai:key-invalidate` (cluster-wide). **4 days** (was 3 — adds LRU + pub/sub invalidation).
 - [ ] Per-key budget enforcement (day/month) backed by **Type B Valkey counters + `AiStateStore` durable rollup** (was "Redis counters + sled"; updated 2026-05-02 per UC16 #4). **3 days.**
 - [ ] RPM + TPM (token-denominated) buckets — extends `src/gateway/ratelimit/token_bucket.rs` to support dynamic-cost consumption. **3 days.**
 - [ ] **Exact cache engine (UC16 #8, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §6.0–§6.1):** module at `src/gateway/ai/cache_exact.rs` with canonical-JSON key (sorted, no float reformat, byte-stable for §6.3 provider prompt-cache compatibility), TTL handling, streaming replay, per-tenant key-space isolation. Backed by the existing `src/cache/` trait — operator picks KV backend (Valkey via existing Redis client / disk / memory / multi-tier) via DSL `cache.backend`. Admin invalidation API: `POST /admin/ai/cache/invalidate` (tag / pattern / per-tenant). **2 days.**
@@ -941,6 +943,9 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] `docs/AI_GATEWAY_GUIDE.md` (NEW) — quickstart, recipe book. **3 days.**
 - [ ] Prometheus metrics from UC16 doc §9.1 emitting. **2 days.**
 - [ ] Migration test: existing OpenAI client (Python `openai==1.x`) talks to gateway against Anthropic upstream — verify zero client-code changes. **2 days.**
+- [ ] **Prompt registry on `AiStateStore` (added 2026-05-03 — gap-audit H1 fix; UC16 §12 #10):** versioned prompt-template store with create / list / get-version / promote-default endpoints (`POST/GET /admin/ai/prompts`, `GET /admin/ai/prompts/{id}/versions`, `POST /admin/ai/prompts/{id}/promote`). Backed by configured `AiStateStore` (UC16 #4) under `ai/prompts/{tenant}/{id}/{version}` namespace. Hash-chain audit on every change per §7.3. **3 days.**
+- [ ] **MCP passthrough `/v1/mcp/{server}` (added 2026-05-03 — gap-audit H2 fix; UC16 §12 #11):** forward MCP JSON-RPC (HTTP+SSE) to a configured backing server. Auth enforced at the gateway via virtual key; body forwarded byte-stable. Operator declares MCP backing servers via DSL `mcp_server "<name>" { url = ..., auth = ... }` blocks. Proxy-only at MVP; in-process MCP server deferred to Phase 3.1. **3 days.**
+- [ ] **UC16 cookbook entry (added 2026-05-03):** `examples/configs/scenarios/scenario-16-ai-llm-gateway.{proxy,yaml}` + `examples/configs/scenarios/scenario-16-ai-llm-gateway/README.md` covering the Valkey + ReDB single-node default deployment + minimal `ai_route` block. Closes the §4.5 cookbook coverage matrix gap (UC16 currently the only UC missing an entry). **2 days.**
 
 #### Phase 2 exit criteria
 
@@ -960,6 +965,9 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [k] ~~Post-call guardrails (streaming): output PII redact, JSON-schema validate, regex deny.~~ **Killed 2026-05-02 per UC16 #1 scope fence — same as above. JSON-schema validation for non-AI traffic still ships as competitor parity item N4 (Phase 4.1).**
 - [ ] **Prompt registry + versioning (UC16 #4 storage):** durable layer in the configured `AiStateStore` (ReDB / RocksDB / ScyllaDB) — was "Postgres" in the original draft; updated 2026-05-02 to use the trait per UC16 #4. **5 days.**
 - [ ] **Per-tenant pricing overrides (UC16 #7, 2026-05-02 — `USECASE_16_AI_LLM_GATEWAY.md` §5.5.5):** extends MVP's operator-level overrides with per-tenant rows under `ai/pricing_overrides/tenant/{tid}/{alias}`. Three-level lookup at request time: tenant → global override → snapshot. Admin endpoints `PATCH /admin/ai/tenants/{tid}/models/{alias}` etc. Audit events tagged with tenant. Useful for reseller / multi-tier pricing. **3 days.**
+- [ ] **AiStateStore export tool (added 2026-05-03 — gap-audit H3 fix; UC16 §12 #16):** standalone CLI `highper-ai-state-export` that walks a single-node `AiStateStore` (ReDB / RocksDB) and writes to a multi-node ScyllaDB target. Preserves virtual keys, budgets, usage records, audit log (hash-chain integrity), and prompt-registry rows. Supports a "dual-write window" mode where both stores receive writes during the migration. Operator runs once when scaling up from single-node to multi-node deployment. **3 days.**
+- [ ] **MCP in-process server (added 2026-05-03 — gap-audit H2 fix; UC16 §12 #11):** in-process MCP server that lets LLMs query gateway state (virtual keys, spend, models, prompts) via the MCP protocol. Bound to `admin:*` scope; not callable from user-traffic keys. Optional Cargo feature `mcp-server`. **5 days.**
+- [ ] **Tenant hierarchy as Beta organisation axis (added 2026-05-03 — gap-audit M4 fix; UC16 §7.1.1 + §12 #4):** flat keys+tags shipped at MVP per UC16 #5; this Phase 3.1 task layers `tenant_id` / `workspace_id` / `project_id` columns on top as a *secondary* axis. Existing tags continue working; hierarchy enables billing rollups and admin-UI organisation. Migration path: flat keys map to a default tenant during the schema upgrade. **4 days.**
 - [ ] MCP passthrough (`/v1/mcp/{server}`). **3 days.**
 - [ ] Add providers: xAI, DeepSeek, Mistral, Groq, Together, Fireworks, Cohere, Vertex (non-Anthropic), Azure OpenAI. **7 days.**
 - [ ] Embedding batch coalescing (combine N small embeds into one upstream batch within 50 ms window). **3 days.**
@@ -1115,7 +1123,7 @@ UC16 item that doesn't fit cleanly inside the MVP six weeks.
 4. **End of Phase 3 (HA architecture gate, revised 2026-05-02):** decision recorded — the four-cluster-type model is the design (Type 1 Stateless / Type 2 +Valkey / Type 3 +etcd / Type 4 +Valkey+etcd); see [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md). Three open sub-decisions remain: **(i)** which Type B backend the cookbooks default to and which CI exercises (Valkey vs Redis — same protocol, mostly cookbook + CI choice); **(ii)** which Type C backend ships first as a code path (etcd already coded, Consul already coded, raft-rs not yet — recommendation: etcd default, raft-rs Phase 4.2); **(iii)** whether highper drives peer discovery for clustering or delegates to the chosen infrastructure (K8s headless service / Consul / etc.). Affects Phase 4 enterprise tier feasibility and the UC16 storage gate (#5 below). Per the HA research's "most-restrictive HA logic wins" rule, a deployment that enables UC3 or UC12 must include the etcd layer — that's a runtime validation enforced by §11.2, not a decision.
 5. **DECIDED 2026-05-02 (UC16 design decision #4):** UC16 storage-backend gate resolved. **Three impls of the `AiStateStore` trait ship**: **ReDB** (pure-Rust embedded, single-node default — zero external deps, matches highper's tooling stack); **RocksDB** (mature embedded, single-node alternative); **ScyllaDB** (Cassandra-compatible, multi-node). Operator chooses per deployment via `HIGHPER_AI_STATE_BACKEND` env var. Single-node deployments accept 0% storage-layer fault tolerance (same semantics as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE`). Multi-node prod uses ScyllaDB which provides its own replication. PostgreSQL is no longer a candidate (heavier than ReDB, not horizontally scalable like ScyllaDB; can be reconsidered as a 4th impl in Phase 4 if operator demand surfaces). New follow-on question (UC16 §12 #16): single-node → multi-node migration path — export tool, dual-write, or fresh-start. Recommended: export tool in Phase 3.
 6. **Before any v1.0 GA tag (added 2026-05-02):** confirm §0.5 reconciliation banners are still consistent with then-current code; KNOWN_LIMITATIONS / README / CHANGELOG / ARCHITECTURE may need refresh again at tag time.
-7. **Multi-region commitment (added 2026-05-02 — `HA_ARCHITECTURE.md` §6.5):** decide *when* multi-region ships as a single-button deployment (recommended: not in v1.0; Phase 4.x ecosystem alongside xDS / K8s operator). Until then, single-region-multi-AZ is the v1.0 default and multi-region patterns are documented but not productized. Decision affects UC15 footprint expectations and UC16 cross-region budget enforcement (gate #5 follow-on).
+7. **Multi-region commitment (added 2026-05-02 — `HA_ARCHITECTURE.md` §6.5; updated 2026-05-03 with candidate phase placement per gap-audit M3):** decide *when* multi-region ships as a single-button deployment. **Recommended candidate phase: Phase 4.1 or Phase 4.2** (alongside xDS + K8s operator + ConfigSource trait extraction — multi-region naturally pairs with these ecosystem deliverables). If owner prefers to defer further, the alternative is a **post-v1.0 RFC** with no roadmap commitment until operator demand surfaces. Until either path closes, single-region-multi-AZ is the v1.0 default and multi-region patterns are documented but not productized. Decision affects UC15 footprint expectations and UC16 cross-region budget enforcement (gate #5 follow-on per `USECASE_16_AI_LLM_GATEWAY.md` §3.6.6).
 
 ---
 
@@ -1666,7 +1674,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
       invalidation via Valkey pub/sub (1.5 days).
   - **§13 status snapshot** gains 1 row (decision #11).
   - Memory `uc16_scope.md` updated with the cluster-behaviour rules.
-- **2026-05-03 (sixteenth revision, current):** UC16 topic #12 fold-in
+- **2026-05-03 (sixteenth revision):** UC16 topic #12 fold-in
   (external integrations contract) — **closes the 12-topic UC16 design
   sequence**.
   - **UC16 design decision #12:** USECASE_16 §12 entry #19 added and
@@ -1699,6 +1707,41 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     once owner gates #1 (Phase 0 priority), #3 (UC16 scope+design
     revision against fence), and #4 (HA architecture sub-decisions)
     clear.
+- **2026-05-03 (seventeenth revision, current):** UC16 gap-audit fix-up
+  pass. Two parallel agents ran: (A) gap audit on UC16 design vs ROADMAP
+  + HA_ARCHITECTURE — surfaced 16 issues (3 high / 5 medium / 8 low);
+  (B) competitor comparison vs LiteLLM / Portkey / Helicone / Cloudflare /
+  Kong / Envoy / OpenRouter — produced 19-row × 8-column matrix. The
+  8 high+medium gap-audit items applied here:
+  - **H1** Phase 2.6 row added: prompt registry on `AiStateStore`
+    (UC16 §12 #10), 3 days.
+  - **H2** Phase 2.6 row added: MCP passthrough MVP, 3 days; Phase 3.1
+    row added: in-process MCP server (UC16 §12 #11), 5 days.
+  - **H3** Phase 3.1 row added: `AiStateStore` export tool
+    ReDB → ScyllaDB (UC16 §12 #16), 3 days.
+  - **M1** Phase 0.J row added: `HIGHPER_AI_STATE_PATH` env var
+    (UC16 §3.6.5), 0.1 day.
+  - **M2** Phase 0.J cross-ref clarification:
+    `HIGHPER_CLUSTER_TYPEB_BACKEND` is inheritance from cluster-bootstrap
+    shape (UC16 §3.4.5); 0 days.
+  - **M3** Owner gate #7 (multi-region commitment) updated with
+    candidate phase placement: Phase 4.1 or Phase 4.2 (alongside xDS +
+    K8s operator + ConfigSource trait), or post-v1.0 RFC.
+  - **M4** Phase 3.1 row added: tenant hierarchy as Beta organisation
+    axis (UC16 §7.1.1 + §12 #4), 4 days.
+  - **M5** Phase 2.4 virtual-key task description expanded: now
+    enumerates per-replica LRU validation cache + Type B Valkey pub/sub
+    invalidation channel `ai:key-invalidate`; task grew 3 → 4 days.
+  - **Bonus**: UC16 cookbook entry queued in Phase 2.6 (2 days) —
+    `examples/configs/scenarios/scenario-16-ai-llm-gateway.{proxy,yaml}`
+    — closes the §4.5 coverage gap (UC16 was the only UC missing an
+    entry in the cookbook coverage matrix).
+  - Net new Phase 2 / 3 work: H1+H2+bonus+M5 = ~9 days at MVP
+    (Phase 2.4 + 2.6); H2+H3+M4 = 12 days at Beta (Phase 3.1).
+  - **§13 status snapshot** gains 1 row recording the gap-audit fix-up.
+  - 8 low-severity items skipped (cosmetic / minor verification).
+  - Competitor comparison report retained in conversation log; not
+    folded into doc (it's analysis, not a design artefact).
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1754,6 +1797,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #11 recorded 2026-05-03 (cluster behaviour + failure modes) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.6 (six sub-sections) / §12 #18 | per-replica vs cluster-shared state inventory; per-component failure-mode matrix; `HIGHPER_AI_VALKEY_FAIL_MODE=local_fallback` default (mirrors UC4 distributed limiter); UC4↔UC16 Valkey shard isolation via `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (mirrors UC4 `HIGHPER_RATELIMIT_KEY_SHARDS`); single-node UC16 = dev/staging/small-prod default with explicit 0% FT acknowledgement; multi-region per HA §6.5.3 deferred to Phase 4 (gate #7) |
 | UC16 design decision #12 recorded 2026-05-03 (external integrations contract) — **closes the 12-topic UC16 design sequence** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §11.5 (five sub-sections) / §12 #19 | five integration surfaces (plugin hooks / metrics / audit-log export / inference engine via `AiProvider` plugin / configuration sources via `ConfigSource` trait); semver-style stability promise on operator-facing surfaces (metrics, plugin traits, admin API, DSL, env vars); `docs/INTEGRATION_GUIDE.md` (NEW) Phase 1.3 deliverable; CI compatibility test matrix in Phase 1.5 guards the stability promises |
 | **UC16 12-topic design sequence complete** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §12 entries #1–#19 | all 12 topics from the original 2026-05-02 design plan resolved over the 2026-05-02 → 2026-05-03 sessions; UC16 ready for Phase 2.1 implementation work; 19 §12 questions either DECIDED or queued for owner-side decisions before respective phases |
+| UC16 gap-audit fixes applied 2026-05-03 (8 items: 3 high + 5 medium) | ROADMAP Phase 0.J / 2.4 / 2.6 / 3.1 / §6 gate #7 | H1 prompt-registry task (Phase 2.6, 3 days); H2 MCP passthrough MVP (Phase 2.6, 3 days) + in-process server Beta (Phase 3.1, 5 days); H3 AiStateStore export tool (Phase 3.1, 3 days); M1 `HIGHPER_AI_STATE_PATH` env var (Phase 0.J, 0.1 day); M2 `HIGHPER_CLUSTER_TYPEB_BACKEND` cross-ref clarification; M3 owner gate #7 candidate phase = 4.1 or 4.2; M4 Beta tenant hierarchy (Phase 3.1, 4 days); M5 LRU virtual-key cache enumerated in Phase 2.4 (now 4 days, was 3); UC16 cookbook entry added to Phase 2.6 (2 days) — closes §4.5 coverage gap |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
