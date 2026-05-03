@@ -9,8 +9,8 @@
 | **3a** | 9 remaining sections + `CacheRuntimeConfig` migration (10 of 11 Stage 2 waivers resolved) + lint refinement (literal-only check, `src/config/` skip) | ✅ **LANDED** | `9d7dc1e` |
 | **3b** | Tier 1 SIGHUP atomic swap runtime + `ReloadDiff` (section-level Debug-string diff, secret-redacting `SecretRef::Debug`) + `main.rs` wiring chained with existing config-file-reload | ✅ **LANDED** | `e064b72` |
 | **3c-1** | `/api/runtime-config` + `/api/runtime-config/diff` admin endpoints. **Path conformed** to `AdminServer`'s existing `/api/...` convention per §11 #5 verification (NOT `/admin/...` — that prefix is the stub `api.rs`). Pre-redacted via `SecretRef::Debug` from 3b. | ✅ **LANDED** | `20aa599` |
-| **3c-2** | B12 body-size consumer migration in `src/middleware/`/`src/proxy/`/`src/http/` from literals to `runtime_config::current().body.*` | **next** | — |
-| **3c-3** | B14 spawned-task drain supervisor (~80 LoC inline) + `derive_enabled_ucs` populated for UC4 + UC11 | **deferred** | — |
+| **3c-2** | B12 body-size hot-path migration: 3 `collect_body_validated` call sites in `proxy/handler.rs:646/1150/1702` from literal to `runtime_config::current().body.max_request_body`. `pub const DEFAULT_MAX_BODY_SIZE` declarations in `body_access.rs:18` + `body_utils.rs:12` kept (compile-time fallbacks; `const` can't read from runtime). | ✅ **LANDED** | `471a336` |
+| **3c-3** | B14 spawned-task drain supervisor (~80 LoC inline) + `derive_enabled_ucs` populated for UC4 + UC11 | **next** | — |
 
 All 7 §11 decisions still apply unchanged. The split is a delivery convenience, not a scope reduction.
 

@@ -17,7 +17,7 @@
   - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
   - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (signed off + landed 2026-05-03 in commits `6897310` + `c8e1e8c` + `c9f1304`; verified end-to-end in Rancher Desktop / containerd). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint.
   - `docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md` — Stage 2 PR implementation contract (signed off + **landed** 2026-05-03 in commit `67bf863`; verified end-to-end as image `highper-gateway:stage2-rc`). 4 new sections (`ai` 25 env vars, `body` 3, `shutdown` 3, `secrets` 5), cross-subsystem validator + `validate_against_config(&Config, &RuntimeConfig)`, `Secrets://` `SecretRef` variant (parse + stub error), `hot_reload.rs:181` migration, CI lint widening to 4 paths. ~1500 LoC. 11 pre-existing cache/ literals tagged `// allow: Stage 3` for `CacheRuntimeConfig` migration.
-  - `docs/planning/RUNTIME_CONFIG_STAGE3_PR_PLAN.md` — Stage 3 PR implementation contract (signed off 2026-05-03; **split into 3a + 3b + 3c-1 + 3c-2 + 3c-3**); **3a + 3b + 3c-1 landed** in commits `9d7dc1e` + `e064b72` + `20aa599` 2026-05-03; 3c-2 (B12 body-size consumers) + 3c-3 (B14 drain supervisor + `derive_enabled_ucs` UC4/UC11) follow. All 7 §11 decisions still apply unchanged. Closes Workstream 0.J: 9 remaining sections (`http3`, `tls`, `ratelimit`, `circuit_breaker`, `geo`, `cache`, `signals`, `config_watcher`, `observability`), Tier 1 SIGHUP atomic swap, `/admin/config/diff` endpoint with secret sanitization, project-wide CI lint, B12 body-size + B14 spawned-task drain consumer migrations, new `CacheRuntimeConfig` resolves 10 of 11 Stage 2 cache/ waivers. ~1200–1500 LoC across 9 new + several modified files; ~250 LoC of new tests. After Stage 3, no production code path reads operator-tunable values from a hardcoded literal.
+  - `docs/planning/RUNTIME_CONFIG_STAGE3_PR_PLAN.md` — Stage 3 PR implementation contract (signed off 2026-05-03; **split into 3a + 3b + 3c-1 + 3c-2 + 3c-3**); **3a + 3b + 3c-1 + 3c-2 landed** in commits `9d7dc1e` + `e064b72` + `20aa599` + `471a336` 2026-05-03; 3c-3 (B14 drain supervisor + `derive_enabled_ucs` UC4/UC11) closes the workstream. All 7 §11 decisions still apply unchanged. Closes Workstream 0.J: 9 remaining sections (`http3`, `tls`, `ratelimit`, `circuit_breaker`, `geo`, `cache`, `signals`, `config_watcher`, `observability`), Tier 1 SIGHUP atomic swap, `/admin/config/diff` endpoint with secret sanitization, project-wide CI lint, B12 body-size + B14 spawned-task drain consumer migrations, new `CacheRuntimeConfig` resolves 10 of 11 Stage 2 cache/ waivers. ~1200–1500 LoC across 9 new + several modified files; ~250 LoC of new tests. After Stage 3, no production code path reads operator-tunable values from a hardcoded literal.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -2347,7 +2347,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     consumer migration + B14 spawned-task drain supervisor +
     `derive_enabled_ucs` populated for UC4 + UC11) is the closing
     follow-up; each item independently revertable.
-- **2026-05-03 (thirtieth revision, current):** Workstream 0.J
+- **2026-05-03 (thirtieth revision):** Workstream 0.J
   Stage 3c-1 **landed**. Admin endpoints for `RuntimeConfig`
   introspection live. Single commit `20aa599` (1 file; +56). Image
   `highper-gateway:stage3c-rc` verified.
@@ -2380,6 +2380,34 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **Net effect:** Workstream 0.J is ~11.5 of 12.6 days landed.
     Operators have visibility into runtime config + reload diffs.
     3c-2 (B12) + 3c-3 (B14 + UC enablement) close the workstream.
+- **2026-05-03 (thirty-first revision, current):** Workstream 0.J
+  Stage 3c-2 **landed**. B12 body-size hot-path consumer migration
+  complete. Single commit `471a336` (1 file; +15 / −3).
+  - **3 hot-path sites migrated** in `src/proxy/handler.rs`
+    (`:646/:1150/:1702`): each `collect_body_validated(body, len, MAX)`
+    call now reads `MAX` from
+    `*runtime_config::current().body.max_request_body.get() as usize`
+    instead of the hardcoded `10 * 1024 * 1024` literal. Operators
+    tune per-deployment via `HIGHPER_BODY_MAX_REQUEST` (Stage 2's
+    `BodyRuntimeConfig` parser supports `K`/`M`/`G` suffixes).
+  - **Out of 3c-2 scope:** `pub const DEFAULT_MAX_BODY_SIZE`
+    declarations in `src/middleware/body_access.rs:18` +
+    `src/http/body_utils.rs:12` kept as compile-time fallbacks — Rust
+    `const` can't read from `runtime_config` at const-eval time. Hot-
+    path callers (which have a runtime context) read from
+    `RuntimeConfig` directly. The `Default::default()` literal at
+    `src/middleware/request_size_limit.rs:27` similarly deferred — not
+    on the hot path.
+  - **End-to-end verification:** image `highper-gateway:stage3c2-rc`
+    boots cleanly with `HIGHPER_BODY_MAX_REQUEST=50MB` set. Full
+    Stage 1+2+3a+3b+3c-1+3c-2 log sequence intact: Starting Highper
+    Gateway → RuntimeConfig loaded and installed → SIGHUP handler
+    installed → Loading configuration from: …
+  - **§13 status snapshot** gains 1 row recording the 3c-2 land.
+  - **Net effect:** Workstream 0.J is ~12 of 12.6 days landed.
+    Stage 3c-3 (B14 spawned-task drain supervisor +
+    `derive_enabled_ucs` populated for UC4 + UC11) closes the
+    workstream.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2453,6 +2481,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Workstream 0.J Stage 3a LANDED 2026-05-03** (9 sections + cache migration + lint refinement) | commit `9d7dc1e` (17 files; +1202 / −45) | First half of Stage 3 (single-PR plan split into 3a + 3b + 3c mid-implementation — see Stage 3 plan §12 split rationale). 3a is the self-contained data-plumbing portion: 9 new sections (`http3` B8, `tls`, `ratelimit` B4, `circuit_breaker` B7-partial, `geo` UC15, `cache`, `signals`, `config_watcher`, `observability` §4.4 row 7) bringing `RuntimeConfig` to **15 sections total**; `CacheRuntimeConfig` migration resolves 10 of 11 Stage 2 `// allow: Stage 3` waivers (the 11th in `src/cache/mod.rs:49` is a doc-comment example and keeps its waiver); xtask lint refined with literal-only check (`Duration::from_secs(<digit>)`) so legitimate `Duration::from_secs(*runtime_config::current().<…>.get())` no longer false-positives, plus `src/config/` directory skip (env-var primitive layer + per-protocol presets out of scope). Hard-fail scope kept at Stage 2's 4 paths; project-wide enforcement deferred to Stage 4+ since the survey surfaced ~150 pre-existing literals. **3b** (Tier 1 SIGHUP atomic swap runtime + `ReloadDiff`) and **3c** (admin endpoint + B12 + B14 + `derive_enabled_ucs`) follow as separate PRs. |
 | **Workstream 0.J Stage 3b LANDED 2026-05-03** (Tier 1 SIGHUP atomic swap runtime + `ReloadDiff`) | commit `e064b72` (4 files; +279 / −11) | Image `highper-gateway:stage3b-rc` verified end-to-end. `reload.rs` rewritten with full SIGHUP runtime (`signal-hook-tokio` `Signals` stream + `tokio::spawn` reader + `reload_now` calling `runtime_config::load()` + `arc_swap::ArcSwap::store` for atomic swap + section-level `compute_diff` via `Debug`-string comparison). New `LATEST_DIFF: OnceLock<ArcSwap<ReloadDiff>>` global persists the most recent diff for Stage 3c admin endpoint. **`SecretRef::Debug` impl now redacts** the `Literal` variant as `SecretRef::Literal(***)` so diff comparison + diff endpoint output never leak secret values; custom `PartialEq`/`Eq` preserves rotation-detection internally. Windows fallback: `install_sighup_handler` no-ops with a clear log line. End-to-end test inside container confirmed log sequence: `Starting Highper Gateway` → `RuntimeConfig loaded and installed` → **`SIGHUP handler installed for RuntimeConfig hot reload`** → `Loading configuration from: …`. Stage 2 regression test (HIGHPER_AI_RETRY_BUDGET=11 → out-of-range error) still passes — confirms data-plumbing layer unaffected. Workstream 0.J ~11 of 12.6 days landed. **3c** (admin endpoint + B12 + B14 + `derive_enabled_ucs`) is the closing follow-up. |
 | **Workstream 0.J Stage 3c-1 LANDED 2026-05-03** (`/api/runtime-config` + `/api/runtime-config/diff` admin endpoints) | commit `20aa599` (1 file; +56) | Two new endpoints on `AdminServer` (the real admin server in `src/admin/server.rs`, NOT the `api.rs` stub which uses `/admin/...`). Per §11 #5 "verify-and-conform" — `AdminServer` uses `/api/...` prefix consistently, so endpoints landed at `/api/runtime-config` (returns sanitized current `RuntimeConfig`) and `/api/runtime-config/diff` (returns latest `ReloadDiff` from `runtime_config::latest_diff()`). Both reuse `AdminServer`'s existing API-key + JWT auth middleware — no new auth plumbing. **Pre-redaction via `SecretRef::Debug`** from Stage 3b (commit `e064b72`) means the endpoint output never leaks secret values. Image `highper-gateway:stage3c-rc` boots cleanly with full Stage 1+2+3a+3b+3c-1 log sequence. 3c sub-split into 3c-1 (admin endpoints, this commit) / 3c-2 (B12 body-size consumer migration) / 3c-3 (B14 supervisor + `derive_enabled_ucs`) — each independently revertable. |
+| **Workstream 0.J Stage 3c-2 LANDED 2026-05-03** (B12 body-size hot-path consumer migration) | commit `471a336` (1 file; +15 / −3) | 3 hot-path `collect_body_validated` call sites in `src/proxy/handler.rs` — GraphQL request body collect (`:646`) + two other body-collect paths (`:1150`, `:1702`) — migrated from hardcoded `10 * 1024 * 1024` to `*runtime_config::current().body.max_request_body.get() as usize`. Operators can now tune per-deployment via `HIGHPER_BODY_MAX_REQUEST=50MB` (or `K`/`M`/`G` suffix). `pub const DEFAULT_MAX_BODY_SIZE` declarations in `src/middleware/body_access.rs:18` + `src/http/body_utils.rs:12` kept as compile-time fallbacks (Rust `const` can't read from `runtime_config` at const-eval time); hot-path callers should read from `RuntimeConfig` directly (as the 3 sites in this commit do). Image `highper-gateway:stage3c2-rc` boots cleanly with `HIGHPER_BODY_MAX_REQUEST=50MB`. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
