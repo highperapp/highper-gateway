@@ -640,7 +640,11 @@ impl Handler {
                     .and_then(|h| h.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok());
 
-                match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                match collect_body_validated(
+                    incoming_body,
+                    content_length,
+                    *crate::runtime_config::current().body.max_request_body.get() as usize,
+                ).await {
                     Ok(body) => {
                         // Parse GraphQL request
                         match serde_json::from_slice::<crate::gateway::graphql::GraphQLRequest>(&body.bytes) {
@@ -1140,7 +1144,11 @@ impl Handler {
                                     .and_then(|h| h.to_str().ok())
                                     .and_then(|s| s.parse::<u64>().ok());
 
-                                match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                                match collect_body_validated(
+                    incoming_body,
+                    content_length,
+                    *crate::runtime_config::current().body.max_request_body.get() as usize,
+                ).await {
                                     Ok(collected) => Some(collected.bytes),
                                     Err(e) => {
                                         warn!("Failed to collect request body: {}", e);
@@ -1688,7 +1696,11 @@ impl Handler {
 
                         // Collect body for POST/PUT/PATCH requests
                         let body = if matches!(method, &Method::POST | &Method::PUT | &Method::PATCH) {
-                            match collect_body_validated(incoming_body, content_length, 10 * 1024 * 1024).await {
+                            match collect_body_validated(
+                    incoming_body,
+                    content_length,
+                    *crate::runtime_config::current().body.max_request_body.get() as usize,
+                ).await {
                                 Ok(collected) => {
                                     debug!("Collected {} bytes for PHP request", collected.len());
 
