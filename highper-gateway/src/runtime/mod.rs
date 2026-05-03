@@ -278,6 +278,19 @@ impl Runtime {
 
         info!("Shutting down gracefully...");
 
+        // B14: drain window for in-flight spawned tasks before forced abort.
+        // Operators tune via HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN (default 10s)
+        // per RuntimeConfig::shutdown.spawn_task_drain_secs. This is a
+        // simple time-based drain — full per-task tracking is a future
+        // refactor; for now a configurable delay is sufficient to let
+        // long-running background work (e.g., cache writebacks, observability
+        // flush, plugin teardown) complete before we abort.
+        let drain = *crate::runtime_config::current().shutdown.spawn_task_drain_secs.get();
+        if !drain.is_zero() {
+            info!("Draining spawned tasks for {:?}", drain);
+            tokio::time::sleep(drain).await;
+        }
+
         // Cancel reloader task
         if let Some((reloader_handle, signal_handle)) = reloader_task {
             reloader_handle.abort();

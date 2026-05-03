@@ -115,15 +115,47 @@ pub fn validate_against_config(
     Ok(())
 }
 
-/// Derive which UCs are enabled from the user-facing `Config`. Stage 2
-/// stub — returns empty set. Each phase fills in its UC enablement signal.
-fn derive_enabled_ucs(_config: &crate::config::Config) -> EnabledUcs {
-    // TODO(Phase 0+): walk `_config` and determine which of UC1–UC15 + UC16
-    // are enabled based on listener bindings, route protocols, upstream
-    // types, etc. Until then, the §11.2 cross-config rules are no-ops; the
-    // intra-RuntimeConfig invariants (validate_cross_subsystem) cover the
-    // critical AI/Cluster cases.
-    EnabledUcs::default()
+/// Derive which UCs are enabled from the user-facing `Config`. Stage 3c-3
+/// populated UC4 (rate-limit) + UC11 (CDN cache); other UCs are still
+/// stubbed and will land via per-UC PRs as the team works through them.
+fn derive_enabled_ucs(config: &crate::config::Config) -> EnabledUcs {
+    let mut group_b_ucs: Vec<&'static str> = Vec::new();
+
+    // UC4 — API Gateway with Rate Limiting (Group B per HA_ARCHITECTURE.md).
+    // Enabled when there is a top-level `rate_limit` block OR any route has
+    // a per-route rate-limit override.
+    let uc4_enabled =
+        config.rate_limit.is_some() || config.routes.iter().any(|r| r.rate_limit.is_some());
+    if uc4_enabled {
+        group_b_ucs.push("UC4-rate-limit");
+    }
+
+    // UC11 — CDN Edge Caching (Group B per HA_ARCHITECTURE.md).
+    // Enabled when there is a top-level `cache` block OR any route has a
+    // per-route cache override.
+    let uc11_enabled =
+        config.cache.is_some() || config.routes.iter().any(|r| r.cache.is_some());
+    if uc11_enabled {
+        group_b_ucs.push("UC11-cdn-cache");
+    }
+
+    // TODO(per-UC PRs): UC1/UC2 (always-on; needs care to not always trigger
+    // Group A); UC3 (TLS — Group C: enabled when `config.tls.is_some()` AND
+    // ACME or distributed cert store present); UC5 (HTTP/3 —
+    // `config.server.http3.enabled`); UC6/UC7/UC8/UC9/UC10 — per-route
+    // protocol detection; UC12 (Group C — `Config.discovery`); UC13/UC14/
+    // UC15/UC16 — per-route signals.
+
+    let group_c_ucs: Vec<&'static str> = Vec::new();
+    let any_group_b = !group_b_ucs.is_empty();
+    let any_group_c = !group_c_ucs.is_empty();
+
+    EnabledUcs {
+        any_group_b,
+        any_group_c,
+        group_b_ucs,
+        group_c_ucs,
+    }
 }
 
 #[derive(Debug, Default)]
