@@ -720,6 +720,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **UC16 pricing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §5.5):** five env vars on the `Settings::ai.pricing` sub-struct: `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream, operator can self-host), `HIGHPER_AI_PRICING_FEED_SIGN_KEY` (Ed25519 public key path or sigstore ref; refresh refuses unsigned feed when set), `HIGHPER_AI_PRICING_REFRESH_INTERVAL_SECS` (default 604 800 = 7 days; minimum 3600), `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` (`last_known_good` default / `fail_closed` opt-in), `HIGHPER_AI_ALLOW_FREE_TIER` (default `false`; required `true` to allow requests for models with no pricing entry). Documented in `docs/CONFIG_ENV.md`. **0.5 day.**
 - [ ] **UC16 cache + vector backend env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §6.0):** `HIGHPER_AI_CACHE_BACKEND` (default `valkey` → uses cluster Type B Valkey; alternatives: `redis` / `memory` / `disk` / `multi-tier` — same set as existing `src/cache/` trait); `HIGHPER_AI_VECTOR_BACKEND` (default `none`; one of `qdrant` / `redis-stack` / `pgvector` / `hnsw` — only required when semantic cache is enabled); `HIGHPER_AI_VECTOR_ADDRS` (host:port comma-list for non-`hnsw` backends); `HIGHPER_AI_VECTOR_AUTH` (auth token / file path / secrets-resolver ref). Refuse-to-start when an `ai_route` block enables `semantic_cache` and the vector backend / addrs are not set. **0.5 day.**
 - [ ] **UC16 routing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.4):** `HIGHPER_AI_RETRY_BUDGET` (default `3`; max attempts across providers per request; per-virtual-key override via scope's `retry_budget`); `HIGHPER_AI_COOLDOWN_BACKEND` (`auto` default → Valkey when Type B configured, local otherwise; alternatives `valkey` / `local` for forced override); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN` (default `50`); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX` (default `200`); `HIGHPER_AI_DEFAULT_COOLDOWN_SECS_NO_HEADER` (default `30`; used when provider 429s without `Retry-After`). **0.5 day.**
+- [ ] **UC16 streaming env vars (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.5):** `HIGHPER_PLUGIN_CHUNK_BUDGET_US` (default `500` µs; plugin overshooting budget per chunk is logged + skipped for the rest of the stream — fail-open at chunk level); `HIGHPER_AI_STREAM_BUFFER_DEPTH` (default `64` events per stream); `HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY` (`drop_oldest` default; alternatives `block` / `error`); `HIGHPER_AI_DEFAULT_CANCEL_ON_CLOSE` (default `true`; per-virtual-key override via scope); `HIGHPER_AI_DEFAULT_TPM_HARD_STOP` (default `false`; per-virtual-key override via scope). **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -911,8 +912,10 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### 2.5 Streaming + admin + tests (week 5)
 
-- [ ] SSE-aware chunker that re-emits inbound-shape SSE; per-chunk hooks for token count / log / cancel. **4 days.**
-- [ ] Cancellation propagation: client SSE close → cancel upstream + record partial usage. **2 days.**
+- [ ] **SSE-aware chunker with hook chain (UC16 #10, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.5.3):** module at `src/gateway/ai/sse.rs`. Parse provider's SSE / event-stream-binary / NDJSON; re-emit as inbound-shape SSE. Per-chunk hook chain: token counter → cancellation check → plugin chain (with `HIGHPER_PLUGIN_CHUNK_BUDGET_US` budget + fail-open) → cache write buffer → metrics emit. Bounded mpsc between upstream-receive and client-send (`HIGHPER_AI_STREAM_BUFFER_DEPTH`, `HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY`). Emits `ai_stream_buffer_drops_total`, `ai_plugin_chunk_budget_exceeded_total`. **5 days** (was 4 — adds budget enforcement + bounded buffer + 2 metrics).
+- [ ] **Cancellation propagation (UC16 #10, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.5.1):** detect client SSE close via `select!` between `client_send.send()` and `client_close_signal`. Default `cancel_on_close=true` triggers `AiProvider::cancel(stream_id)` (TCP RST fallback if provider doesn't support cancel). Per-virtual-key override `cancel_on_close=false` switches to drain-and-record (provider keeps generating, gateway discards chunks but waits for `[DONE]` to record full usage). Either way, `ai_request_log` row written with `cancelled=true|false` flag and partial-usage totals. **3 days** (was 2 — adds drain-and-record path + per-key opt-in).
+- [ ] **TPM mid-stream policy (UC16 #10, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.5.2):** default post-stream warning emits `ai_budget_exceeded_total{kind=tpm_overrun}` + audit event without interrupting stream. Per-virtual-key opt-in `tpm_hard_stop=true` injects SSE error frame (`event: error\ndata: {"code":"tpm_exceeded",...}`) mid-stream and closes upstream when TPM bucket runs out. Both modes record final usage. **2 days.**
+- [ ] **Streaming metrics (UC16 #10, 2026-05-03):** `ai_active_streams` gauge, `ai_streaming_cancellations_total{reason}`, `ai_ttft_seconds`, `ai_inter_token_seconds`. Wire into existing `src/observability/metrics.rs` (or via the new `MetricsBackend` trait once Phase 1.4 lands). **1 day.**
 - [ ] Admin endpoints (`POST/GET /admin/ai/keys`, `GET /admin/ai/spend`, `POST /admin/ai/budgets`, `GET /admin/ai/models`). **3 days.**
 - [ ] Acceptance-test suite covering all 10 criteria from UC16 doc §13 against recorded provider fixtures. **3 days.**
 
@@ -1544,7 +1547,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     extension).
   - Memory `uc16_scope.md` updated with engine-plus-pluggable rule
     and the no-bundled-backends-or-embedding-models guidance.
-- **2026-05-02 (thirteenth revision, current):** UC16 topic #9 fold-in
+- **2026-05-02 (thirteenth revision):** UC16 topic #9 fold-in
   (routing strategies and fallback).
   - **UC16 design decision #9:** USECASE_16 §12 entry #17 added and
     marked DECIDED. Five-stage layered routing pipeline at MVP:
@@ -1578,6 +1581,41 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row (decision #9).
   - Memory `uc16_scope.md` updated with the layered-routing rule and
     the cooldown-shared-via-Valkey-when-available guidance.
+- **2026-05-03 (fourteenth revision, current):** UC16 topic #10 fold-in
+  (streaming and cancellation semantics).
+  - **UC16 design decision #10:** USECASE_16 §12 #8 and #9 marked
+    DECIDED. Cancel-upstream-on-client-close as default; per-virtual-key
+    `cancel_on_close=false` opt-in for drain-and-record (training-data
+    collection / audit-completeness use cases). TPM mid-stream defaults
+    to post-stream warning (smooth UX); per-virtual-key
+    `tpm_hard_stop=true` opt-in injects SSE error frame mid-stream
+    (cost-sensitive batch jobs).
+  - **USECASE_16 §3.5 added** with five sub-sections:
+    3.5.1 cancellation on client disconnect (cancel default, drain
+    opt-in) / 3.5.2 TPM hard-stop vs post-stream warning /
+    3.5.3 chunk hooks + buffer + plugin budget (with `_BUDGET_US`
+    + `_BUFFER_DEPTH` + `_BUFFER_OVERFLOW_POLICY` env vars; fail-open
+    on plugin overrun) / 3.5.4 streaming metrics (4 new metrics) /
+    3.5.5 provider-side prompt-cache passthrough during streaming.
+  - **§3.1 [SSE stream chunker] step** updated to reference §3.5.
+  - **§7.1.1 virtual-key scope** gains 4 fields: `retry_budget`
+    (decision #9), `count_reasoning_in_output` (decision #6),
+    `cancel_on_close` (decision #10), `tpm_hard_stop` (decision #10).
+  - **§5.4 streaming-TPM enforcement row** gets a back-reference to §3.5.2.
+  - **Phase 0.J** gains 5 streaming env vars
+    (`HIGHPER_PLUGIN_CHUNK_BUDGET_US`, `HIGHPER_AI_STREAM_BUFFER_DEPTH`,
+    `HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY`,
+    `HIGHPER_AI_DEFAULT_CANCEL_ON_CLOSE`,
+    `HIGHPER_AI_DEFAULT_TPM_HARD_STOP`) — 0.5 day.
+  - **Phase 2.5 streaming tasks** expanded:
+    - SSE chunker: 4 → 5 days (adds budget enforcement + bounded buffer + 2 metrics).
+    - Cancellation propagation: 2 → 3 days (adds drain-and-record path + per-key opt-in).
+    - New 2-day TPM mid-stream policy task added.
+    - New 1-day streaming metrics task added.
+    - Net: Phase 2.5 streaming work grows ~6 → ~11 days.
+  - **§13 status snapshot** gains 1 row (decision #10).
+  - Memory `uc16_scope.md` updated with the cancel-on-close-default,
+    tpm-warn-default, plugin-chunk-budget, and stream-buffer rules.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1629,6 +1667,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #8 recorded 2026-05-02 (cache architecture) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §6.0–§6.5 / §12 #5 | engine-plus-pluggable: highper ships canonical hashing / lookup / write-back / TTL / tag invalidation / streaming replay / metrics; KV backend via existing `src/cache/` trait, vector backend via new `VectorIndex` trait, embedding model via `AiProvider` registry — all operator-chosen per deployment. New §6.4 explicit "what's NOT in scope" boundary table mirrors §8 (guardrails). |
 | §4.4 interface-first audit extended from 10 to 11 boundaries | ROADMAP §4.4 | row 11 (`VectorIndex`) added — greenfield UC16 trait, Phase 2.4 trait + Qdrant impl, Phase 3.1 for Redis-Stack / PgVector / HNSW; total trait extractions 10.5 → 11 person-weeks |
 | UC16 design decision #9 recorded 2026-05-02 (routing strategies) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.4 / §12 #17 | layered MVP (priority + rate-limit-aware + health-aware + capability-aware stacked); 3-attempt retry budget default with per-virtual-key override; cooldown state in Type B Valkey when configured else local `DashMap`; structured 503 with per-attempt details on exhaustion; cost-aware (Beta) / latency-aware (GA) / weighted-canary (Beta) queued for later phases |
+| UC16 design decision #10 recorded 2026-05-03 (streaming + cancellation) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.5 / §12 #8, #9 | cancel-upstream-on-client-close default with per-virtual-key drain-and-record opt-in; TPM mid-stream defaults to post-stream warning with per-key hard-stop opt-in; per-chunk plugin budget (default 500 µs, fail-open on overrun); bounded stream buffer (default 64 events, drop-oldest on overflow); 4 new streaming-specific metrics |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |

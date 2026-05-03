@@ -161,11 +161,17 @@ Client
   │  - Per-(provider, region) pool, h2 preferred
   │  - Idle keepalive, generous read timeout (≥600s for reasoning)
   ▼
-[SSE stream chunker]                                       (extends src/http/proxy_streaming.rs)
+[SSE stream chunker]                                       (extends src/http/proxy_streaming.rs — see §3.5)
   │  - Parse provider's SSE / event-stream-binary / NDJSON
   │  - Re-emit as inbound-shape SSE
-  │  - Per-chunk hook: token count, log, optional plugin (operator-supplied)
-  │  - Cancellation: client SSE close → cancel upstream + record partial usage
+  │  - Per-chunk hooks: token counter, cancellation check, plugin chain
+  │    (HIGHPER_PLUGIN_CHUNK_BUDGET_US budget; fail-open on overrun),
+  │    cache write buffer, metrics emit
+  │  - Bounded buffer (HIGHPER_AI_STREAM_BUFFER_DEPTH; drop-oldest default)
+  │  - Cancellation: client SSE close → §3.5.1 behaviour
+  │    (cancel_on_close=true default, drain-and-record opt-in per virtual key)
+  │  - TPM mid-stream: §3.5.2 (post-stream warning default,
+  │    tpm_hard_stop opt-in injects SSE error frame)
   ▼
 [Post-call accounting]                                     (NEW src/gateway/ai/accounting.rs)
   │  - Final input/output tokens (provider usage if returned, else local tokenizer)
@@ -544,6 +550,138 @@ Operators alert on `ai_route_exhausted_total` increasing or
 `ai_route_cooldown_active` for the same provider staying high — those
 are the "all-providers-failing" or "one-provider-overwhelmed" patterns.
 
+### 3.5 Streaming and cancellation semantics (UC16 design decision #10, 2026-05-03)
+
+Streaming responses are where AI gateways differ most from regular HTTP
+gateways: tokens arrive over many seconds, clients can disappear
+mid-stream, providers charge for partial output, and SSE error frames
+vs HTTP error responses are not interchangeable. This section pins
+down how highper-gateway behaves at every streaming sharp edge.
+
+#### 3.5.1 Cancellation on client disconnect
+
+When the client's TCP connection drops mid-stream (browser closed,
+mobile dropped network, app killed), the gateway has three choices.
+Highper ships **(a)** as default, **(c)** as the per-key opt-in:
+
+| Choice | Behaviour | Default? |
+|---|---|---|
+| **(a) Cancel upstream immediately** | Detect client SSE close → immediately abort the provider request (TCP close + provider-specific cancel where supported). Record partial usage. | **Yes — default for new virtual keys.** |
+| **(b) Drain upstream silently** | Provider keeps generating; gateway discards the chunks but waits for `[DONE]` to record full usage in the audit log. | Per-virtual-key opt-in via scope's `cancel_on_close: false`. |
+
+**Why default (a):** most operators want to stop billing when the client is gone. Default (b) would surprise operators with bills for output their users never saw.
+
+**Why opt-in (b) exists:** training-data collection / audit-log completeness / reasoning-model traces — small audience, real value, configurable.
+
+**Implementation:**
+
+- Gateway tracks per-stream `client_alive: AtomicBool`.
+- A `select!` between `client_send.send(chunk).await` and `client_close_signal.recv()` flips the flag.
+- On flag flip: invoke `AiProvider::cancel(stream_id)` — providers that don't support cancel get a TCP RST as fallback.
+- Either way, the partial-usage record (`ai_request_log` row) is written with `cancelled = true` and the running token / cost totals as of cancel time.
+
+**Per-virtual-key scope field** (extends §7.1.1):
+
+```
+cancel_on_close: bool = true      // default; flip to false for drain-and-record
+```
+
+#### 3.5.2 TPM hard-stop mid-stream vs post-stream warning
+
+A virtual key's `tpm` (tokens-per-minute) cap is exceeded *during* a
+streaming response. Highper ships **(b)** as default, **(a)** as
+per-key opt-in:
+
+| Choice | Behaviour | Default? |
+|---|---|---|
+| **(a) Hard-stop with SSE error frame** | Inject SSE error event (`event: error\ndata: {"code":"tpm_exceeded",...}`) mid-stream and close upstream. Client SDK sees the error mid-output. | Per-virtual-key opt-in via scope's `tpm_hard_stop: true`. |
+| **(b) Post-stream warning** | Let the response complete; record over-budget; emit `ai_budget_exceeded_total{kind=tpm_overrun}` metric + audit event. Soft cap. | **Yes — default for new virtual keys.** |
+
+**Why default (b):** hard-stop mid-stream is jarring — end-users see partial output then a sudden error frame. Most operators set TPM as a *soft* cap (smooth SLO target), not a hard cost ceiling. Default (b) gives smooth UX; the over-budget event flags the tenant for follow-up.
+
+**Why opt-in (a) exists:** cost-sensitive batch jobs, free-tier abuse prevention, regulated environments where one over-budget request is unacceptable. Hard-stop is also safer when the per-request `max_tokens` is far below the per-minute budget — the over-budget window is small.
+
+**Per-virtual-key scope field** (extends §7.1.1):
+
+```
+tpm_hard_stop: bool = false      // default; flip to true to inject SSE error frame mid-stream
+```
+
+**Note on RPM:** RPM (requests per minute) is checked at request *start* — pre-call. RPM doesn't have a mid-stream interpretation; the request was already accepted. Only TPM has the mid-stream question.
+
+#### 3.5.3 Chunk hooks, buffer, and plugin budget
+
+Each provider chunk passes through a chain of per-chunk hooks before
+re-emitting to the client as inbound-shape SSE.
+
+| Hook | Purpose | When it runs |
+|---|---|---|
+| **Token counter** | Increments output tokens / TPM bucket / running cost | Always, every chunk |
+| **Cancellation check** | Reads `client_alive` flag; on flip, triggers §3.5.1 behaviour | Every chunk |
+| **Plugin chain** | Operator-supplied per-chunk plugin (per UC16 §3.1; runs WASM/FFI plugin's `on_response_body` phase per chunk) | Every chunk; budgeted |
+| **Cache write buffer** | Accumulates complete response for §6.1 exact-cache write | Every chunk; commits at `[DONE]` |
+| **Metrics emit** | Updates `ai_active_streams`, `ai_inter_token_seconds`, `ai_ttft_seconds` | First chunk + every chunk + `[DONE]` |
+
+**Plugin budget per chunk.** A misbehaving plugin can block streaming if
+the chain runs synchronously per chunk. The hook chain enforces a
+**per-chunk budget**:
+
+```
+HIGHPER_PLUGIN_CHUNK_BUDGET_US = 500           // microseconds; default 500 µs
+```
+
+Plugin overshooting the budget for a chunk is **logged + skipped for the
+remainder of this stream** (fail-open at chunk level — the stream
+continues without the plugin's contribution). Operator alert metric
+`ai_plugin_chunk_budget_exceeded_total{plugin,reason}`.
+
+**Stream buffer between provider receive and client send.** A bounded
+mpsc decouples upstream-receive from client-send so a slow client doesn't
+block the upstream connection.
+
+```
+HIGHPER_AI_STREAM_BUFFER_DEPTH = 64                     // default events; per stream
+HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY = drop_oldest  // alternatives: block, error
+```
+
+**Drop-oldest** (default): when the buffer is full, drop the oldest
+queued chunk and emit `ai_stream_buffer_drops_total{policy}` metric.
+The client sees a momentary content gap; the upstream stays unblocked.
+
+**Block**: backpressure all the way to the provider. Upstream throttles;
+provider may eventually time out.
+
+**Error**: terminate the stream with an SSE error frame. Strictest
+posture; useful for compliance workloads where dropped chunks are
+unacceptable.
+
+#### 3.5.4 Streaming metrics
+
+Per UC16 §9.1, streaming-specific metrics:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `ai_active_streams` | gauge | `tenant, model_alias, provider` |
+| `ai_streaming_cancellations_total` | counter | `tenant, key_id, model_alias, reason={client_close, tpm_hard_stop, plugin_block, error}` |
+| `ai_ttft_seconds` | histogram | `model_alias, provider` (time to first token) |
+| `ai_inter_token_seconds` | histogram | `model_alias, provider` (token-to-token cadence; surfaces provider stalls) |
+| `ai_stream_buffer_drops_total` | counter | `policy={drop_oldest, error}` |
+| `ai_plugin_chunk_budget_exceeded_total` | counter | `plugin, reason` |
+
+#### 3.5.5 Provider-side prompt-cache passthrough during streaming
+
+The provider's `usage` block at end-of-stream may include
+`cache_creation_input_tokens` and `cache_read_input_tokens` (Anthropic /
+OpenAI / Bedrock formats vary). The post-stream accounting layer
+(§3.1 `[Post-call accounting]` step) parses these and emits:
+
+- `ai_input_tokens_total{kind=prompt_cached}` for the cached portion
+- `ai_input_tokens_total{kind=prompt_uncached}` for the rest
+- `ai_provider_cache_savings_usd_total{provider}` running savings (per §6.3)
+
+This lets operators measure how much the provider's prompt cache is
+saving them, separately from highper's own §6.1 exact cache.
+
 ---
 
 ## 4. Canonical request / response types
@@ -645,7 +783,7 @@ force one for both.
 |---|---|
 | Pre-call estimate | Local tokenizer counts input tokens; used for budget gate, RPM/TPM check, route eligibility. Estimate is exact for non-multimodal inputs; ±5 % for content with images / audio (where token cost is content-specific). |
 | Post-call truth | Prefer provider-returned `usage.{input,output}_tokens` field. Fall back to local-tokenizer count of the output stream when the provider does not return usage (some streaming endpoints, some proxies). Local-only is acceptable for billing because the search space matches provider's billing model when vocabularies match. |
-| Streaming TPM enforcement | Default: post-stream warning (log + metric, no inline action). Hard-stop opt-in per virtual key — when set, gateway injects an SSE error frame and closes upstream once token budget is exhausted mid-stream. Hard-stop is jarring for end-users; default-off is intentional. |
+| Streaming TPM enforcement | Default: post-stream warning (log + metric, no inline action). Hard-stop opt-in per virtual key — when set, gateway injects an SSE error frame and closes upstream once token budget is exhausted mid-stream. Hard-stop is jarring for end-users; default-off is intentional. **Mechanics in §3.5.2** (UC16 #10). |
 
 ### 5.4 Reasoning tokens — count as output (UC16 design decision #7)
 
@@ -948,6 +1086,10 @@ key (sk-hpgw-...)
 │    budget_usd_day = ..., budget_usd_month = ..., lifetime_usd_cap = ...
 │    expires_at = ...
 │    enabled = true | false                  (soft-disable; not deleted; preserves audit)
+│    retry_budget = 3                        (per-key max retry attempts; UC16 #9 §3.4.3)
+│    count_reasoning_in_output = true        (UC16 #6 §5.4; flip false to exclude from billing)
+│    cancel_on_close = true                  (UC16 #10 §3.5.1; flip false to drain-and-record)
+│    tpm_hard_stop = false                   (UC16 #10 §3.5.2; flip true to inject SSE error frame)
 ├─ tags (free-form key/value, indexable):
 │    env = prod | staging | dev
 │    team = growth | platform | ...
@@ -1253,8 +1395,8 @@ and reference the design-decision number.
 5. **DECIDED (UC16 #8, 2026-05-02)** — Cache architecture: **engine-plus-pluggable**. Highper ships the cache *engine* (canonical hashing, lookup/write-back orchestration, TTL, tag-based invalidation, streaming replay, metrics). Backends are operator's choice via traits: existing `src/cache/` for KV (Valkey / Redis / disk / in-memory / multi-tier); new `VectorIndex` trait (row 11 of §4.4 audit) for semantic-cache vector backend (Qdrant / Redis-Stack / PgVector / HNSW behind Cargo features). Embedding model is operator's choice via `AiProvider` registry (§6.2). §6.4 codifies what's NOT in scope (no bundled backends, no SaaS dashboard, no cache-policy automation). Mirrors §8 boundary table for guardrails.
 6. **DECIDED (UC16 #6, 2026-05-02)** — Token-counter posture: **bake all vocabularies into the binary**. Lazy-fetch and hybrid both dropped. Default Cargo feature ships all (~30 MB binary growth); `ai-tokenizers-minimal` ships only OpenAI's two for size-conscious builds. Library choice: **`tiktoken-rs` for OpenAI** (faster, narrower) + **`tokenizers` (HuggingFace) for everything else** (Anthropic, Gemini SentencePiece, Llama BPE, Cohere, DeepSeek). §5.1 + §5.2 above.
 7. **DECIDED (UC16 #6, 2026-05-02)** — Reasoning-token billing default: **count as output**, matches provider pricing. Per-virtual-key opt-out via `count_reasoning_in_output: bool` scope flag. Metrics still emit reasoning-token counts with a `kind=reasoning` label regardless of billing inclusion. §5.4 above.
-8. **Cancellation semantics** — on client SSE close, do we (a) cancel upstream immediately (saves $, may lose audit trail), (b) drain upstream silently and record full usage, or (c) configurable per-key? Recommended: **(c) configurable, default (a)**.
-9. **Hard-stop on TPM enforcement** — break stream with error frame, or only post-stream warning? Recommended: **post-stream warning** by default; hard-stop opt-in (hard-stop semantics are jarring in practice).
+8. **DECIDED (UC16 #10, 2026-05-03)** — Cancellation on client SSE close: **(c) configurable per virtual key, default (a) cancel upstream immediately.** Per-key field `cancel_on_close: bool = true`; flip to `false` for drain-and-record (training-data collection / audit-completeness use cases). Implementation in §3.5.1.
+9. **DECIDED (UC16 #10, 2026-05-03)** — TPM hard-stop mid-stream: **(c) configurable per virtual key, default (b) post-stream warning only.** Per-key field `tpm_hard_stop: bool = false`; flip to `true` to inject SSE error frame mid-stream when TPM exceeded. Default-off because mid-stream hard-stops are jarring; opt-in serves cost-sensitive batch jobs. Implementation in §3.5.2.
 10. **Prompt registry storage** — durable layer in `AiStateStore` rows vs Git-backed text vs both? Recommended: **`AiStateStore` rows MVP**, expose `git push` adapter at GA for GitOps users.
 11. **MCP placement** — gateway hosts MCP server (lets LLMs query gateway state), or proxy-only? Recommended: **proxy-only MVP**, in-process MCP server in Beta.
 12. **DECIDED (UC16 #7, 2026-05-02)** — Pricing source: **vendored LiteLLM snapshot baked into binary** + **weekly signed refresh** from `HIGHPER_AI_PRICING_FEED_URL` (default LiteLLM upstream; operator can self-host) + **admin override at runtime** via `PATCH /admin/ai/models/{alias}` (operator-level overrides at MVP, per-tenant overrides at Phase 3). Refresh failure default `last_known_good`; `fail_closed` opt-in for regulated billing. Zero-price model lookup default-reject (`HIGHPER_AI_ALLOW_FREE_TIER=false`). §5.5 above.
@@ -1461,4 +1603,24 @@ See `ROADMAP.md` §5 for sequencing.
   - ROADMAP Phase 2.3 router task expanded 3 → 5 days. Phase 0.J
     gains 5 routing env vars. Phase 3.1 gains 2 new tasks (cost-aware,
     weighted/canary). Phase 4.1 gains 1 new task (latency-aware).
+- **2026-05-03 (decision #10 — streaming + cancellation, current):** topic-#10 fold-in.
+  - **§3.5 (new) Streaming and cancellation semantics** with five
+    sub-sections: 3.5.1 cancellation on client disconnect (cancel
+    upstream immediately as default; per-key `cancel_on_close=false`
+    opt-in for drain-and-record) / 3.5.2 TPM hard-stop vs post-stream
+    warning (post-stream warning default; per-key `tpm_hard_stop=true`
+    opt-in for SSE error frame mid-stream) / 3.5.3 chunk hooks +
+    bounded buffer (default 64 events, drop-oldest) + plugin budget
+    (default 500 µs, fail-open on overrun) / 3.5.4 streaming metrics
+    (4 new) / 3.5.5 provider-side prompt-cache passthrough during
+    streaming.
+  - **§3.1 [SSE stream chunker]** step updated to reference §3.5.
+  - **§7.1.1 virtual-key scope** gains 4 fields: `retry_budget`
+    (decision #9), `count_reasoning_in_output` (decision #6),
+    `cancel_on_close` (decision #10), `tpm_hard_stop` (decision #10).
+  - **§5.4 streaming-TPM** row gets a back-reference to §3.5.2.
+  - **§12 #8 and #9 marked DECIDED** (consolidated under decision #10).
+  - ROADMAP Phase 0.J gains 5 streaming env vars; Phase 2.5 streaming
+    work grows from ~6 to ~11 days (chunker, cancellation, TPM
+    mid-stream, metrics).
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.
