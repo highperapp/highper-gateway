@@ -17,7 +17,7 @@
   - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
   - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (signed off + landed 2026-05-03 in commits `6897310` + `c8e1e8c` + `c9f1304`; verified end-to-end in Rancher Desktop / containerd). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint.
   - `docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md` — Stage 2 PR implementation contract (signed off + **landed** 2026-05-03 in commit `67bf863`; verified end-to-end as image `highper-gateway:stage2-rc`). 4 new sections (`ai` 25 env vars, `body` 3, `shutdown` 3, `secrets` 5), cross-subsystem validator + `validate_against_config(&Config, &RuntimeConfig)`, `Secrets://` `SecretRef` variant (parse + stub error), `hot_reload.rs:181` migration, CI lint widening to 4 paths. ~1500 LoC. 11 pre-existing cache/ literals tagged `// allow: Stage 3` for `CacheRuntimeConfig` migration.
-  - `docs/planning/RUNTIME_CONFIG_STAGE3_PR_PLAN.md` — Stage 3 PR implementation contract (signed off 2026-05-03; all 7 §11 decisions captured). Closes Workstream 0.J: 9 remaining sections (`http3`, `tls`, `ratelimit`, `circuit_breaker`, `geo`, `cache`, `signals`, `config_watcher`, `observability`), Tier 1 SIGHUP atomic swap, `/admin/config/diff` endpoint with secret sanitization, project-wide CI lint, B12 body-size + B14 spawned-task drain consumer migrations, new `CacheRuntimeConfig` resolves 10 of 11 Stage 2 cache/ waivers. ~1200–1500 LoC across 9 new + several modified files; ~250 LoC of new tests. After Stage 3, no production code path reads operator-tunable values from a hardcoded literal.
+  - `docs/planning/RUNTIME_CONFIG_STAGE3_PR_PLAN.md` — Stage 3 PR implementation contract (signed off 2026-05-03; **split mid-implementation into 3a + 3b + 3c** to keep each PR reviewable; **3a landed** in commit `9d7dc1e` 2026-05-03; 3b + 3c follow). All 7 §11 decisions still apply unchanged. Closes Workstream 0.J: 9 remaining sections (`http3`, `tls`, `ratelimit`, `circuit_breaker`, `geo`, `cache`, `signals`, `config_watcher`, `observability`), Tier 1 SIGHUP atomic swap, `/admin/config/diff` endpoint with secret sanitization, project-wide CI lint, B12 body-size + B14 spawned-task drain consumer migrations, new `CacheRuntimeConfig` resolves 10 of 11 Stage 2 cache/ waivers. ~1200–1500 LoC across 9 new + several modified files; ~250 LoC of new tests. After Stage 3, no production code path reads operator-tunable values from a hardcoded literal.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -2237,7 +2237,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     the 7 sign-off questions. After Stage 3 lands, Workstream 0.J is
     complete and the env-var-only configuration rule (§0.1) is fully
     enforceable across `highper-gateway/src/`.
-- **2026-05-03 (twenty-seventh revision, current):** Workstream 0.J
+- **2026-05-03 (twenty-seventh revision):** Workstream 0.J
   Stage 3 PR plan **signed off**. All 7 §11 questions answered as
   recommended by the planning agent and approved by the owner.
   Decisions captured in `RUNTIME_CONFIG_STAGE3_PR_PLAN.md` §11.
@@ -2267,6 +2267,37 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     Tier 1 SIGHUP reload working, `/admin/config/diff` endpoint live,
     project-wide CI lint, no production code path reading
     operator-tunable values from a hardcoded literal.
+- **2026-05-03 (twenty-eighth revision, current):** Workstream 0.J
+  Stage 3a **landed**; Stage 3 plan **split into 3a + 3b + 3c** to keep
+  each PR reviewable. Single commit `9d7dc1e` (17 files; +1202 / −45).
+  - **Split rationale:** mid-implementation, the 9 sections + cache
+    migration diff was already +1202 LoC. Bundling SIGHUP runtime + admin
+    endpoint + B12/B14 consumer migrations into the same commit risked
+    a half-baked PR where any single bug invalidates the whole. The
+    split preserves the agreed §11 decisions; it's a delivery convenience,
+    not a scope reduction.
+  - **3a delivered** (this commit): 9 new section files
+    (`http3`, `tls`, `ratelimit`, `circuit_breaker`, `geo`, `cache`,
+    `signals`, `config_watcher`, `observability`), `RuntimeConfig`
+    top-level + `sections/mod.rs` + `loader.rs` updated, 10 of 11
+    Stage 2 cache/ waivers resolved by reading `cache.<field>`, xtask
+    lint refined (literal-only check + `src/config/` directory skip).
+    `RuntimeConfig` now has **15 sections total** — full Workstream 0.J
+    surface complete except for SIGHUP runtime.
+  - **3b queued** (next commit): Tier 1 SIGHUP atomic swap runtime +
+    `ReloadDiff` Live/Restart classification + `main.rs` wiring chained
+    with existing config-file-reload. ~200 LoC of subtle async logic.
+  - **3c queued** (follow-up commit): `/admin/config/diff` endpoint with
+    `SecretRef` sanitization + B12 body-size consumer migration in
+    `src/middleware/`/`src/proxy/`/`src/http/` + B14 spawned-task drain
+    supervisor (~80 LoC inline) + `derive_enabled_ucs` populated for
+    UC4 + UC11.
+  - **§13 status snapshot** gains 1 row recording the 3a landing.
+  - **Stage 3 plan companion-doc reference** updated in §0 to
+    "split mid-implementation; 3a landed".
+  - **Net effect:** Workstream 0.J is now ~10 of 12.6 days landed.
+    Stage 3b implementation begins next; Stage 3c after that. After
+    both land, Workstream 0.J is complete.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2337,6 +2368,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Workstream 0.J Stage 2 LANDED 2026-05-03** — verified end-to-end in containerd | commit `67bf863` (18 files; +1526 / −30) | Image `highper-gateway:stage2-rc` (built in ~8 min) verified with three exact-error-match tests inside the container: (Test 1) `HIGHPER_AI_RETRY_BUDGET=11` produced `is out of range (valid: 1..=10)` from new `ai.rs` range check; (Test 2) defaults (cache=valkey + typeb=none + allow_single_node=false) produced cross-subsystem `HIGHPER_AI_CACHE_BACKEND=valkey requires HIGHPER_CLUSTER_TYPEB_BACKEND set` from new `validate_cross_subsystem`; (Test 3) `HIGHPER_AI_KEY_PEPPER=secrets://...` parsed cleanly through new `SecretRef::Secrets` variant. Lib compile produced 86 warnings + 0 errors (same warning count as Stage 1 → Stage 2 added zero new warnings/errors). Lint widened to 4 paths and surfaced 11 pre-existing literals in `src/cache/` — all tagged `// allow: Stage 3 — <reason>` waivers documenting them as `CacheRuntimeConfig` migration candidates. Workstream 0.J ~9 of 12.6 days landed. |
 | **Workstream 0.J Stage 3 PR plan drafted 2026-05-03** (awaiting §11 sign-off) | [`RUNTIME_CONFIG_STAGE3_PR_PLAN.md`](RUNTIME_CONFIG_STAGE3_PR_PLAN.md) + ROADMAP §12 (26th revision) | Closes Workstream 0.J: 9 remaining sections (`http3` B8, `tls`, `ratelimit` B4, `circuit_breaker` B7-partial, `geo` UC15, `cache` resolves 10/11 Stage 2 waivers, `signals`, `config_watcher`, `observability` §4.4 row 7); Tier 1 SIGHUP atomic swap via `arc_swap::ArcSwap::store` with `ReloadDiff` Live/Restart classification; `/admin/config/diff` endpoint with `SecretRef` sanitization; project-wide CI lint; B12 body-size consumer migration in `src/middleware/`/`src/proxy/`/`src/http/`; B14 spawned-task drain supervisor wired to `RuntimeConfig::shutdown.spawn_task_drain_secs`; `derive_enabled_ucs` populated for UC4 + UC11. ~1200–1500 LoC across 9 new sections + reload runtime + admin endpoint + consumer migrations; ~250 LoC of new tests. 7 sign-off questions in §11. After Stage 3 lands, no production code path reads operator-tunable values from a hardcoded literal. |
 | **Workstream 0.J Stage 3 PR plan signed off 2026-05-03** (all 7 §11 questions answered) | [`RUNTIME_CONFIG_STAGE3_PR_PLAN.md`](RUNTIME_CONFIG_STAGE3_PR_PLAN.md) §11 + ROADMAP §12 (27th revision) | Decisions: (1) plan as-is; (2) single PR; (3) `derive_enabled_ucs` UC4 + UC11 only (other UCs deferred to per-UC PRs); (4) SIGHUP handler chained with existing config-file-reload (existing first, then runtime_config); (5) admin endpoint path follows existing `src/admin/` convention (verified at impl time); (6) `CacheRuntimeConfig` keeps `_secs`/`_ms` suffix for consistency with Stages 1+2; (7) B14 spawned-task drain supervisor inline in this PR. Implementation begins immediately. |
+| **Workstream 0.J Stage 3a LANDED 2026-05-03** (9 sections + cache migration + lint refinement) | commit `9d7dc1e` (17 files; +1202 / −45) | First half of Stage 3 (single-PR plan split into 3a + 3b + 3c mid-implementation — see Stage 3 plan §12 split rationale). 3a is the self-contained data-plumbing portion: 9 new sections (`http3` B8, `tls`, `ratelimit` B4, `circuit_breaker` B7-partial, `geo` UC15, `cache`, `signals`, `config_watcher`, `observability` §4.4 row 7) bringing `RuntimeConfig` to **15 sections total**; `CacheRuntimeConfig` migration resolves 10 of 11 Stage 2 `// allow: Stage 3` waivers (the 11th in `src/cache/mod.rs:49` is a doc-comment example and keeps its waiver); xtask lint refined with literal-only check (`Duration::from_secs(<digit>)`) so legitimate `Duration::from_secs(*runtime_config::current().<…>.get())` no longer false-positives, plus `src/config/` directory skip (env-var primitive layer + per-protocol presets out of scope). Hard-fail scope kept at Stage 2's 4 paths; project-wide enforcement deferred to Stage 4+ since the survey surfaced ~150 pre-existing literals. **3b** (Tier 1 SIGHUP atomic swap runtime + `ReloadDiff`) and **3c** (admin endpoint + B12 + B14 + `derive_enabled_ucs`) follow as separate PRs. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 

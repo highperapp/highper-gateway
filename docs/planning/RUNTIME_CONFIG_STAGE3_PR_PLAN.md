@@ -1,6 +1,16 @@
 # Workstream 0.J Stage 3 — PR plan (remaining 9 sections + Tier 1 SIGHUP reload + admin diff + project-wide lint + B12/B14 consumer migrations + CacheRuntimeConfig)
 
-**Status:** **signed off 2026-05-03.** All 7 §11 questions answered (see §11 below). This doc is now the implementation contract for the Stage 3 PR.
+**Status:** **signed off 2026-05-03; split mid-implementation into 3a + 3b + 3c** (see §12 below for the split rationale and per-substage commit log).
+
+**Substage status as of 2026-05-03:**
+
+| Substage | Scope | Status | Commit |
+|---|---|---|---|
+| **3a** | 9 remaining sections + `CacheRuntimeConfig` migration (10 of 11 Stage 2 waivers resolved) + lint refinement (literal-only check, `src/config/` skip) | ✅ **LANDED** | `9d7dc1e` |
+| **3b** | Tier 1 SIGHUP atomic swap runtime + `ReloadDiff` Live/Restart classification + `main.rs` wiring chained with existing config-file-reload | **next** | — |
+| **3c** | `/admin/config/diff` endpoint with `SecretRef` sanitization + B12 body-size consumer migration in `src/middleware/`/`src/proxy/`/`src/http/` + B14 spawned-task drain supervisor + `derive_enabled_ucs` populated for UC4 + UC11 | **deferred** | — |
+
+All 7 §11 decisions still apply unchanged. The split is a delivery convenience, not a scope reduction.
 
 **Companion docs:**
 
@@ -419,3 +429,33 @@ code path reads operator-tunable values from a hardcoded literal.
 ---
 
 *Plan author: claude-opus-4-7-1m. Owner sign-off 2026-05-03 on §11 decisions table. Stage 3 PR ready to begin against this doc. Per CLAUDE.md rules.*
+
+---
+
+## 12. Split rationale (2026-05-03)
+
+The signed-off plan §10 promised a single Stage 3 PR. Mid-implementation,
+the diff for the 9 sections + cache migration alone was already +1202 LoC
+across 17 files. Adding the SIGHUP runtime (~200 LoC of subtle async logic
+reading from the Stage 1 `ArcSwap` skeleton) and the admin endpoint (~80
+LoC requiring `src/admin/` convention investigation per §11 #5) plus the
+B12/B14 consumer migrations (per-site refactors across `src/middleware/`,
+`src/proxy/`, `src/http/`) into the same commit risked a half-baked PR
+where any single bug invalidates the whole.
+
+The split:
+
+- **3a** lands the *self-contained* portion: data plumbing — 9 sections +
+  one consumer-side migration (cache) + the lint refinement that
+  validates everything compiles and behaves correctly. Reversible in one
+  `git revert` if anything goes wrong.
+- **3b** lands the *runtime behaviour* — SIGHUP reload + ReloadDiff +
+  `main.rs` wiring. Independently reversible.
+- **3c** lands the *operator-facing surfaces* — admin endpoint, B12
+  consumer migration, B14 supervisor, `derive_enabled_ucs` population.
+  Each is independently revertable; some may even land as separate
+  3c-1 / 3c-2 / 3c-3 PRs depending on review feedback.
+
+Net effect: same Stage 3 scope delivered, but in 2–4 reviewable PRs
+instead of one ~1500-LoC megaPR. No deviation from the §11 sign-off
+decisions.
