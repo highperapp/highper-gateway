@@ -14,6 +14,7 @@
   - `docs/planning/HA_ARCHITECTURE.md` — authoritative HA reference (4 cluster types: Stateless / +Valkey / +etcd / +Valkey+etcd; per-UC profiles; per-infra deployment notes). Cited from §11 of this document.
   - `docs/planning/GRAPHQL_FEDERATION.md` — frozen-state design for UC13 Apollo Federation v2 (deferred to Phase 4.2). Cited from §3.4 + §6 #2 + Phase 4.2.
   - `docs/planning/OWNER_GATES_2026-05-03.md` — version-controlled decision log for the 6 owner gates closed 2026-05-03 (Phase 0 unblocked + Phase 2 conditionally unblocked). Future gate batches follow the `OWNER_GATES_YYYY-MM-DD.md` pattern.
+  - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -718,10 +719,13 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 
 #### Workstream 0.J — Central env-driven configuration scaffold (added 2026-05-02 — supports §0.1)
 
-- [ ] Define a top-level `Settings` struct with sub-structs for each subsystem (`Http3`, `Body`, `Shutdown`, `Signals`, `ConfigWatcher`, `Tls`, `RateLimit`, `CircuitBreaker`, `Geo`, `Cache`, etc.). All fields read from `HIGHPER_*` env vars at startup with documented defaults. **3 days.**
-- [ ] Build a small "env settings" loader using `figment` or hand-rolled (no proc-macro reflection); validate types and ranges; refuse to start on out-of-range values. **2 days.**
+> **Design signed off 2026-05-03:** see [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) for the centralized `src/runtime_config/` module layout, `RuntimeConfig` struct shape, hand-rolled loader strategy, Tier 1+2+3 hot-reload model with field-level `Reloadable<T>` classification, eager `SecretRef` with `lazy:bool` opt-out, and the 3-stage progressive PR rollout (Stage 1 ≈ 4d → Stage 2 ≈ 5d → Stage 3 ≈ 4d). Total revised: **~12.6 days** (was 12 days; +0.6 day for reload classification). The task list below is the implementation surface; the design doc is the single source of truth for *how* each task ships.
+
+- [ ] Define a top-level `RuntimeConfig` struct with sub-structs for each subsystem (`Http3`, `Body`, `Shutdown`, `Signals`, `ConfigWatcher`, `Tls`, `RateLimit`, `CircuitBreaker`, `Geo`, `Cache`, etc.) — full layout in [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §1–§3. All fields read from `HIGHPER_*` env vars at startup with documented defaults. **3 days.**
+- [ ] Build a small env-var loader **hand-rolled** (signed-off 2026-05-03 per [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §4 + §10 row 5; `figment` rejected) that extends the existing `src/config/env_override.rs:24-58` typed parsers; validate types and ranges; refuse to start on out-of-range values. **2 days.**
 - [ ] Create `docs/CONFIG_ENV.md` (NEW) — exhaustive table of every `HIGHPER_*` var with default, valid range, subsystem owner, and citation to where it's read. **1 day; updated alongside every PR that adds a new var.**
-- [ ] CI lint: forbid bare `std::env::var` in `src/**/*.rs` outside `src/config/`; forbid literal `Duration::from_secs(..)` and `* 1024 * 1024` in production code (allowed in tests). **1 day.**
+- [ ] CI lint: forbid bare `std::env::var` in `src/**/*.rs` outside `src/runtime_config/` and `src/config/env_override.rs`; forbid literal `Duration::from_secs(..)` and `* 1024 * 1024` in production code (allowed in tests). Progressive scope per [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §8 (Stage 1 = `src/plugin/` only; Stage 3 = project-wide). **1 day.**
+- [ ] **Tier 1 hot-reload (added 2026-05-03 per [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §5):** ship SIGHUP-triggered atomic swap of the live-reloadable subset via `arc_swap::ArcSwap<RuntimeConfig>`. Field-level `Reloadable<T>` classification (Live vs Restart per §5.4 rules); loader builds a `ReloadDiff` report. Admin API `/admin/config/diff` endpoint exposes the diff (Tier 2 hook for multi-node operators' pre-flight scripts). Tier 2 (multi-node operator orchestration) lands in Phase 1.4 as docs only; Tier 3 (xDS / GitOps push-based config) lands in Phase 4.2 via `ConfigSource` trait. **+1 day** (lands in Stage 3).
 - [ ] **Cluster security env vars (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** add the following to the `Settings::cluster` sub-struct with refuse-to-start-on-missing semantics: `HIGHPER_CLUSTER_TYPEB_AUTH` (Valkey AUTH password, file path, or secrets-resolver ref); `HIGHPER_CLUSTER_TYPEB_TLS` (`true`/`false`); `HIGHPER_CLUSTER_TYPEC_CLIENT_CERT`, `_CLIENT_KEY`, `_CA` (file paths or secrets-resolver refs for etcd mTLS); `HIGHPER_CLUSTER_ALLOW_INSECURE` (default `false`; required `true` to start a Type 2/3/4 deployment without AUTH/mTLS — dev escape hatch). Validation: when `_TYPEB_BACKEND ≠ none`, `_TYPEB_AUTH` is required unless `_ALLOW_INSECURE=true`; same shape for Type C cert chain. **1.5 days.**
 - [ ] **UC16 virtual-key pepper env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §7.1.3):** add `HIGHPER_AI_KEY_PEPPER` to the `Settings::ai` sub-struct. 32-byte secret loaded as raw bytes (or hex-decoded) from env var or via the secrets-manager resolver (`HIGHPER_SECRETS_PROVIDER` from Phase 1.4). Used as the HMAC-SHA-256 key for virtual-key hashing. **Refuse to start** when UC16 features are enabled and pepper is empty unless `HIGHPER_CLUSTER_ALLOW_INSECURE=true`. Documented in `docs/CONFIG_ENV.md`; rotation guidance in `docs/SECURITY_CLUSTER_BASELINE.md`. **0.5 day.**
 - [ ] **Plugin drain-window env var (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.3.7):** move the hardcoded 30 s timeout in `src/plugin/manager.rs:252 wait_for_plugin_idle()` to `HIGHPER_PLUGIN_DRAIN_SECS` per §0.1 rule. Default 30 s. Validates ≥ 5 s. **0.5 day.**
@@ -1886,7 +1890,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     that operators can read directly from §5 phase plan or §4.6
     competitor-feature table.
   - **§13 status snapshot** gains 1 row recording the validation pass.
-- **2026-05-03 (twentieth revision, current):** owner-gate closure batch.
+- **2026-05-03 (twentieth revision):** owner-gate closure batch.
   All 6 ROADMAP §6 owner gates closed by owner in a single session;
   decisions captured in version-controlled
   [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md) so the closing
@@ -1937,6 +1941,45 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **Net effect:** Phase 0 is now operationally ready to start. Phase 2
     (UC16 MVP) is conditionally unblocked pending Phase 0.J + Phase 1.4
     `PeerDiscovery` deliverables.
+- **2026-05-03 (twenty-first revision, current):** Workstream 0.J
+  `RuntimeConfig` design signed off. New companion doc
+  [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) captures 7 decisions
+  reached through a 6-turn design discussion with the owner.
+  - **§10 decisions table (signed off):** (1) **centralized** module
+    layout `src/runtime_config/` chosen over hybrid/distributed —
+    avoids circular dep by construction (consumer modules depend on
+    `runtime_config`; `runtime_config` does not depend back); (2)
+    **`OnceLock<ArcSwap<RuntimeConfig>>`** singleton enforces "no
+    `std::env::var` on hot paths" (§0.1) via the type system + supports
+    Tier 1 hot reload; (3) **Tier 1 + Tier 2 + Tier 3 hot reload** with
+    field-level `Reloadable<T>` classification (Live = atomic swap on
+    SIGHUP; Restart = loaded but reported as pending) — Tier 1 ships in
+    Phase 0.J Stage 3; Tier 2 (operator-driven rolling restart + admin
+    diff endpoint) in Phase 1.4; Tier 3 (xDS / GitOps) in Phase 4.2 via
+    `ConfigSource` trait; (4) **`for_test()`** defaults-only
+    constructor for unit-test ergonomics; (5) **hand-rolled** loader
+    extending `src/config/env_override.rs:24-58` (figment rejected —
+    no boilerplate gain since primitives already exist; tailored
+    error messages; cross-subsystem validation fits cleanly); (6)
+    **eager `SecretRef`** with per-secret `lazy:bool` opt-out — catches
+    misconfig at boot, opt-out preserves fail-soft for ops who want it;
+    (7) **`RuntimeConfig`** naming (not `Settings` — parallels existing
+    `Config` cleanly; operator vocabulary blurs settings/configuration).
+  - **3-stage progressive PR rollout** (Stage 1 ≈ 4d cluster + plugin;
+    Stage 2 ≈ 5d AI + body + shutdown + secrets + cross-subsystem
+    validator; Stage 3 ≈ 4d remaining 9 sub-structs + Tier 1 reload +
+    admin diff + project-wide CI lint). Each PR is reversible if
+    ergonomics turn out wrong.
+  - **Phase 0.J task list updated** with cross-references to
+    SETTINGS_SCAFFOLD.md sections, hand-rolled loader call-out (figment
+    rejected), and a new line item for Tier 1 hot-reload + admin diff
+    endpoint (+1 day → total 12.6 days).
+  - **§0 conventions companion-docs list** gains
+    `SETTINGS_SCAFFOLD.md` so future readers find the design before the
+    code.
+  - **§13 status snapshot** gains 1 row recording the design sign-off.
+  - **Net effect:** Workstream 0.J is design-complete. Stage 1 PR can
+    begin against the signed-off doc.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1999,6 +2042,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Owner-gate closure batch 2026-05-03** — all 6 §6 gates closed | [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md) + ROADMAP §6 + §12 (twentieth revision) | §6 #1 Phase 0 scope + Rancher Desktop + Trivy/syft+Grype/Dastardly/ZAP + **new SAST tier** (clippy + audit + deny + geiger + Semgrep locally; CodeQL cloud); §6 #2 UC13 federation deferred to Phase 4.2; §6 #3 UC16 fence stands, Phase 2 conditionally unblocked; §6 #4 Type B = Valkey, Type C = etcd, **`PeerDiscovery` trait** at Phase 1.4 (~5 days); §6 #5 was already DECIDED 2026-05-02; §6 #6 process confirmed (docs-keeper weekly + at-tag re-baseline); §6 #7 multi-region deferred to post-v1.0 RFC. Phase 0 operationally unblocked. |
 | §1.5.SAST tiered SAST strategy added 2026-05-03 (resolves §6 #1 SAST sub-question) | ROADMAP Phase 1.5 (new sub-section) | Tier A local: `cargo-clippy` + `cargo-audit` + `cargo-deny` + `cargo-geiger` + Semgrep (Rust ruleset). Tier B cloud: CodeQL via GitHub Actions. Tier C optional: `cargo-vet` + custom `dylint` rules. ~100 MB combined RSS for the local stack — fits Rancher Desktop. SonarQube dropped (4+ GB persistent Java server). |
 | §4.4 interface-first audit extended from 11 to 12 boundaries (PeerDiscovery, 2026-05-03) | ROADMAP §4.4 row 12 | greenfield HA trait per §6 #4 (iii); `static` / `k8s_headless` / `dns` / `consul` impls; ~5 days at Phase 1.4 alongside `AuthProvider` + Metrics/LogBackend. Total trait-extraction effort 11 → 12 person-weeks. |
+| **Workstream 0.J `RuntimeConfig` design signed off 2026-05-03** | [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) + ROADMAP §5 Phase 0.J + §12 (21st revision) | 7 decisions captured: centralized `src/runtime_config/` layout (avoids circular dep by construction); `OnceLock<ArcSwap<RuntimeConfig>>` singleton; hand-rolled loader extending `src/config/env_override.rs:24-58`; `RuntimeConfig` naming (parallels existing `Config` cleanly); `for_test()` defaults-only constructor; eager `SecretRef` with `lazy:bool` opt-out; Tier 1 SIGHUP hot-reload + Tier 2 admin-diff endpoint + Tier 3 xDS/GitOps deferred to Phase 4.2; field-level `Reloadable<T>` classification (+1 day). 3-stage progressive PR rollout: Stage 1 (~4d) cluster + plugin; Stage 2 (~5d) AI + body + shutdown + secrets + cross-subsystem validator; Stage 3 (~4d) remaining 9 sub-structs + Tier 1 reload + admin diff endpoint + project-wide CI lint. Total ~12.6 days. Stage 1 PR can begin against the design doc. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
