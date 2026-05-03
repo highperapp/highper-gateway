@@ -16,7 +16,12 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY highper-gateway/Cargo.toml highper-gateway/
 
-# Create dummy source to build dependencies
+# xtask is a workspace member (CI lint binary). Tiny crate; copy whole so
+# cargo can resolve the workspace during the dummy-build dependency cache.
+# Not built here — the --package flag below restricts to highper-gateway.
+COPY xtask xtask
+
+# Create dummy source to build dependencies (cached when Cargo files unchanged)
 RUN mkdir -p highper-gateway/src && \
     echo "fn main() {}" > highper-gateway/src/main.rs && \
     cargo build --release --package highper-gateway && \

@@ -1,0 +1,36 @@
+# Build artifacts (huge)
+target/
+**/target/
+
+# Git
+.git/
+.gitignore
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local cargo config (not needed in container; alias is dev convenience)
+.cargo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / runtime data
+*.log
+data/
+
+# Tests not needed for image build
+**/tests/load/
+
+# Documentation (not shipped in image)
+docs/
+*.md
+!deploy/docker/README.md
+
+# Memory / planning notes (private session state)
+**/memory/
+docs/reverse-proxy-quick-progress-notes.txt
