@@ -7,8 +7,8 @@
 | Substage | Scope | Status | Commit |
 |---|---|---|---|
 | **3a** | 9 remaining sections + `CacheRuntimeConfig` migration (10 of 11 Stage 2 waivers resolved) + lint refinement (literal-only check, `src/config/` skip) | ✅ **LANDED** | `9d7dc1e` |
-| **3b** | Tier 1 SIGHUP atomic swap runtime + `ReloadDiff` Live/Restart classification + `main.rs` wiring chained with existing config-file-reload | **next** | — |
-| **3c** | `/admin/config/diff` endpoint with `SecretRef` sanitization + B12 body-size consumer migration in `src/middleware/`/`src/proxy/`/`src/http/` + B14 spawned-task drain supervisor + `derive_enabled_ucs` populated for UC4 + UC11 | **deferred** | — |
+| **3b** | Tier 1 SIGHUP atomic swap runtime + `ReloadDiff` (section-level Debug-string diff, secret-redacting `SecretRef::Debug`) + `main.rs` wiring chained with existing config-file-reload | ✅ **LANDED** | `e064b72` |
+| **3c** | `/admin/config/diff` endpoint with `SecretRef` sanitization (uses `latest_diff()` already exposed in 3b) + B12 body-size consumer migration in `src/middleware/`/`src/proxy/`/`src/http/` + B14 spawned-task drain supervisor + `derive_enabled_ucs` populated for UC4 + UC11 | **next** | — |
 
 All 7 §11 decisions still apply unchanged. The split is a delivery convenience, not a scope reduction.
 
