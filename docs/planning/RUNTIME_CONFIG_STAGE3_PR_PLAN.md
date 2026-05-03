@@ -1,6 +1,6 @@
 # Workstream 0.J Stage 3 — PR plan (remaining 9 sections + Tier 1 SIGHUP reload + admin diff + project-wide lint + B12/B14 consumer migrations + CacheRuntimeConfig)
 
-**Status:** **signed off 2026-05-03; split mid-implementation into 3a + 3b + 3c** (see §12 below for the split rationale and per-substage commit log).
+**Status:** **signed off + LANDED 2026-05-03.** Split mid-implementation into 3a + 3b + 3c-1 + 3c-2 + 3c-3 (see §12 below for the split rationale and per-substage commit log). All substages landed; Workstream 0.J complete.
 
 **Substage status as of 2026-05-03:**
 
@@ -10,7 +10,7 @@
 | **3b** | Tier 1 SIGHUP atomic swap runtime + `ReloadDiff` (section-level Debug-string diff, secret-redacting `SecretRef::Debug`) + `main.rs` wiring chained with existing config-file-reload | ✅ **LANDED** | `e064b72` |
 | **3c-1** | `/api/runtime-config` + `/api/runtime-config/diff` admin endpoints. **Path conformed** to `AdminServer`'s existing `/api/...` convention per §11 #5 verification (NOT `/admin/...` — that prefix is the stub `api.rs`). Pre-redacted via `SecretRef::Debug` from 3b. | ✅ **LANDED** | `20aa599` |
 | **3c-2** | B12 body-size hot-path migration: 3 `collect_body_validated` call sites in `proxy/handler.rs:646/1150/1702` from literal to `runtime_config::current().body.max_request_body`. `pub const DEFAULT_MAX_BODY_SIZE` declarations in `body_access.rs:18` + `body_utils.rs:12` kept (compile-time fallbacks; `const` can't read from runtime). | ✅ **LANDED** | `471a336` |
-| **3c-3** | B14 spawned-task drain supervisor (~80 LoC inline) + `derive_enabled_ucs` populated for UC4 + UC11 | **next** | — |
+| **3c-3** | B14 drain delay (`runtime/mod.rs` reads `shutdown.spawn_task_drain_secs` between "Shutting down gracefully" and the abort sequence; per-task tracker deferred to future refactor) + `derive_enabled_ucs` populated for UC4 + UC11 | ✅ **LANDED** | `7c00488` |
 
 All 7 §11 decisions still apply unchanged. The split is a delivery convenience, not a scope reduction.
 
