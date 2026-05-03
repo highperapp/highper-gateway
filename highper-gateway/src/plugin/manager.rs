@@ -248,21 +248,27 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Wait for a plugin to become idle (no active requests)
+    /// Wait for a plugin to become idle (no active requests).
+    ///
+    /// Drain timeout and poll interval are loaded from `RuntimeConfig` per
+    /// ROADMAP §0.1 env-var-only rule.
     async fn wait_for_plugin_idle(&self, plugin: &BoxedPlugin) {
+        let cfg = crate::runtime_config::current();
+        let timeout = *cfg.plugin.drain.get();
+        let poll_interval = *cfg.plugin.idle_poll.get();
         let start = Instant::now();
-        let timeout = std::time::Duration::from_secs(30);
 
         while plugin.active_requests() > 0 {
             if start.elapsed() > timeout {
                 tracing::warn!(
-                    "Plugin {} still has {} active requests after 30s, forcing unload",
+                    "Plugin {} still has {} active requests after {:?}, forcing unload",
                     plugin.name(),
-                    plugin.active_requests()
+                    plugin.active_requests(),
+                    timeout,
                 );
                 break;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(poll_interval).await;
         }
     }
 

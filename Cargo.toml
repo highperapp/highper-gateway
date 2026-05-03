@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "highper-gateway",
+    "xtask",
 ]
 resolver = "2"
 

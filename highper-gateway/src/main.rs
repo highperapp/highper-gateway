@@ -25,6 +25,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use highper_gateway::config::{load_config, validate_config, dsl_generator, dsl_parser, dsl_converter};
 use highper_gateway::runtime::Runtime;
+use highper_gateway::runtime_config;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -312,6 +313,14 @@ async fn main() -> Result<()> {
 /// Start the proxy server
 async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
     info!("Starting Highper Gateway v{}", env!("CARGO_PKG_VERSION"));
+
+    // Load runtime configuration (HIGHPER_* env vars) before anything else,
+    // so plugins/cache/cluster code paths can read runtime_config::current().
+    let rt_cfg = runtime_config::load()
+        .context("Failed to load runtime configuration from HIGHPER_* env vars")?;
+    runtime_config::install(rt_cfg);
+    info!("RuntimeConfig loaded and installed");
+
     info!("Loading configuration from: {}", config_path.display());
 
     // Load configuration

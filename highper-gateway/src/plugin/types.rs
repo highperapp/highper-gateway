@@ -177,6 +177,7 @@ impl PluginExecutionContext {
             request,
             response: None,
             state: Arc::new(dashmap::DashMap::new()),
+            // allow: per-execution default timeout, intended for per-route override at call sites; revisit in Stage 2 if RuntimeConfig::plugin gains a default_timeout field
             timeout: Duration::from_millis(100),
             memory_limit: 64 * 1024 * 1024, // 64 MB default
             trace_id: None,

@@ -34,6 +34,7 @@ pub mod discovery;
 pub mod plugin;
 pub mod webserver;
 pub mod cache;
+pub mod runtime_config;
 
 // Re-export commonly used types
 pub use config::Config;
