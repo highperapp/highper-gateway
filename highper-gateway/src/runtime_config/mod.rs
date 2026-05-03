@@ -21,8 +21,10 @@ pub use loader::{load, validate_against_config};
 pub use reload::Reloadable;
 pub use secret_ref::{SecretRef, SecretValue};
 pub use sections::{
-    AiRuntimeConfig, BodyRuntimeConfig, ClusterRuntimeConfig, PluginRuntimeConfig,
-    SecretsRuntimeConfig, ShutdownRuntimeConfig,
+    AiRuntimeConfig, BodyRuntimeConfig, CacheRuntimeConfig, CircuitBreakerRuntimeConfig,
+    ClusterRuntimeConfig, ConfigWatcherRuntimeConfig, GeoRuntimeConfig, Http3RuntimeConfig,
+    ObservabilityRuntimeConfig, PluginRuntimeConfig, RatelimitRuntimeConfig,
+    SecretsRuntimeConfig, ShutdownRuntimeConfig, SignalsRuntimeConfig, TlsRuntimeConfig,
 };
 
 use arc_swap::ArcSwap;
@@ -36,8 +38,15 @@ pub struct RuntimeConfig {
     pub body: BodyRuntimeConfig,
     pub shutdown: ShutdownRuntimeConfig,
     pub secrets: SecretsRuntimeConfig,
-    // Stage 3: http3, tls, ratelimit, circuit_breaker, geo, cache,
-    //          signals, config_watcher, observability
+    pub http3: Http3RuntimeConfig,
+    pub tls: TlsRuntimeConfig,
+    pub ratelimit: RatelimitRuntimeConfig,
+    pub circuit_breaker: CircuitBreakerRuntimeConfig,
+    pub geo: GeoRuntimeConfig,
+    pub cache: CacheRuntimeConfig,
+    pub signals: SignalsRuntimeConfig,
+    pub config_watcher: ConfigWatcherRuntimeConfig,
+    pub observability: ObservabilityRuntimeConfig,
 }
 
 impl RuntimeConfig {

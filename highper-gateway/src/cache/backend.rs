@@ -204,8 +204,8 @@ pub trait CacheBackend: Send + Sync {
         let test_key = "__health_check__";
         let test_value = b"ok".to_vec();
 
-        // allow: Stage 3 — health-check TTL; could move to CacheRuntimeConfig::health_check_ttl
-        self.set(test_key, test_value.clone(), Some(Duration::from_secs(5))).await?;
+        let ttl_secs = *crate::runtime_config::current().cache.health_check_ttl_secs.get();
+        self.set(test_key, test_value.clone(), Some(Duration::from_secs(ttl_secs))).await?;
         let result = self.get(test_key).await?;
         self.delete(test_key).await?;
 

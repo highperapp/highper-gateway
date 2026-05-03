@@ -16,13 +16,45 @@
 use std::process::ExitCode;
 use walkdir::WalkDir;
 
-// Stage 2 widening (per RUNTIME_CONFIG_STAGE2_PR_PLAN.md §5).
-// Stage 3 will go project-wide.
+// Hard-fail scope: paths where migration to RuntimeConfig is complete.
+// Adding a literal here regresses the env-var-only rule and fails CI.
+//
+// Stage 1: src/plugin/. Stage 2 widened to + src/cluster/ + src/cache/ +
+// src/ai/. Stage 3 confirms src/cache/ now reads CacheRuntimeConfig
+// (10 of 11 Stage 2 waivers resolved; the 11th is a doc-comment example
+// kept under `// allow: doc-comment example`).
+//
+// Project-wide enforcement: a project-wide survey at Stage 3 surfaced
+// ~150 pre-existing literals across `src/admin/`, `src/discovery/`,
+// `src/gateway/`, `src/proxy/`, `src/middleware/`, etc. — too many to
+// migrate in a single PR. They are tracked for Stage 4+ workstreams as
+// per-subsystem migrations; not blocking CI today.
 const STAGE_PATHS: &[&str] = &[
     "highper-gateway/src/plugin",
     "highper-gateway/src/cluster",
     "highper-gateway/src/cache",
     "highper-gateway/src/ai",
+];
+
+// File / directory skips (everything matching skipped). Use for files where
+// every literal is intentional and any migration is a separate, scoped PR.
+const SKIP_FILES: &[&str] = &[
+    // The entire `src/config/` directory is the user-facing config-file
+    // parser layer:
+    // - `env_override.rs` IS the `std::env::var` parser layer that
+    //   `runtime_config/` builds on; bare env::var calls here are the
+    //   legitimate primitive (the lint exists to forbid bare env::var
+    //   *outside* this layer).
+    // - `defaults.rs` is per-protocol presets (MySQL/PostgreSQL/Redis/HTTP/
+    //   gRPC/WebSocket/GraphQL/static/PHP-FPM). Migrating these to
+    //   RuntimeConfig requires a per-protocol design pass; out of scope
+    //   for Workstream 0.J Stage 3.
+    // - `schema.rs` / `dsl_ast.rs` carry default values for the
+    //   user-facing `Config` struct (file-driven), not RuntimeConfig
+    //   (env-driven). Distinct concept.
+    // - `reloader.rs` / `validator.rs` / `watcher.rs` / `validation.rs`
+    //   are the config-file lifecycle.
+    "src/config/",
 ];
 
 const ENV_VAR_PATTERNS: &[&str] = &["std::env::var", "env::var("];
@@ -52,6 +84,11 @@ fn main() -> ExitCode {
             }
 
             let display_path = path.display().to_string();
+            // Normalize Windows backslashes for SKIP_FILES match.
+            let normalized = display_path.replace('\\', "/");
+            if SKIP_FILES.iter().any(|skip| normalized.contains(skip)) {
+                continue;
+            }
             let in_test_module = is_test_file(&display_path);
 
             let Ok(contents) = std::fs::read_to_string(path) else {
@@ -97,13 +134,22 @@ fn main() -> ExitCode {
                 }
 
                 for pat in DURATION_PATTERNS {
-                    if raw_line.contains(pat) {
-                        violations.push(format!(
-                            "{}:{}: hardcoded {} — load from runtime_config or add `// allow: <reason>`",
-                            display_path,
-                            line_no + 1,
-                            pat
-                        ));
+                    // Only flag when the argument is a numeric literal —
+                    // `Duration::from_secs(60)` is a violation;
+                    // `Duration::from_secs(secs)` or
+                    // `Duration::from_secs(*expr.get())` is a legitimate
+                    // call site reading from a variable / RuntimeConfig.
+                    if let Some(idx) = raw_line.find(pat) {
+                        let after = &raw_line[idx + pat.len()..];
+                        let next_ch = after.chars().next().unwrap_or(' ');
+                        if next_ch.is_ascii_digit() {
+                            violations.push(format!(
+                                "{}:{}: hardcoded {} — load from runtime_config or add `// allow: <reason>`",
+                                display_path,
+                                line_no + 1,
+                                pat
+                            ));
+                        }
                     }
                 }
             }
@@ -119,9 +165,9 @@ fn main() -> ExitCode {
             eprintln!("  {v}");
         }
         eprintln!();
-        eprintln!("Stage 2 scope: src/plugin/, src/cluster/, src/cache/, src/ai/.");
-        eprintln!("Stage 3 will go project-wide.");
-        eprintln!("See docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md §5.");
+        eprintln!("Hard-fail scope: src/plugin/, src/cluster/, src/cache/, src/ai/.");
+        eprintln!("(Project-wide survey of ~150 pre-existing literals tracked for Stage 4+.)");
+        eprintln!("See docs/planning/RUNTIME_CONFIG_STAGE3_PR_PLAN.md §5.");
         ExitCode::FAILURE
     }
 }

@@ -11,7 +11,10 @@
 use crate::runtime_config::sections::ai::{AiCacheBackend, AiCooldownBackend};
 use crate::runtime_config::sections::cluster::{TypeBBackend, TypeCBackend};
 use crate::runtime_config::{
-    sections::{ai, body, plugin, secrets, shutdown, cluster as cluster_section},
+    sections::{
+        ai, body, cache, circuit_breaker, config_watcher, geo, http3, observability, plugin,
+        ratelimit, secrets, shutdown, signals, tls, cluster as cluster_section,
+    },
     RuntimeConfig, RuntimeConfigError,
 };
 
@@ -22,14 +25,20 @@ pub fn load() -> Result<RuntimeConfig, RuntimeConfigError> {
     let body = body::load()?;
     let shutdown = shutdown::load()?;
     let secrets = secrets::load()?;
+    let http3 = http3::load()?;
+    let tls = tls::load()?;
+    let ratelimit = ratelimit::load()?;
+    let circuit_breaker = circuit_breaker::load()?;
+    let geo = geo::load()?;
+    let cache = cache::load()?;
+    let signals = signals::load()?;
+    let config_watcher = config_watcher::load()?;
+    let observability = observability::load()?;
 
     let cfg = RuntimeConfig {
-        cluster,
-        plugin,
-        ai,
-        body,
-        shutdown,
-        secrets,
+        cluster, plugin, ai, body, shutdown, secrets,
+        http3, tls, ratelimit, circuit_breaker, geo, cache,
+        signals, config_watcher, observability,
     };
     validate_cross_subsystem(&cfg)?;
     Ok(cfg)

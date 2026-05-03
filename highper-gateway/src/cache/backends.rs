@@ -72,8 +72,8 @@ impl InMemoryBackend {
         // Spawn background cleanup task
         let entries = backend.entries.clone();
         tokio::spawn(async move {
-            // allow: Stage 3 — memory-cache cleanup tick; could move to CacheRuntimeConfig::cleanup_interval
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            let cleanup_secs = *crate::runtime_config::current().cache.cleanup_interval_secs.get();
+            let mut interval = tokio::time::interval(Duration::from_secs(cleanup_secs));
             loop {
                 interval.tick().await;
                 entries.retain(|_, value| !value.is_expired());
@@ -360,8 +360,8 @@ impl CacheBackend for MultiTierBackend {
         if let Some(value) = self.distributed.get(key).await? {
             debug!("L2 cache hit: {}", key);
             // Backfill L1
-            // allow: Stage 3 — multi-tier L1 backfill TTL; could move to CacheRuntimeConfig::multi_tier_l1_ttl
-            self.local.set(key, value.clone(), Some(Duration::from_secs(300))).await?;
+            let l1_ttl = *crate::runtime_config::current().cache.multi_tier_l1_ttl_secs.get();
+            self.local.set(key, value.clone(), Some(Duration::from_secs(l1_ttl))).await?;
             return Ok(Some(value));
         }
 
@@ -370,8 +370,8 @@ impl CacheBackend for MultiTierBackend {
 
     async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
         // Set in both L1 and L2
-        // allow: Stage 3 — multi-tier L1 cap TTL; could move to CacheRuntimeConfig::multi_tier_l1_max_ttl
-        let l1_ttl = ttl.map(|t| t.min(Duration::from_secs(300))); // L1 max 5 min
+        let l1_max_secs = *crate::runtime_config::current().cache.multi_tier_l1_max_ttl_secs.get();
+        let l1_ttl = ttl.map(|t| t.min(Duration::from_secs(l1_max_secs))); // L1 cap configurable
         self.local.set(key, value.clone(), l1_ttl).await?;
         self.distributed.set(key, value, ttl).await?;
         Ok(())
