@@ -941,7 +941,8 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] **TPM mid-stream policy (UC16 #10, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.5.2):** default post-stream warning emits `ai_budget_exceeded_total{kind=tpm_overrun}` + audit event without interrupting stream. Per-virtual-key opt-in `tpm_hard_stop=true` injects SSE error frame (`event: error\ndata: {"code":"tpm_exceeded",...}`) mid-stream and closes upstream when TPM bucket runs out. Both modes record final usage. **2 days.**
 - [ ] **Streaming metrics (UC16 #10, 2026-05-03):** `ai_active_streams` gauge, `ai_streaming_cancellations_total{reason}`, `ai_ttft_seconds`, `ai_inter_token_seconds`. Wire into existing `src/observability/metrics.rs` (or via the new `MetricsBackend` trait once Phase 1.4 lands). **1 day.**
 - [ ] Admin endpoints (`POST/GET /admin/ai/keys`, `GET /admin/ai/spend`, `POST /admin/ai/budgets`, `GET /admin/ai/models`). **3 days.**
-- [ ] Acceptance-test suite covering all 10 criteria from UC16 doc §13 against recorded provider fixtures. **3 days.**
+- [ ] Acceptance-test suite covering all **12** criteria from UC16 doc §13 against recorded provider fixtures (count corrected 2026-05-03 per to-do-list validation F1 — was "10"; UC16 §13 actually has 12 criteria post the 2026-05-02 design sequence). **3 days.**
+- [ ] **Audit-log MVP slice (added 2026-05-03 — to-do-list validation F2; UC16 §11.5.1 row 3 promised audit-log export at MVP, not Phase 4.1):** append-only audit log into the configured `AiStateStore` for virtual-key changes, budget changes, prompt changes, pricing-override changes, cache-invalidation calls. Schema per UC16 §7.3. Hash-chain integrity (each row = `hash(prev_row || row_data)`). Admin query endpoint `GET /admin/ai/logs?key=&from=&to=` with redaction policy applied. NDJSON export deferred to Phase 4.1's "Full audit log + signed JSONL export" — this MVP slice gives operators visibility + integrity; Phase 4.1 adds signing + bulk-export for SOC2 sign-off. **3 days.**
 
 #### 2.6 Polish + docs (week 6)
 
@@ -960,7 +961,7 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 
 #### Phase 2 exit criteria
 
-- All 10 acceptance criteria from UC16 doc §13 pass in CI.
+- All **12** acceptance criteria from UC16 doc §13 pass in CI (was "10" through the 2026-05-02 draft; updated 2026-05-03 per to-do-list validation F1 — count grew when UC16 #2 added Anthropic-shape SDK acceptance and UC16 #4 added single-node→multi-node deployment acceptance).
 - Four providers (OpenAI, Anthropic, Bedrock, Gemini) supported.
 - Owner agrees v1.1 / "AI Gateway" tag is releasable.
 
@@ -1037,7 +1038,7 @@ UC16 item that doesn't fit cleanly inside the MVP six weeks.
 #### 4.1 UC16 GA + UC4 + UC9 + UC10 polish
 
 - [ ] Eval framework integration (Promptfoo subprocess runner). **5 days.**
-- [ ] Full audit log + hash-chain integrity + signed JSONL export. **5 days.**
+- [ ] **Audit-log GA enhancements (clarified 2026-05-03 per to-do-list validation F2):** builds on the Phase 2.5 audit-log MVP slice. Adds: signed JSONL export (Ed25519); cron-based S3 / syslog forwarder integration; per-tenant export filtering; SOC2-compliance bundling (date-range exports with manifest). MVP slice already provides the append-only log + hash chain + admin query — this task adds the signing + bulk-export surface. **5 days.**
 - [ ] BYOK per tenant + tenant CMEK with KMS / Vault Transit. **2 weeks.**
 - [ ] Realtime / WS (OpenAI Realtime + Gemini Live) reusing `src/websocket/`. **2 weeks.**
 - [ ] Fine-tuning passthrough + Files API with S3-compatible storage. **2 weeks.**
@@ -1753,7 +1754,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - 8 low-severity items skipped (cosmetic / minor verification).
   - Competitor comparison report retained in conversation log; not
     folded into doc (it's analysis, not a design artefact).
-- **2026-05-03 (eighteenth revision, current):** UC16 deep gap-analysis
+- **2026-05-03 (eighteenth revision):** UC16 deep gap-analysis
   fix-up pass (R1–R6). A second-pass agent reviewed UC16 design across
   three deeper dimensions — architectural soundness, configurability
   completeness, cookbook conventions — and surfaced 14 issues
@@ -1807,6 +1808,41 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     interaction; dual-format DSL/YAML schema parity verification;
     YAML schema update for new UC16 blocks — all deferred to
     Phase 2.6 implementation surface).
+- **2026-05-03 (nineteenth revision, current):** to-do-list
+  comprehensiveness validation pass. A third agent cross-checked the
+  consolidated project to-do list against ROADMAP §5 / UC16 / HA /
+  GraphQL Federation across architectural, implementation, and
+  documentation lenses (10 checks per lens + source-tree spot-checks).
+  - **Coverage:** ~56% direct task capture (92 of 165 ROADMAP tasks);
+    substantially comprehensive on Phase 0 / 1 / 2 but materially
+    under-specifies Phase 4.2 ecosystem (~40 lines of detail collapsed
+    to 3 to-do bullets) and the GRAPHQL_FEDERATION.md §6 acceptance
+    criteria (6 checkboxes).
+  - **Three real ROADMAP source-of-truth fixes applied:**
+    - **F1** — Phase 2 exit criteria and Phase 2.5 acceptance-test
+      task corrected from "10 acceptance criteria" to **12** (UC16 §13
+      grew during the 2026-05-02 design sequence when criterion #3
+      Anthropic-shape SDK and #12 single-node→multi-node deployment
+      were added).
+    - **F2** — Phase 2.5 audit-log MVP slice added (3 days; UC16
+      §11.5.1 row 3 originally promised audit-log export at MVP, but
+      ROADMAP previously placed all audit work in Phase 4.1). Phase
+      4.1 task reframed as "Audit-log GA enhancements" (signing +
+      bulk-export + SOC2 bundling); MVP slice gives operators
+      append-only log + hash-chain integrity + admin query at v1.1.
+    - **F3** — to-do-list summary placement error for INTEGRATION_GUIDE
+      noted (it's correctly Phase 1.3 per ROADMAP; the to-do summary
+      mis-located it under Phase 1.5).
+  - **To-do list rebuilt on this turn** with full Phase 4.2
+    enumeration, Phase 2.5 promoted to explicit tier, Phase 4.2
+    federation acceptance criteria added, ARCHITECTURE_v2.md
+    phase-placed.
+  - 22 medium / low gaps from the validation report don't require
+    ROADMAP edits — they're documentation refinements (e.g.,
+    enumerate the 5 ops docs separately, list the 18 N4.2.N items)
+    that operators can read directly from §5 phase plan or §4.6
+    competitor-feature table.
+  - **§13 status snapshot** gains 1 row recording the validation pass.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1865,6 +1901,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 gap-audit fixes applied 2026-05-03 (8 items: 3 high + 5 medium) | ROADMAP Phase 0.J / 2.4 / 2.6 / 3.1 / §6 gate #7 | H1 prompt-registry task (Phase 2.6, 3 days); H2 MCP passthrough MVP (Phase 2.6, 3 days) + in-process server Beta (Phase 3.1, 5 days); H3 AiStateStore export tool (Phase 3.1, 3 days); M1 `HIGHPER_AI_STATE_PATH` env var (Phase 0.J, 0.1 day); M2 `HIGHPER_CLUSTER_TYPEB_BACKEND` cross-ref clarification; M3 owner gate #7 candidate phase = 4.1 or 4.2; M4 Beta tenant hierarchy (Phase 3.1, 4 days); M5 LRU virtual-key cache enumerated in Phase 2.4 (now 4 days, was 3); UC16 cookbook entry added to Phase 2.6 (2 days) — closes §4.5 coverage gap |
 | UC16 deep gap-analysis fixes applied 2026-05-03 (6 recommendations R1-R6) | UC16 §0.2 + §10.5 + §3.6.2; HA §3.5.1; ROADMAP Phase 1.3 + 2.6 | R1 §10.5 formal DSL grammar reference (~1h doc; 9 sub-sections covering ai_route + cache + semantic_cache + rate_limit + plugin + provider + mcp_server + virtual-key scope + YAML equivalence); R2 §0.2 UC16 day-one setup checklist (~1h doc; 6 sub-sections; ~18 required + ~15 optional + ~10 hardening env vars + minimum DSL + pre-flight validator checklist); R3 Phase 2.6 cookbook expanded 1 → 4 scenarios (minimal / semantic / multi-tenant / HA-Type-4; +4 days); R4 §3.6.2 +3 failure-mode rows (embedding-provider unavailable, VectorIndex unavailable, MCP backing-server outage); R5 HA §3.5.1 ScyllaDB + cluster-type validation rule (refuse-to-start when UC16 enabled with Type 1); R6 INTEGRATION_GUIDE.md gains 6th section (Migrate-from-LiteLLM/Portkey walkthrough; Phase 1.3 task 4 → 5 days) |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
+| To-do-list comprehensiveness validation 2026-05-03 (third gap analysis pass) | ROADMAP Phase 2.5 + Phase 2 exit + Phase 4.1 | A third agent did a comprehensive cross-check of the project to-do list against ROADMAP §5 / UC16 / HA / GraphQL Federation. 56% capture rate — substantially comprehensive on Phase 0 / 1 / 2 but materially under-specifies Phase 4.2 ecosystem (xDS / K8s operator / kTLS / federation criteria / 18 N4.2.N items) and ~13 per-UC P1 polish items. Three real ROADMAP fixes applied: (F1) Phase 2 exit criteria + Phase 2.5 acceptance test count corrected 10 → 12 (UC16 §13 grew during the design sequence); (F2) Phase 2.5 audit-log MVP slice added (3 days) per UC16 §11.5.1 row 3; Phase 4.1 reframed as audit-log GA enhancements (signing + bulk export); (F3) to-do summary placement error for INTEGRATION_GUIDE noted (correctly Phase 1.3, not 1.5). To-do list itself rebuilt on this turn with full Phase 4.2 enumeration. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
