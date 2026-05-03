@@ -15,6 +15,7 @@
   - `docs/planning/GRAPHQL_FEDERATION.md` — frozen-state design for UC13 Apollo Federation v2 (deferred to Phase 4.2). Cited from §3.4 + §6 #2 + Phase 4.2.
   - `docs/planning/OWNER_GATES_2026-05-03.md` — version-controlled decision log for the 6 owner gates closed 2026-05-03 (Phase 0 unblocked + Phase 2 conditionally unblocked). Future gate batches follow the `OWNER_GATES_YYYY-MM-DD.md` pattern.
   - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
+  - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (draft, awaiting sign-off on 5 §10 questions). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint. ~600–800 LoC across 8 new files + 4 modified.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -720,6 +721,8 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 #### Workstream 0.J — Central env-driven configuration scaffold (added 2026-05-02 — supports §0.1)
 
 > **Design signed off 2026-05-03:** see [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) for the centralized `src/runtime_config/` module layout, `RuntimeConfig` struct shape, hand-rolled loader strategy, Tier 1+2+3 hot-reload model with field-level `Reloadable<T>` classification, eager `SecretRef` with `lazy:bool` opt-out, and the 3-stage progressive PR rollout (Stage 1 ≈ 4d → Stage 2 ≈ 5d → Stage 3 ≈ 4d). Total revised: **~12.6 days** (was 12 days; +0.6 day for reload classification). The task list below is the implementation surface; the design doc is the single source of truth for *how* each task ships.
+>
+> **Stage 1 PR plan drafted 2026-05-03:** see [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md) for the file-by-file diff outline (8 new files + 4 modified; ~600–800 LoC), test plan, acceptance script, risk list, and 5 sign-off questions. Stage 1 lands `src/runtime_config/{mod, error, loader, reload, secret_ref}.rs` + `sections/{cluster, plugin}.rs`; migrates `src/plugin/manager.rs:254` (hardcoded 30 s) + `:265` (hardcoded 100 ms) to `runtime_config::current().plugin.{drain, idle_poll}`; ships CI lint scoped to `src/plugin/` only (widens in Stage 2). **No code lands until §10 sign-off questions are answered.**
 
 - [ ] Define a top-level `RuntimeConfig` struct with sub-structs for each subsystem (`Http3`, `Body`, `Shutdown`, `Signals`, `ConfigWatcher`, `Tls`, `RateLimit`, `CircuitBreaker`, `Geo`, `Cache`, etc.) — full layout in [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §1–§3. All fields read from `HIGHPER_*` env vars at startup with documented defaults. **3 days.**
 - [ ] Build a small env-var loader **hand-rolled** (signed-off 2026-05-03 per [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) §4 + §10 row 5; `figment` rejected) that extends the existing `src/config/env_override.rs:24-58` typed parsers; validate types and ranges; refuse to start on out-of-range values. **2 days.**
@@ -1941,7 +1944,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **Net effect:** Phase 0 is now operationally ready to start. Phase 2
     (UC16 MVP) is conditionally unblocked pending Phase 0.J + Phase 1.4
     `PeerDiscovery` deliverables.
-- **2026-05-03 (twenty-first revision, current):** Workstream 0.J
+- **2026-05-03 (twenty-first revision):** Workstream 0.J
   `RuntimeConfig` design signed off. New companion doc
   [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) captures 7 decisions
   reached through a 6-turn design discussion with the owner.
@@ -1980,6 +1983,60 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row recording the design sign-off.
   - **Net effect:** Workstream 0.J is design-complete. Stage 1 PR can
     begin against the signed-off doc.
+- **2026-05-03 (twenty-second revision, current):** Workstream 0.J
+  Stage 1 PR plan drafted. New companion doc
+  [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md)
+  captures the file-by-file implementation contract for the first
+  ~4-day Stage 1 PR — derived from `SETTINGS_SCAFFOLD.md` §9.1 with all
+  concrete identifiers verified via `Read` against the current source
+  tree (`src/plugin/manager.rs:240-267`, `src/config/env_override.rs:55-139`,
+  `src/lib.rs:1-43`, `src/main.rs:1-80`, `highper-gateway/Cargo.toml:12,76,167`).
+  - **8 new files** in `src/runtime_config/`: `mod.rs` (top-level
+    `RuntimeConfig` + `OnceLock<ArcSwap>` accessor + `for_test()`),
+    `error.rs` (`RuntimeConfigError` with operator-friendly messages),
+    `loader.rs` (top-level `load()` + cross-subsystem validator
+    skeleton), `reload.rs` (`Reloadable<T>` marker only — SIGHUP runtime
+    deferred to Stage 3), `secret_ref.rs` (`Literal` + `File` variants
+    only — `Secrets://` deferred to Stage 2), `sections/mod.rs`,
+    `sections/cluster.rs` (mirrors §11.2; ~200 LoC; 5 enum types + 14
+    env vars + 2 of 5 §11.2 validations enforceable in Stage 1),
+    `sections/plugin.rs` (~60 LoC; 2 env vars `HIGHPER_PLUGIN_DRAIN`
+    + `HIGHPER_PLUGIN_IDLE_POLL` with `>=5s` range check per §0.J line
+    727).
+  - **4 modified files:** `src/lib.rs` (+1 line `pub mod runtime_config;`),
+    `src/main.rs` (+5 lines wiring `runtime_config::install(load()?)`
+    in `Commands::Start` handler), `src/plugin/manager.rs` (`:254`
+    hardcoded `Duration::from_secs(30)` + `:265` hardcoded
+    `Duration::from_millis(100)` migrated to `current().plugin.{drain,
+    idle_poll}.get()`), `highper-gateway/Cargo.toml` (+1 line
+    `arc-swap = "1.7"`).
+  - **~150 LoC of new tests** across `cluster.rs` `#[cfg(test)] mod
+    tests` (5 cases), `plugin.rs` (3 cases), `loader.rs` (3 cases)
+    + integration test `tests/runtime_config_e2e.rs` (~30 LoC).
+  - **CI lint scoped to `src/plugin/` only** for Stage 1 — proves the
+    lint pattern (forbid `std::env::var` + literal `Duration::from_*`
+    outside `src/runtime_config/`) before going wide in Stage 2 / 3.
+  - **`docs/CONFIG_ENV.md` skeleton** lands with the 14 cluster env vars
+    + 2 plugin env vars and the PR-checklist for adding a new env var.
+  - **§11.2 rules 1, 2, 3, 5 explicitly deferred to Stage 2** —
+    enforcing them needs the enabled UC list from `Config` (the
+    user-facing config-file struct), which `RuntimeConfig` doesn't see
+    at load time. Stage 1 acceptance accepts this gap.
+  - **5 sign-off questions in §10** before any code lands: plan as-is
+    vs changes; single PR vs split; `arc-swap` dep acceptable; `temp_env`
+    dev-dep for env-var test isolation; CI lint shell choice (Bash vs
+    Rust `xtask` vs GitHub Actions inline).
+  - **Acceptance script (§7)** lists the 6 concrete commands operators
+    run before merging — `cargo build`, `cargo test --lib runtime_config`,
+    defaults round-trip, env-var round-trip, validation rejection
+    behaviour, CI lint trip behaviour.
+  - **§0 conventions companion-docs list** gains
+    `RUNTIME_CONFIG_STAGE1_PR_PLAN.md`.
+  - **§13 status snapshot** gains 1 row recording the Stage 1 PR plan
+    draft.
+  - **Net effect:** Workstream 0.J Stage 1 is implementation-ready
+    pending the 5 sign-off questions. No source code lands until
+    those answers come back.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2043,6 +2100,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | §1.5.SAST tiered SAST strategy added 2026-05-03 (resolves §6 #1 SAST sub-question) | ROADMAP Phase 1.5 (new sub-section) | Tier A local: `cargo-clippy` + `cargo-audit` + `cargo-deny` + `cargo-geiger` + Semgrep (Rust ruleset). Tier B cloud: CodeQL via GitHub Actions. Tier C optional: `cargo-vet` + custom `dylint` rules. ~100 MB combined RSS for the local stack — fits Rancher Desktop. SonarQube dropped (4+ GB persistent Java server). |
 | §4.4 interface-first audit extended from 11 to 12 boundaries (PeerDiscovery, 2026-05-03) | ROADMAP §4.4 row 12 | greenfield HA trait per §6 #4 (iii); `static` / `k8s_headless` / `dns` / `consul` impls; ~5 days at Phase 1.4 alongside `AuthProvider` + Metrics/LogBackend. Total trait-extraction effort 11 → 12 person-weeks. |
 | **Workstream 0.J `RuntimeConfig` design signed off 2026-05-03** | [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) + ROADMAP §5 Phase 0.J + §12 (21st revision) | 7 decisions captured: centralized `src/runtime_config/` layout (avoids circular dep by construction); `OnceLock<ArcSwap<RuntimeConfig>>` singleton; hand-rolled loader extending `src/config/env_override.rs:24-58`; `RuntimeConfig` naming (parallels existing `Config` cleanly); `for_test()` defaults-only constructor; eager `SecretRef` with `lazy:bool` opt-out; Tier 1 SIGHUP hot-reload + Tier 2 admin-diff endpoint + Tier 3 xDS/GitOps deferred to Phase 4.2; field-level `Reloadable<T>` classification (+1 day). 3-stage progressive PR rollout: Stage 1 (~4d) cluster + plugin; Stage 2 (~5d) AI + body + shutdown + secrets + cross-subsystem validator; Stage 3 (~4d) remaining 9 sub-structs + Tier 1 reload + admin diff endpoint + project-wide CI lint. Total ~12.6 days. Stage 1 PR can begin against the design doc. |
+| **Workstream 0.J Stage 1 PR plan drafted 2026-05-03** (awaiting §10 sign-off) | [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md) + ROADMAP §5 Phase 0.J + §12 (22nd revision) | File-by-file diff outline: 8 new files in `src/runtime_config/` (mod / error / loader / reload / secret_ref + `sections/{cluster, plugin}.rs`) + 4 modified (`src/lib.rs` +1 line, `src/main.rs` +5 lines, `src/plugin/manager.rs` :254 + :265 migrated, `Cargo.toml` `arc-swap = "1.7"`). ~600–800 LoC across new files; ~150 LoC of new tests. CI lint scoped to `src/plugin/` only. 5 sign-off questions in §10 (PR shape, single-PR-vs-split, arc-swap dep, temp_env dep, lint shell). All concrete identifiers verified via `Read` of `manager.rs:240-267` + `env_override.rs:55-139` + `lib.rs:1-43` + `main.rs:1-80` + `Cargo.toml:12,76,167` 2026-05-03. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
