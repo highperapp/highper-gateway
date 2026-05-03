@@ -2458,7 +2458,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     care about is now driven by `HIGHPER_*` env vars; SIGHUP triggers
     atomic hot reload; admin endpoints expose state for multi-node
     coordination scripts. Workstream 0.J ships its full v1 scope.
-- **2026-05-03 (thirty-third revision, current):** **B11 (Workstream 0.F)
+- **2026-05-03 (thirty-third revision):** **B11 (Workstream 0.F)
   started.** B11.1 cert_watcher migration landed in commit `fef5bb4`.
   The 5 production `unbounded_channel` sites have distinct send-context
   semantics (sync closure vs async fn) and overflow policies (drop vs
@@ -2475,6 +2475,44 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   drop, B11.3 `config/watcher.rs` drop, B11.4/B11.5 `http3_quiche.rs`
   block (backpressure). Test sites in `runtime/signals.rs` stay
   unbounded (test fixtures).
+- **2026-05-03 (thirty-fourth revision, current):** **B11 (Workstream
+  0.F) COMPLETE.** Bundle commit `9159aa4` (7 files; +132 / −31)
+  bounds the remaining 4 production `unbounded_channel` sites
+  (B11.2–B11.5). All 5 sites now use bounded channels with
+  operator-tunable capacities and per-site-appropriate overflow
+  policies.
+  - **Bundling rationale:** B11.2/B11.3 share `ConfigWatcherRuntimeConfig`
+    field additions; B11.4/B11.5 share `Http3RuntimeConfig` field
+    additions. Splitting would force interdependent type-shape changes
+    across multiple commits.
+  - **Recommendation refinement (B11.4):** `handle_request` in
+    `http3_quiche.rs` is sync (runs in the QUIC event loop), so
+    blocking on a full backend channel would freeze all in-flight
+    HTTP/3 connections. Changed from original "block-on-full" plan to
+    `try_send` + `send_error_response 503` — clean HTTP-layer
+    backpressure signal that lets clients implement retry-after.
+  - **Compile-error fixes mid-build (one re-build cycle):**
+    `setup_signals_with_reload` signature (signals.rs:51,120) +
+    `event_rx` field type (reloader.rs:32) + `error!` macro using
+    `{:?}` on `BackendRequest` (which doesn't impl `Debug`,
+    http3_quiche.rs:751) — all corrected before second build attempt.
+  - **4 new env vars** documented in `docs/CONFIG_ENV.md` candidates
+    (CONFIG_ENV.md not yet edited; queued):
+    `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` (16),
+    `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` (32),
+    `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` (1024),
+    `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` (1024).
+  - **End-to-end verification:** image `highper-gateway:b11-final-rc`
+    boots cleanly with `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY=8`
+    + `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY=2048`. 86
+    warnings + 0 errors at lib compile (same count as Workstream 0.J +
+    B11.1; B11.2–B11.5 added zero).
+  - **§13 status snapshot** gains 1 row recording B11 closure.
+  - **Net effect:** B11 (Workstream 0.F) is **one of B1–B14 release
+    blockers ✅**. Workstream 0.J's RuntimeConfig pattern proved
+    re-applicable to a different blocker (B11) with no scaffold work
+    needed — adding fields to existing sections + per-site call-site
+    edits + per-site overflow-policy decisions. The pattern is mature.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2551,6 +2589,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Workstream 0.J Stage 3c-2 LANDED 2026-05-03** (B12 body-size hot-path consumer migration) | commit `471a336` (1 file; +15 / −3) | 3 hot-path `collect_body_validated` call sites in `src/proxy/handler.rs` — GraphQL request body collect (`:646`) + two other body-collect paths (`:1150`, `:1702`) — migrated from hardcoded `10 * 1024 * 1024` to `*runtime_config::current().body.max_request_body.get() as usize`. Operators can now tune per-deployment via `HIGHPER_BODY_MAX_REQUEST=50MB` (or `K`/`M`/`G` suffix). `pub const DEFAULT_MAX_BODY_SIZE` declarations in `src/middleware/body_access.rs:18` + `src/http/body_utils.rs:12` kept as compile-time fallbacks (Rust `const` can't read from `runtime_config` at const-eval time); hot-path callers should read from `RuntimeConfig` directly (as the 3 sites in this commit do). Image `highper-gateway:stage3c2-rc` boots cleanly with `HIGHPER_BODY_MAX_REQUEST=50MB`. |
 | **Workstream 0.J Stage 3c-3 LANDED 2026-05-03 — WORKSTREAM 0.J COMPLETE** | commit `7c00488` (2 files; +54 / −9) | **B14 drain delay** in `src/runtime/mod.rs` between "Shutting down gracefully…" and abort-all-tasks sequence: reads `runtime_config::current().shutdown.spawn_task_drain_secs` (default 10s; tunable via `HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN`); operators see "Draining spawned tasks for Ns" log on SIGTERM. Per-task `SpawnedTaskTracker` deferred — would touch ~20+ tokio::spawn sites across `src/runtime/` and is its own future workstream. **`derive_enabled_ucs` populated** in `runtime_config/loader.rs` for UC4 (rate-limit; `Config.rate_limit.is_some()` OR any route has rate_limit) + UC11 (CDN cache; `Config.cache.is_some()` OR any route has cache). When either fires and `HIGHPER_CLUSTER_TYPEB_BACKEND` is none and `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=false`, `validate_against_config` refuses to boot per §11.2 rule 1. Other UCs documented as per-UC PR follow-ups via inline TODO. **Workstream 0.J closes:** 8 implementation commits across 3 stages; 15 sections of `RuntimeConfig`; ~85 `HIGHPER_*` env vars; Tier 1 SIGHUP atomic swap; `/api/runtime-config` + `/api/runtime-config/diff` admin endpoints; B12 + B14 hot-path consumers wired; cross-subsystem validator catches AI/Cluster + UC4/UC11 misconfig at boot; `SecretRef::Debug` redacts in all output channels; project-wide lint enforcement deferred to Stage 4+ (~150 pre-existing literals surveyed and tracked). |
 | **B11 (Workstream 0.F) STARTED 2026-05-03** — bound 5 production `unbounded_channel` sites | commit `fef5bb4` (B11.1: cert_watcher; 3 files; +55 / −5) | First of 5 sub-commits per ROADMAP §4.1 B11 (8 unbounded sites — 5 production + 3 test fixtures left as-is). Each production site has different send-context semantics (sync closure vs async fn) and overflow policy (drop vs block); each is its own focused commit. **B11.1 cert_watcher** (`src/tls/cert_watcher.rs:49`): added `cert_watcher_event_channel_capacity: Reloadable<u32>` (default 32) to `TlsRuntimeConfig` (`HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY`); `mpsc::unbounded_channel()` → bounded `mpsc::channel(N)`; sync closure now uses `try_send` with explicit drop-on-full (file-watch is idempotent — next change re-triggers). Public API signature changed `UnboundedReceiver<CertEvent>` → `Receiver<CertEvent>`; the single caller in `cert_reloader.rs:99` uses `.recv().await` which works on both. New `runtime_config::try_current()` non-panicking accessor added for code paths that may run before `install()` (unit tests). Image `highper-gateway:b11-1-rc` boots cleanly with `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY=128`. **B11.2–B11.5 (4 sites remaining)** queued with per-site overflow-policy recommendations: B11.2 `config/reloader.rs:79` drop-on-full (multiple reload triggers fold to one); B11.3 `config/watcher.rs:36` drop-on-full (file-watch idempotent); B11.4/B11.5 `http3_quiche.rs:186/187` block-on-full (HTTP/3 backend channels need backpressure into clients). |
+| **B11 (Workstream 0.F) COMPLETE 2026-05-03** — all 5 production `unbounded_channel` sites bounded | commit `9159aa4` (B11.2–B11.5 bundle: 7 files; +132 / −31) | Bundle commit closing B11. Sites bundled because they share `ConfigWatcherRuntimeConfig` (B11.2 reload trigger + B11.3 file events) and `Http3RuntimeConfig` (B11.4 backend request + B11.5 backend response) field additions. **B11.2** (`config/reloader.rs:79`): bounded; cascading type changes through `AdminServer::reload_tx` + `with_reload_trigger` + `setup_signals_with_reload`; callers use `try_send` (drop-on-full; duplicates fold). **B11.3** (`config/watcher.rs:36`): bounded; sync `notify` closure uses `try_send` for all 4 event variants. **B11.4** (`http3_quiche.rs:186`): **recommendation refined** from original "block-on-full" — `handle_request` is sync (QUIC event loop), so `try_send` + `send_error_response 503` is correct; blocking would freeze all HTTP/3 connections. **B11.5** (`http3_quiche.rs:187`): bounded; async worker uses `send().await` (block-on-full appropriate in async context). 4 new env vars: `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` (default 16), `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` (32), `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` (1024), `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` (1024). Image `highper-gateway:b11-final-rc` boots cleanly with custom values. **B11 closes; Workstream 0.F is one release blocker out of B1–B14 ✅.** Test sites in `src/runtime/signals.rs:196/211/229` stay unbounded (test fixtures). |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
