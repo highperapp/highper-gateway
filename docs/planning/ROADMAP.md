@@ -11,6 +11,9 @@
 - This is the **single source of truth** for roadmap and tracking. Edit in place; do not fork.
 - Companion documents:
   - `docs/planning/USECASE_16_AI_LLM_GATEWAY.md` — UC16 design **draft, not finalized**. Approach must be discussed and agreed before any UC16 implementation work begins. Scope is fenced — see §5 below.
+  - `docs/planning/HA_ARCHITECTURE.md` — authoritative HA reference (4 cluster types: Stateless / +Valkey / +etcd / +Valkey+etcd; per-UC profiles; per-infra deployment notes). Cited from §11 of this document.
+  - `docs/planning/GRAPHQL_FEDERATION.md` — frozen-state design for UC13 Apollo Federation v2 (deferred to Phase 4.2). Cited from §3.4 + §6 #2 + Phase 4.2.
+  - `docs/planning/OWNER_GATES_2026-05-03.md` — version-controlled decision log for the 6 owner gates closed 2026-05-03 (Phase 0 unblocked + Phase 2 conditionally unblocked). Future gate batches follow the `OWNER_GATES_YYYY-MM-DD.md` pattern.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -461,14 +464,16 @@ the cancel token).
 - **UC14.** X-Accel-Redirect handling; `.gz` / `.br` pre-compressed file selection with `Accept-Encoding` negotiation; conditional revalidation correctness; `fastcgi_status` / `fpm_status` passthrough.
 - **UC15.** **(P0)** RwLock around IP2Location DB (replaces blocking Mutex at `src/proxy/geographic.rs:20`); **(P0)** log poisoned-lock event then attempt recovery (replaces silent `db.lock().ok()?` at `src/proxy/geographic.rs:87`); ASN database adapter; country allow/block list; region failover; client-IP extraction integrated with proxy-trust list.
 
-### 4.4 Interface-first architecture audit (added 2026-05-02)
+### 4.4 Interface-first architecture audit (added 2026-05-02; row 12 added 2026-05-03)
 
 The interface-first architecture audit identified **5 capabilities already
 trait-driven** (Cache, Service Discovery, WAF, Plugin, Compression),
 **8 retrofit boundaries** (rows 1–8 below — concrete or weakly-bounded
-today; refactored during Phases 0–4), and **3 greenfield UC16 traits**
-(rows 9–11 — built from scratch in Phase 2.1 / 2.4). Total: 11 trait
-extractions in flight. Effort estimates assume one engineer with full context.
+today; refactored during Phases 0–4), **3 greenfield UC16 traits**
+(rows 9–11 — built from scratch in Phase 2.1 / 2.4), and **1 greenfield
+HA trait** (row 12 — `PeerDiscovery`, added 2026-05-03 per §6 #4 (iii);
+built in Phase 1.4). Total: 12 trait extractions in flight. Effort
+estimates assume one engineer with full context.
 
 | # | Boundary | Current shape | Impact | Refactor effort | Phase placement |
 |---|---|---|---|---|---|
@@ -483,11 +488,14 @@ extractions in flight. Effort estimates assume one engineer with full context.
 | 9 | **`AiStateStore` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Operator selects backend per deployment via `HIGHPER_AI_STATE_BACKEND={redb\|rocksdb\|scylladb}`; trait must be in place from day-one of UC16 work or each impl forks | 1 wk trait + impls (folded into the 5-day Phase 2.1 task) | **2.1** (UC16 design decision #4) |
 | 10 | **`AiProvider` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Built-in providers (OpenAI, Anthropic) register statically; third-party `.so` / `.wasm` plugin loading opens Phase 3 once trait shape soaks (UC16 design decision #3); same evolution path as `Compressor` | 4 days (folded into Phase 2.1 AiProvider task) | **2.1** (UC16 design decision #3) |
 | 11 | **`VectorIndex` (UC16, greenfield, added 2026-05-02)** | n/a — new with UC16 | Operator selects vector backend per deployment (`ai-vector-qdrant` / `ai-vector-redis-stack` / `ai-vector-pgvector` / `ai-vector-hnsw` Cargo features). Surface: `search` / `upsert` / `delete` / `delete_by_tag`. Same separate-trait pattern as `AiProvider` and `AiStateStore`. UC16 design decision #8. | 1 wk trait + Qdrant impl (folded into Phase 2.4 semantic-cache task); other 3 impls in Phase 3.1 (1 day each) | **2.4** trait + Qdrant; **3.1** for Redis-Stack / PgVector / HNSW |
+| 12 | **`PeerDiscovery` (HA, greenfield, added 2026-05-03)** | n/a — new for Type 3 / Type 4 cluster bootstrap (peer-IP enumeration for etcd / Raft membership) | Operator selects peer-discovery mode per deployment via `HIGHPER_CLUSTER_PEER_DISCOVERY={static\|k8s_headless\|dns\|consul}`. Surface: `discover() -> Vec<PeerEndpoint>` + `watch() -> Stream<PeerChange>`. Strict-delegate-to-infra was considered and dropped (would force operators into K8s-specific tooling). Matches the plugin/extensibility theme of every other trait. **§6 #4 (iii) decision.** | ~5 days trait + 4 impls (folded into Phase 1.4 cross-cutting catch-up) | **1.4** (alongside `AuthProvider` + `MetricsBackend`/`LogBackend`) |
 
-**Total effort to reach interface-first:** ~11 person-weeks across all 11
+**Total effort to reach interface-first:** ~12 person-weeks across all 12
 boundaries, distributed across phases so no single phase pays the full cost.
 Rows 9–11 are greenfield with UC16 work — cheaper per row than retrofits
-but they must ship with the UC16 module skeleton.
+but they must ship with the UC16 module skeleton. Row 12 (`PeerDiscovery`)
+is greenfield with the cluster-bootstrap work in Phase 1.4 and unblocks
+multi-node Type 3 / Type 4 deployments cleanly.
 
 **`AiProvider` and `AiStateStore` traits both follow the established
 separate-trait-plus-registry pattern** of `Compressor`
@@ -854,6 +862,36 @@ appropriate for that infrastructure (manifest / unit + keepalived / playbook).
       • Plugin hot-load — drop a `.wasm` plugin into the watch dir mid-traffic; verify drain (per UC16 §3.3.7) + load + new plugin handles next request.
       Failure on any test = stability-promise regression; blocks the v1.0 tag. **3 days.**
 
+##### 1.5.SAST — SAST baseline (added 2026-05-03 — owner gate §6 #1 closure)
+
+SonarQube was considered as the SAST anchor but **dropped — too resource-heavy for the Rancher Desktop dev / test environment** (requires 4+ GB RAM persistent Java server). Instead, a **tiered SAST strategy**: lightweight CLI tools run locally + on every PR; heavier deep-analysis runs cloud-side via GitHub Actions with zero local resource cost.
+
+**Tier A — local + CI (mandatory; lightweight CLI):**
+- [ ] **`cargo-clippy` clean run on every PR.** Enforce `-D warnings`. Phase 1.4 already commits "clippy debt to zero (currently 123 non-critical)"; this just gates regression. **0.5 day** (CI-config only; underlying work in 1.4).
+- [ ] **`cargo-audit` against RustSec advisory DB on every PR.** Already used in CI per `docs/AUDIT_2026-05-02.md`; verify gate fails build on any unwaived `vulnerable` advisory. **0.5 day.**
+- [ ] **`cargo-deny` policy enforcement on every PR.** Existing `deny.toml.backup` shows prior config; restore to active `deny.toml` covering license, advisory, ban, source policies. **1 day.**
+- [ ] **`cargo-geiger` unsafe-code accounting** — track `unsafe` block count over time; budget set in CI; PR fails if PR adds new `unsafe` blocks above threshold without justification. **1 day** (CI-config + initial baseline).
+- [ ] **Semgrep with Rust ruleset (`p/rust` + `p/security-audit`)** — pattern-based SAST; runs in <30 s on this codebase; catches common Rust pitfalls (e.g., `Mutex::lock().unwrap()` patterns, hardcoded secrets, unbounded channel allocation). Self-hosted CLI; no server. **1.5 days** (rule selection + CI integration + initial-finding triage).
+
+**Tier B — cloud-side deep SAST (GitHub Actions; zero local resource cost):**
+- [ ] **CodeQL** via GitHub Advanced Security — free for public repos; runs in GH cloud on every PR + nightly. Catches taint-flow, injection, deserialization, auth-bypass patterns at a deeper level than pattern-based scanners. Zero burden on the Rancher Desktop dev env. **1.5 days** (workflow setup + custom-query authoring + initial-finding triage).
+
+**Tier C — optional / advanced (Phase 1.5 stretch goals):**
+- [ ] **`cargo-vet` supply-chain vetting** — operator-curated audit log of which dependency versions are vetted as safe. Heavier process commitment but high-value for a security-positioned gateway. **3 days** (initial vetting baseline + ongoing process).
+- [ ] **Custom `dylint` rules** for project-specific patterns (e.g. forbidding `std::env::var` outside `src/config/` per §0.1 rule). Enforces conventions clippy doesn't cover. **2 days.**
+
+**Why this beats SonarQube for highper's profile:**
+
+| SonarQube | This stack |
+|---|---|
+| ~4 GB RAM Java server, Postgres backend | ~100 MB RSS for the CLI tools combined; CodeQL runs in GH cloud |
+| Web UI + database for results | CI logs + GitHub Security tab (Code scanning alerts) |
+| Generic ruleset spanning many languages | Rust-specific rules (clippy / Semgrep p/rust / CodeQL Rust queries / cargo-geiger unsafe) |
+| One config (sonar-project.properties) | Multiple small configs, each tool owns its scope |
+| Heavy on Rancher Desktop dev env | Zero or negligible Rancher Desktop footprint; CodeQL is *literally* zero local |
+
+**Triage process:** any unwaived high-severity finding from Tier A or B blocks the PR. Waiver process documented in `docs/SECURITY_SCANNING.md` (NEW per Phase 1.5 above): record the finding ID, justification, expiry; reviewer ack required. Findings tracked in `docs/SECURITY_SCANNING_RESULTS_<YYYY-MM-DD>.md` weekly post-GA.
+
 #### 1.6 Cheap P1 hygiene (NEW — added 2026-05-02)
 
 Quick wins that materially reduce risk for v1.0 and cost <2 days each.
@@ -1129,13 +1167,18 @@ UC16 item that doesn't fit cleanly inside the MVP six weeks.
 
 ## 6. Owner gates / open decisions
 
-1. **Now (before Phase 0 start):** confirm Phase 0 priority order — agree all 14 blockers (B1–B14) are in scope, or strike specific items with rationale. Confirm Rancher Desktop choice and Phase 1.5 tool stack (Trivy + syft+Grype + Dastardly + ZAP).
-2. **End of Phase 1:** does v1.0 launch with UC13 (GraphQL) marked "passthrough only, federation deferred"? Or block on shipping real federation in Phase 1? Recommendation: defer to v1.1.
-3. **Before Phase 2 start (UC16 scope gate):** confirm the §3.1 in-scope/out-of-scope fence; revise `docs/planning/USECASE_16_AI_LLM_GATEWAY.md` to remove out-of-scope items (guardrails, AI observability product, in-memory cache product, vLLM); answer the remaining design questions that survive the scope fence. **Phase 2 cannot begin without this.**
-4. **End of Phase 3 (HA architecture gate, revised 2026-05-02):** decision recorded — the four-cluster-type model is the design (Type 1 Stateless / Type 2 +Valkey / Type 3 +etcd / Type 4 +Valkey+etcd); see [`HA_ARCHITECTURE.md`](HA_ARCHITECTURE.md). Three open sub-decisions remain: **(i)** which Type B backend the cookbooks default to and which CI exercises (Valkey vs Redis — same protocol, mostly cookbook + CI choice); **(ii)** which Type C backend ships first as a code path (etcd already coded, Consul already coded, raft-rs not yet — recommendation: etcd default, raft-rs Phase 4.2); **(iii)** whether highper drives peer discovery for clustering or delegates to the chosen infrastructure (K8s headless service / Consul / etc.). Affects Phase 4 enterprise tier feasibility and the UC16 storage gate (#5 below). Per the HA research's "most-restrictive HA logic wins" rule, a deployment that enables UC3 or UC12 must include the etcd layer — that's a runtime validation enforced by §11.2, not a decision.
-5. **DECIDED 2026-05-02 (UC16 design decision #4):** UC16 storage-backend gate resolved. **Three impls of the `AiStateStore` trait ship**: **ReDB** (pure-Rust embedded, single-node default — zero external deps, matches highper's tooling stack); **RocksDB** (mature embedded, single-node alternative); **ScyllaDB** (Cassandra-compatible, multi-node). Operator chooses per deployment via `HIGHPER_AI_STATE_BACKEND` env var. Single-node deployments accept 0% storage-layer fault tolerance (same semantics as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE`). Multi-node prod uses ScyllaDB which provides its own replication. PostgreSQL is no longer a candidate (heavier than ReDB, not horizontally scalable like ScyllaDB; can be reconsidered as a 4th impl in Phase 4 if operator demand surfaces). New follow-on question (UC16 §12 #16): single-node → multi-node migration path — export tool, dual-write, or fresh-start. Recommended: export tool in Phase 3.
-6. **Before any v1.0 GA tag (added 2026-05-02):** confirm §0.5 reconciliation banners are still consistent with then-current code; KNOWN_LIMITATIONS / README / CHANGELOG / ARCHITECTURE may need refresh again at tag time.
-7. **Multi-region commitment (added 2026-05-02 — `HA_ARCHITECTURE.md` §6.5; updated 2026-05-03 with candidate phase placement per gap-audit M3):** decide *when* multi-region ships as a single-button deployment. **Recommended candidate phase: Phase 4.1 or Phase 4.2** (alongside xDS + K8s operator + ConfigSource trait extraction — multi-region naturally pairs with these ecosystem deliverables). If owner prefers to defer further, the alternative is a **post-v1.0 RFC** with no roadmap commitment until operator demand surfaces. Until either path closes, single-region-multi-AZ is the v1.0 default and multi-region patterns are documented but not productized. Decision affects UC15 footprint expectations and UC16 cross-region budget enforcement (gate #5 follow-on per `USECASE_16_AI_LLM_GATEWAY.md` §3.6.6).
+> **All 7 gates closed (gate #5 on 2026-05-02; gates #1–#4 + #6 + #7 on 2026-05-03 by owner).** Full decision rationale and unblocking effects for the 2026-05-03 batch are in [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md). Each gate below is now a record of the decision, not an open question. Future gates (if any) get their own batch closure doc following the `OWNER_GATES_YYYY-MM-DD.md` pattern.
+
+1. **DECIDED 2026-05-03 (§6 #1, owner ack):** Phase 0 starts with all 14 blockers (B1–B14) in scope. **Rancher Desktop confirmed** as dev / test environment. **Phase 1.5 tool stack: Trivy + syft+Grype + Dastardly + OWASP ZAP** for SBOM + DAST. **SAST tooling added 2026-05-03** at owner request: tiered strategy with `cargo-clippy` + `cargo-audit` + `cargo-deny` + `cargo-geiger` + Semgrep (Rust ruleset) running locally and on PRs (lightweight CLIs; ~100 MB combined RSS), plus CodeQL via GitHub Actions for deep cloud-side analysis (zero local resource cost). SonarQube was considered and dropped — too heavy for the Rancher Desktop dev / test environment (4+ GB persistent Java server). Detail in §1.5 above.
+2. **DECIDED 2026-05-03 (§6 #2, owner ack):** v1.0 ships UC13 GraphQL with **federation deferred to Phase 4.2** per [`GRAPHQL_FEDERATION.md`](GRAPHQL_FEDERATION.md). UC13 ships passthrough + introspection cache + depth/complexity enforcement at v1.0. Apollo Federation v2 entity resolution + cross-subgraph query plans are explicit Phase 4.2 deliverables with the 6 acceptance criteria captured in `GRAPHQL_FEDERATION.md` §6. Operators with federation needs at v1.0 run Apollo Router behind highper.
+3. **DECIDED 2026-05-03 (§6 #3, owner ack):** UC16 scope fence stands per `USECASE_16_AI_LLM_GATEWAY.md` §3.1 — LiteLLM/Portkey gateway-role replacement only; out-of-scope = guardrails, vLLM/self-hosted models, AI observability product, in-memory cache product. Design doc consistent with fence (verified by gap-audit passes 1–3, commits `060d943` + `2bd09d0` + `b017cc7`). Memory `uc16_scope.md` records the fence rules. **Phase 2 unblocked pending §6 #1 + #4 implementation.**
+4. **DECIDED 2026-05-03 (§6 #4, owner ack):** HA architecture sub-decisions resolved.
+   - **(i) Type B backend default:** **Valkey** (BSD-licensed Redis 7.x fork; community-driven; recommended in HA research line 5). Both Valkey and Redis cookbook'd; **CI exercises Valkey**. Existing `src/cache/backends.rs:182-326` Redis client speaks both protocols — Valkey-default is a docs + CI choice, not a code change.
+   - **(ii) Type C backend default:** **etcd** (already coded at `src/discovery/etcd.rs`; mature; widely deployed). **Consul** as parity option (already coded; Hashi BSL since v1.18 is operator's call). **`raft-rs`-embedded** deferred to Phase 4.2 for embedded-only deployments.
+   - **(iii) Peer-discovery responsibility:** **`PeerDiscovery` trait** with `static` / `k8s_headless` / `dns` / `consul` impls — matches the plugin/extensibility theme of every other trait. Adds ~5 days to Phase 1.4 cross-cutting catch-up. Strict-delegate-to-infra was considered and dropped — would force operators to pick K8s-specific tooling.
+5. **DECIDED 2026-05-02 (UC16 design decision #4):** UC16 storage-backend gate resolved. **Three impls of the `AiStateStore` trait ship**: **ReDB** (pure-Rust embedded, single-node default — zero external deps, matches highper's tooling stack); **RocksDB** (mature embedded, single-node alternative); **ScyllaDB** (Cassandra-compatible, multi-node). Operator chooses per deployment via `HIGHPER_AI_STATE_BACKEND` env var. Single-node deployments accept 0% storage-layer fault tolerance (same semantics as `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE`). Multi-node prod uses ScyllaDB which provides its own replication. PostgreSQL no longer a candidate. New follow-on question (UC16 §12 #16): single-node → multi-node migration via export tool — Phase 3.1.
+6. **DECIDED 2026-05-03 (§6 #6, owner ack):** Process confirmed. The scheduled `docs-keeper` weekly cron (`trig_017YZKK1gLdJNntEAcSqVE7H`) catches most banner drift between now and v1.0 GA. At GA-tag time, the §0.5 reconciliation check re-runs against then-current state of `KNOWN_LIMITATIONS.md` / `README.md` / `CHANGELOG.md` / `docs/ARCHITECTURE.md`; banners updated to reflect actual v1.0 state (drop "v1.0-rc" callouts; replace with v1.0 GA notes). This is a *process* gate, not a *decision* gate — closure here records the process, not a one-time choice.
+7. **DECIDED 2026-05-03 (§6 #7, owner ack):** Multi-region UC16 deferred to **post-v1.0 RFC**. No roadmap commitment until operator demand surfaces. Single-region-multi-AZ remains the v1.0 default. Patterns are documented in `HA_ARCHITECTURE.md` §6.5.3 + `USECASE_16_AI_LLM_GATEWAY.md` §3.6.6 but not productized. RFC will revisit when operator demand justifies the operational complexity (per-region + central durable state ≈ 30–100 ms latency for budget checks; active-active full state needs Postgres multi-master / Spanner / FoundationDB). Phase 4.1 / 4.2 *candidate* slot remains documented for fast-tracking if RFC concludes early.
 
 ---
 
@@ -1808,7 +1851,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     interaction; dual-format DSL/YAML schema parity verification;
     YAML schema update for new UC16 blocks — all deferred to
     Phase 2.6 implementation surface).
-- **2026-05-03 (nineteenth revision, current):** to-do-list
+- **2026-05-03 (nineteenth revision):** to-do-list
   comprehensiveness validation pass. A third agent cross-checked the
   consolidated project to-do list against ROADMAP §5 / UC16 / HA /
   GraphQL Federation across architectural, implementation, and
@@ -1843,6 +1886,57 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     that operators can read directly from §5 phase plan or §4.6
     competitor-feature table.
   - **§13 status snapshot** gains 1 row recording the validation pass.
+- **2026-05-03 (twentieth revision, current):** owner-gate closure batch.
+  All 6 ROADMAP §6 owner gates closed by owner in a single session;
+  decisions captured in version-controlled
+  [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md) so the closing
+  rationale survives independent of any single conversation transcript.
+  - **§6 #1 closed** — Phase 0 starts with all 14 blockers in scope.
+    Rancher Desktop confirmed as dev/test env. Phase 1.5 SBOM + DAST stack:
+    Trivy + syft+Grype + Dastardly + OWASP ZAP. **SAST tooling added at
+    owner request:** new §1.5.SAST sub-section captures a tiered strategy
+    (`cargo-clippy` + `cargo-audit` + `cargo-deny` + `cargo-geiger` +
+    Semgrep locally; CodeQL via GitHub Actions; `cargo-vet` + custom
+    `dylint` rules optional). SonarQube considered and dropped — too heavy
+    (4+ GB persistent Java server) for the Rancher Desktop dev/test
+    environment.
+  - **§6 #2 closed** — v1.0 ships UC13 with federation deferred to
+    Phase 4.2 per `GRAPHQL_FEDERATION.md`.
+  - **§6 #3 closed** — UC16 scope fence stands; Phase 2 unblocked
+    pending §6 #1 + §6 #4 implementation.
+  - **§6 #4 closed** — three sub-decisions: (i) Type B default Valkey
+    (CI exercises Valkey; both Valkey and Redis cookbook'd); (ii) Type C
+    default etcd (Consul as parity option; `raft-rs`-embedded deferred to
+    Phase 4.2); (iii) `PeerDiscovery` trait with `static` / `k8s_headless`
+    / `dns` / `consul` impls (~5 days added to Phase 1.4 cross-cutting
+    catch-up).
+  - **§6 #5** was already DECIDED 2026-05-02 (UC16 storage); no change.
+  - **§6 #6 closed** — process gate. The scheduled `docs-keeper` weekly
+    cron (`trig_017YZKK1gLdJNntEAcSqVE7H`) catches most banner drift
+    between now and v1.0 GA; at GA-tag time the §0.5 reconciliation
+    re-runs against then-current state of legacy docs.
+  - **§6 #7 closed** — multi-region UC16 deferred to post-v1.0 RFC.
+    Single-region-multi-AZ remains v1.0 default. Phase 4.1 / 4.2 candidate
+    slot remains documented for fast-tracking if RFC concludes early.
+  - **§4.4 interface-first audit extended from 11 to 12 boundaries** —
+    row 12 (`PeerDiscovery`) added at the Phase 1.4 placement; total
+    trait-extraction effort now ~12 person-weeks.
+  - **§0 conventions companion-docs list** gains
+    `OWNER_GATES_2026-05-03.md` + `HA_ARCHITECTURE.md` +
+    `GRAPHQL_FEDERATION.md` (the latter two were referenced inline but
+    not enumerated in §0 before).
+  - **§13 status snapshot** gains 2 rows (gate-closure batch +
+    `PeerDiscovery` row 12); §13.2 owner-gates table updated to mark all
+    6 gates closed; §13.3 next-concrete-actions list shrinks from 5 to 1
+    (Phase 0 work can now begin); §13.4 lines-of-evidence counters
+    updated (12 traits; 6 gates closed).
+  - **Future closure batches** follow the same pattern:
+    `OWNER_GATES_YYYY-MM-DD.md` with per-gate decision + rationale +
+    what-it-unblocks; ROADMAP §6 entries become DECIDED records pointing
+    at the dated file; status snapshot gets a new row.
+  - **Net effect:** Phase 0 is now operationally ready to start. Phase 2
+    (UC16 MVP) is conditionally unblocked pending Phase 0.J + Phase 1.4
+    `PeerDiscovery` deliverables.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1902,6 +1996,9 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 deep gap-analysis fixes applied 2026-05-03 (6 recommendations R1-R6) | UC16 §0.2 + §10.5 + §3.6.2; HA §3.5.1; ROADMAP Phase 1.3 + 2.6 | R1 §10.5 formal DSL grammar reference (~1h doc; 9 sub-sections covering ai_route + cache + semantic_cache + rate_limit + plugin + provider + mcp_server + virtual-key scope + YAML equivalence); R2 §0.2 UC16 day-one setup checklist (~1h doc; 6 sub-sections; ~18 required + ~15 optional + ~10 hardening env vars + minimum DSL + pre-flight validator checklist); R3 Phase 2.6 cookbook expanded 1 → 4 scenarios (minimal / semantic / multi-tenant / HA-Type-4; +4 days); R4 §3.6.2 +3 failure-mode rows (embedding-provider unavailable, VectorIndex unavailable, MCP backing-server outage); R5 HA §3.5.1 ScyllaDB + cluster-type validation rule (refuse-to-start when UC16 enabled with Type 1); R6 INTEGRATION_GUIDE.md gains 6th section (Migrate-from-LiteLLM/Portkey walkthrough; Phase 1.3 task 4 → 5 days) |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | To-do-list comprehensiveness validation 2026-05-03 (third gap analysis pass) | ROADMAP Phase 2.5 + Phase 2 exit + Phase 4.1 | A third agent did a comprehensive cross-check of the project to-do list against ROADMAP §5 / UC16 / HA / GraphQL Federation. 56% capture rate — substantially comprehensive on Phase 0 / 1 / 2 but materially under-specifies Phase 4.2 ecosystem (xDS / K8s operator / kTLS / federation criteria / 18 N4.2.N items) and ~13 per-UC P1 polish items. Three real ROADMAP fixes applied: (F1) Phase 2 exit criteria + Phase 2.5 acceptance test count corrected 10 → 12 (UC16 §13 grew during the design sequence); (F2) Phase 2.5 audit-log MVP slice added (3 days) per UC16 §11.5.1 row 3; Phase 4.1 reframed as audit-log GA enhancements (signing + bulk export); (F3) to-do summary placement error for INTEGRATION_GUIDE noted (correctly Phase 1.3, not 1.5). To-do list itself rebuilt on this turn with full Phase 4.2 enumeration. |
+| **Owner-gate closure batch 2026-05-03** — all 6 §6 gates closed | [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md) + ROADMAP §6 + §12 (twentieth revision) | §6 #1 Phase 0 scope + Rancher Desktop + Trivy/syft+Grype/Dastardly/ZAP + **new SAST tier** (clippy + audit + deny + geiger + Semgrep locally; CodeQL cloud); §6 #2 UC13 federation deferred to Phase 4.2; §6 #3 UC16 fence stands, Phase 2 conditionally unblocked; §6 #4 Type B = Valkey, Type C = etcd, **`PeerDiscovery` trait** at Phase 1.4 (~5 days); §6 #5 was already DECIDED 2026-05-02; §6 #6 process confirmed (docs-keeper weekly + at-tag re-baseline); §6 #7 multi-region deferred to post-v1.0 RFC. Phase 0 operationally unblocked. |
+| §1.5.SAST tiered SAST strategy added 2026-05-03 (resolves §6 #1 SAST sub-question) | ROADMAP Phase 1.5 (new sub-section) | Tier A local: `cargo-clippy` + `cargo-audit` + `cargo-deny` + `cargo-geiger` + Semgrep (Rust ruleset). Tier B cloud: CodeQL via GitHub Actions. Tier C optional: `cargo-vet` + custom `dylint` rules. ~100 MB combined RSS for the local stack — fits Rancher Desktop. SonarQube dropped (4+ GB persistent Java server). |
+| §4.4 interface-first audit extended from 11 to 12 boundaries (PeerDiscovery, 2026-05-03) | ROADMAP §4.4 row 12 | greenfield HA trait per §6 #4 (iii); `static` / `k8s_headless` / `dns` / `consul` impls; ~5 days at Phase 1.4 alongside `AuthProvider` + Metrics/LogBackend. Total trait-extraction effort 11 → 12 person-weeks. |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
@@ -1924,16 +2021,17 @@ and planning**. No source code has changed. Phase 0 has not started.
 - B13 RSA Marvin attack mitigation (`oidc` feature off by default + CI gate) — Phase 1.5
 - B14 graceful drain for spawned tasks — Workstream 0.D
 
-**P0 — Open owner gates (must clear to unblock subsequent phases):**
+**Owner gates — all 6 closed 2026-05-03 (see [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md)):**
 
 | Gate | Blocks | Status |
 |---|---|---|
-| #1 Phase 0 priority confirmation + Rancher Desktop + Phase 1.5 tools | Phase 0 start | open — pending owner sign-off |
-| #2 v1.0 GA includes / excludes UC13 federation? | v1.0 tag | **answered 2026-05-02 — defer; passthrough only**; see `GRAPHQL_FEDERATION.md` |
-| #3 UC16 scope + design-doc revision | Phase 2 start | open — §3.1 fence written; doc revision pending |
-| #4 HA architecture (default persona + Type B + Type C backends) | Phase 4 enterprise scope | open — three personas defined per §11; defaults TBD |
-| #5 UC16 storage backend | — | **DECIDED 2026-05-02 (UC16 #4)** — `AiStateStore` trait + ReDB / RocksDB / ScyllaDB impls; per-deployment via `HIGHPER_AI_STATE_BACKEND` |
-| #6 Re-confirm §0.5 banners at GA tag time | v1.0 tag | open — re-runs at tag |
+| #1 Phase 0 priority + Rancher Desktop + Phase 1.5 tools (incl. SAST) | Phase 0 start | **DECIDED 2026-05-03** — all 14 blockers in scope; Rancher Desktop confirmed; Trivy + syft+Grype + Dastardly + ZAP for SBOM/DAST; Tier A SAST (clippy + audit + deny + geiger + Semgrep) + Tier B CodeQL cloud (Phase 1.5 §1.5.SAST). |
+| #2 v1.0 GA includes / excludes UC13 federation? | v1.0 tag | **DECIDED 2026-05-02 (re-confirmed 2026-05-03)** — federation deferred to Phase 4.2; passthrough + introspection cache + depth/complexity at v1.0; see `GRAPHQL_FEDERATION.md`. |
+| #3 UC16 scope + design-doc revision | Phase 2 start | **DECIDED 2026-05-03** — UC16 §3.1 fence stands (LiteLLM/Portkey gateway role only; no guardrails / vLLM / AI observability / in-memory cache product); Phase 2 conditionally unblocked pending §6 #1 + §6 #4 implementation. |
+| #4 HA architecture (Type B + Type C backends + peer-discovery responsibility) | Phase 4 enterprise scope | **DECIDED 2026-05-03** — Type B default Valkey (CI exercises Valkey); Type C default etcd (Consul parity, raft-rs deferred to 4.2); `PeerDiscovery` trait at Phase 1.4 with `static`/`k8s_headless`/`dns`/`consul` impls. |
+| #5 UC16 storage backend | — | **DECIDED 2026-05-02 (UC16 #4)** — `AiStateStore` trait + ReDB / RocksDB / ScyllaDB impls; per-deployment via `HIGHPER_AI_STATE_BACKEND`. |
+| #6 Re-confirm §0.5 banners at GA tag time | v1.0 tag | **DECIDED 2026-05-03 (process)** — `docs-keeper` weekly cron (`trig_017YZKK1gLdJNntEAcSqVE7H`) catches drift between now and GA; §0.5 reconciliation re-runs at tag time against then-current docs. |
+| #7 Multi-region UC16 architecture | Phase 4 candidate slot | **DECIDED 2026-05-03** — deferred to post-v1.0 RFC; single-region-multi-AZ remains v1.0 default; patterns documented in `HA_ARCHITECTURE.md` §6.5.3 + `USECASE_16_AI_LLM_GATEWAY.md` §3.6.6 but not productized. |
 
 **P1 — Cheap hygiene (Phase 1.6, < 2 days each):** `DefaultHasher` swap;
 `Alt-Svc` auto-inject; rate-limit metrics; DDoS geo-block wiring;
@@ -1967,29 +2065,33 @@ JA3/JA4, CT-log monitoring, GitOps controller, all 18 N4.2.N items
 (N3 / N5 / N8 / N10 / N11 / N13–N22 / N25), `ConfigSource` trait, config
 template expansion, profile inheritance, 80-TODO sweep, plugin marketplace.
 
-### 13.3 Next concrete actions (waiting on the owner)
+### 13.3 Next concrete actions
 
-1. **Sign off on §6 gate #1** so Phase 0 can begin.
-2. **Approve scheduled `gap-auditor`** sub-agent (monthly coverage trace +
-   citation re-verification + reconciliation banner consistency check).
-3. **Approve scheduled `docs-keeper`** sub-agent (weekly: ROADMAP checkbox
-   state vs `KNOWN_LIMITATIONS.md` / `README.md` / `CHANGELOG.md` /
-   `ARCHITECTURE.md`; flag drift).
-4. **Pick a default Type B backend (Valkey vs Redis)** so Phase 0.J's
-   `Settings` scaffold can ship its default for that subsystem.
-5. **Pick a default Type C backend (etcd vs raft-rs vs Consul)** so the
-   Phase 0.A Listener config can wire to it without speculation.
+All 6 owner gates closed 2026-05-03 (see `OWNER_GATES_2026-05-03.md`).
+Phase 0 is operationally unblocked.
+
+1. **Begin Phase 0** — start with Workstream 0.J (env-driven `Settings`
+   scaffold per §0.1) so subsequent workstreams can load defaults from
+   env vars rather than hardcoded literals. Type B default = Valkey;
+   Type C default = etcd.
+
+(The `gap-auditor` monthly cron `trig_012cxCxcDsxugaqdJXB6syj2` and
+`docs-keeper` weekly cron `trig_017YZKK1gLdJNntEAcSqVE7H` are already
+running.)
 
 ### 13.4 Lines of evidence
 
-- Total ROADMAP.md size: ~1180 lines (was 678 at start of this 2026-05-02
-  cycle; +75 % growth).
+- Total ROADMAP.md size: ~2090 lines (was 678 at start of this 2026-05-02
+  cycle; +209 % growth).
 - 14 release blockers, each with verified `path:LINE` citation.
-- 8 weak interface boundaries, each placed in a phase.
+- 12 trait extractions tabulated in §4.4 (8 retrofit + 3 UC16 greenfield
+  + 1 HA greenfield = `PeerDiscovery`); each placed in a phase.
 - 25 competitor net-add features, each placed in a phase.
 - 16 use cases with confirmed cookbook coverage (15 ✅, UC16 queued).
-- 3 cluster personas with per-UC mapping.
-- 6 owner gates, 1 newly answered (UC13 federation deferral), 5 open.
+- 4 cluster types (Stateless / +Valkey / +etcd / +Valkey+etcd) with
+  per-UC mapping in `HA_ARCHITECTURE.md`.
+- **7 owner gates, all closed** (§6 #1–#7); decisions recorded in
+  version-controlled `OWNER_GATES_2026-05-03.md`.
 
 ---
 
