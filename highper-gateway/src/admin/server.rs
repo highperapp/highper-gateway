@@ -32,7 +32,7 @@ pub struct AdminServer {
     config: AdminConfig,
     proxy_config: Arc<RwLock<Config>>,
     proxy_state: Option<Arc<crate::state::ProxyState>>,
-    reload_tx: Option<mpsc::UnboundedSender<ReloadTrigger>>,
+    reload_tx: Option<mpsc::Sender<ReloadTrigger>>,
     hostname_router: Option<Arc<crate::gateway::routing::HostnameRouter>>,
     auth_db: Option<Arc<crate::admin::auth::AuthDb>>,
     route_manager: Arc<crate::admin::RouteManager>,
@@ -79,7 +79,7 @@ impl AdminServer {
     pub fn with_reload_trigger(
         config: AdminConfig,
         proxy_config: Arc<RwLock<Config>>,
-        reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
+        reload_tx: mpsc::Sender<ReloadTrigger>,
     ) -> Self {
         Self {
             config,
@@ -99,7 +99,7 @@ impl AdminServer {
         config: AdminConfig,
         proxy_config: Arc<RwLock<Config>>,
         proxy_state: Arc<crate::state::ProxyState>,
-        reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
+        reload_tx: mpsc::Sender<ReloadTrigger>,
     ) -> Self {
         Self {
             config,
@@ -522,7 +522,9 @@ impl AdminServer {
 
         // Trigger configuration reload if available
         if let Some(reload_tx) = &self.reload_tx {
-            match reload_tx.send(ReloadTrigger::Manual) {
+            // B11.2: bounded reload channel — try_send is sync; drop on
+            // full is correct because duplicate triggers fold to one.
+            match reload_tx.try_send(ReloadTrigger::Manual) {
                 Ok(_) => {
                     info!("Configuration reload triggered via Admin API");
                     json_response(

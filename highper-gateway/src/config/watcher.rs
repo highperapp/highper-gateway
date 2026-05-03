@@ -31,32 +31,40 @@ impl ConfigWatcher {
     /// Create a new config watcher
     pub fn new<P: AsRef<Path>>(
         path: P,
-    ) -> anyhow::Result<(Self, mpsc::UnboundedReceiver<ConfigEvent>)> {
+    ) -> anyhow::Result<(Self, mpsc::Receiver<ConfigEvent>)> {
         let path = path.as_ref().to_path_buf();
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        // B11.3: bounded file-event channel; capacity tunable via
+        // HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY (default 32). Drop
+        // on full is safe: file-watch is idempotent — the next change
+        // re-triggers. try_current() so unit tests work pre-install.
+        let capacity = crate::runtime_config::try_current()
+            .map(|c| *c.config_watcher.file_event_channel_capacity.get() as usize)
+            .unwrap_or(32);
+        let (event_tx, event_rx) = mpsc::channel(capacity.max(1));
 
         let tx = event_tx.clone();
         let watcher = RecommendedWatcher::new(
             move |result: Result<Event, notify::Error>| {
+                // Sync closure context — try_send (drop-on-full).
                 match result {
                     Ok(event) => {
                         debug!("File system event: {:?}", event);
                         match event.kind {
                             notify::EventKind::Modify(_) => {
-                                let _ = tx.send(ConfigEvent::Modified);
+                                let _ = tx.try_send(ConfigEvent::Modified);
                             }
                             notify::EventKind::Remove(_) => {
-                                let _ = tx.send(ConfigEvent::Deleted);
+                                let _ = tx.try_send(ConfigEvent::Deleted);
                             }
                             notify::EventKind::Create(_) => {
-                                let _ = tx.send(ConfigEvent::Created);
+                                let _ = tx.try_send(ConfigEvent::Created);
                             }
                             _ => {}
                         }
                     }
                     Err(e) => {
                         error!("Watch error: {}", e);
-                        let _ = tx.send(ConfigEvent::Error(e.to_string()));
+                        let _ = tx.try_send(ConfigEvent::Error(e.to_string()));
                     }
                 }
             },

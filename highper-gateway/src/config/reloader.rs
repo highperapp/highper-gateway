@@ -29,11 +29,11 @@ pub struct ConfigReloader {
     watcher: Option<ConfigWatcher>,
 
     /// Event receiver from watcher
-    event_rx: Option<mpsc::UnboundedReceiver<ConfigEvent>>,
+    event_rx: Option<mpsc::Receiver<ConfigEvent>>,
 
     /// Manual reload channel
-    reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
-    reload_rx: mpsc::UnboundedReceiver<ReloadTrigger>,
+    reload_tx: mpsc::Sender<ReloadTrigger>,
+    reload_rx: mpsc::Receiver<ReloadTrigger>,
 
     /// Last reload time (for debouncing)
     last_reload: Option<Instant>,
@@ -76,7 +76,13 @@ impl ConfigReloader {
         let config_path = config_path.as_ref().to_path_buf();
         let config = Arc::new(RwLock::new(initial_config));
 
-        let (reload_tx, reload_rx) = mpsc::unbounded_channel();
+        // B11.2: bounded reload-trigger channel; capacity tunable via
+        // HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY (default 16).
+        // try_current() so unit tests work without runtime_config::install.
+        let capacity = crate::runtime_config::try_current()
+            .map(|c| *c.config_watcher.reload_trigger_channel_capacity.get() as usize)
+            .unwrap_or(16);
+        let (reload_tx, reload_rx) = mpsc::channel(capacity.max(1));
 
         Ok(Self {
             config_path,
@@ -94,8 +100,10 @@ impl ConfigReloader {
         self.config.clone()
     }
 
-    /// Get the manual reload trigger sender
-    pub fn reload_trigger(&self) -> mpsc::UnboundedSender<ReloadTrigger> {
+    /// Get the manual reload trigger sender. Returns a bounded `Sender`
+    /// (per B11.2). Senders should use `try_send` (drop-on-full) since
+    /// duplicate reload triggers fold to a single reload anyway.
+    pub fn reload_trigger(&self) -> mpsc::Sender<ReloadTrigger> {
         self.reload_tx.clone()
     }
 
@@ -269,7 +277,7 @@ mod tests {
         let reloader = ConfigReloader::new(&config_path, config).unwrap();
 
         let trigger = reloader.reload_trigger();
-        assert!(trigger.send(ReloadTrigger::Manual).is_ok());
+        assert!(trigger.try_send(ReloadTrigger::Manual).is_ok());
     }
 
     #[tokio::test]

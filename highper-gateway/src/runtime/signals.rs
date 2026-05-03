@@ -48,7 +48,7 @@ pub async fn setup_shutdown_signal() {
 /// Set up signal handling with reload support (Unix only)
 #[cfg(unix)]
 pub async fn setup_signals_with_reload(
-    reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
+    reload_tx: mpsc::Sender<ReloadTrigger>,
 ) {
     use signal::unix::{signal, SignalKind};
 
@@ -89,8 +89,16 @@ pub async fn setup_signals_with_reload(
         tokio::select! {
             _ = sighup.recv() => {
                 info!("Received SIGHUP, triggering configuration reload");
-                if let Err(e) = reload_tx.send(ReloadTrigger::Signal) {
-                    warn!("Failed to send reload trigger: {}", e);
+                // B11.2: bounded reload channel — try_send is sync; drop
+                // on full is correct because duplicate triggers fold to one.
+                match reload_tx.try_send(ReloadTrigger::Signal) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!("Reload-trigger channel full; SIGHUP signal coalesced (a reload is already pending)");
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        warn!("Reload-trigger channel closed; reloader has shut down");
+                    }
                 }
                 // Continue loop to handle more signals
             },
@@ -109,7 +117,7 @@ pub async fn setup_signals_with_reload(
 /// Windows version (no SIGHUP support)
 #[cfg(not(unix))]
 pub async fn setup_signals_with_reload(
-    _reload_tx: mpsc::UnboundedSender<ReloadTrigger>,
+    _reload_tx: mpsc::Sender<ReloadTrigger>,
 ) {
     setup_shutdown_signal().await
 }

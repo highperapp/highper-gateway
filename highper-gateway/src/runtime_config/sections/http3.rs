@@ -11,6 +11,20 @@ pub struct Http3RuntimeConfig {
     pub migration_window_secs: Reloadable<u64>,     // HIGHPER_HTTP3_MIGRATION_WINDOW (default 5s) - B8
     pub initial_max_data: Reloadable<u64>,          // HIGHPER_HTTP3_INITIAL_MAX_DATA (default 10 MB)
     pub max_buffered_pkts: Reloadable<u32>,         // HIGHPER_HTTP3_MAX_BUFFERED_PKTS (default 1024) - B8 unbounded
+    /// `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` — bounded channel
+    /// capacity for backend-request routing from the HTTP/3 event loop
+    /// to the worker pool. Default 1024. **try_send + 503 on full** —
+    /// the QUIC event loop is sync, so blocking would freeze all
+    /// in-flight HTTP/3 connections; returning 503 Service Unavailable
+    /// pushes backpressure to clients. B11.4 migration of
+    /// `src/http/http3_quiche.rs:186` from `unbounded_channel`.
+    pub backend_request_channel_capacity: Reloadable<u32>,
+    /// `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` — bounded
+    /// channel capacity for backend responses from worker pool back to
+    /// the QUIC event loop. Default 1024. **block-on-full (`send().await`)** —
+    /// workers are async and can wait. B11.5 migration of
+    /// `src/http/http3_quiche.rs:187` from `unbounded_channel`.
+    pub backend_response_channel_capacity: Reloadable<u32>,
 }
 
 impl Default for Http3RuntimeConfig {
@@ -22,6 +36,8 @@ impl Default for Http3RuntimeConfig {
             migration_window_secs: Reloadable::new(5),
             initial_max_data: Reloadable::new(10 * 1024 * 1024),
             max_buffered_pkts: Reloadable::new(1024),
+            backend_request_channel_capacity: Reloadable::new(1024),
+            backend_response_channel_capacity: Reloadable::new(1024),
         }
     }
 }
@@ -56,6 +72,16 @@ pub(crate) fn load() -> Result<Http3RuntimeConfig, RuntimeConfigError> {
         max_buffered_pkts: Reloadable::new(parse_u32(
             "HIGHPER_HTTP3_MAX_BUFFERED_PKTS",
             env_string("HTTP3_MAX_BUFFERED_PKTS").as_deref(),
+            1024,
+        )?),
+        backend_request_channel_capacity: Reloadable::new(parse_u32(
+            "HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY",
+            env_string("HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY").as_deref(),
+            1024,
+        )?),
+        backend_response_channel_capacity: Reloadable::new(parse_u32(
+            "HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY",
+            env_string("HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY").as_deref(),
             1024,
         )?),
     })

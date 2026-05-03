@@ -8,6 +8,18 @@ pub struct ConfigWatcherRuntimeConfig {
     pub poll_interval_secs: Reloadable<u64>,         // HIGHPER_CONFIG_WATCHER_POLL_INTERVAL (default 2)
     pub debounce_secs: Reloadable<u64>,              // HIGHPER_CONFIG_WATCHER_DEBOUNCE (default 1)
     pub max_reload_attempts: Reloadable<u32>,        // HIGHPER_CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS (default 3)
+    /// `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` — bounded channel
+    /// capacity for the config-reload trigger queue. Default 16; multiple
+    /// concurrent reload triggers fold to one (duplicates from rapid
+    /// signals + admin requests shouldn't queue). B11.2 migration of
+    /// `src/config/reloader.rs:79` from `unbounded_channel`.
+    pub reload_trigger_channel_capacity: Reloadable<u32>,
+    /// `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` — bounded channel
+    /// capacity for filesystem events from the config-file watcher.
+    /// Default 32; events drop on full (file-watch is idempotent — next
+    /// change re-triggers). B11.3 migration of
+    /// `src/config/watcher.rs:36` from `unbounded_channel`.
+    pub file_event_channel_capacity: Reloadable<u32>,
 }
 
 impl Default for ConfigWatcherRuntimeConfig {
@@ -16,6 +28,8 @@ impl Default for ConfigWatcherRuntimeConfig {
             poll_interval_secs: Reloadable::new(2),
             debounce_secs: Reloadable::new(1),
             max_reload_attempts: Reloadable::new(3),
+            reload_trigger_channel_capacity: Reloadable::new(16),
+            file_event_channel_capacity: Reloadable::new(32),
         }
     }
 }
@@ -36,11 +50,23 @@ pub(crate) fn load() -> Result<ConfigWatcherRuntimeConfig, RuntimeConfigError> {
         env_string("CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS").as_deref(),
         3,
     )?;
+    let reload_trigger_channel_capacity = parse_u32(
+        "HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY",
+        env_string("CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY").as_deref(),
+        16,
+    )?;
+    let file_event_channel_capacity = parse_u32(
+        "HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY",
+        env_string("CONFIG_WATCHER_FILE_EVENT_CAPACITY").as_deref(),
+        32,
+    )?;
 
     Ok(ConfigWatcherRuntimeConfig {
         poll_interval_secs: Reloadable::new(poll_interval_secs),
         debounce_secs: Reloadable::new(debounce_secs),
         max_reload_attempts: Reloadable::new(max_reload_attempts),
+        reload_trigger_channel_capacity: Reloadable::new(reload_trigger_channel_capacity),
+        file_event_channel_capacity: Reloadable::new(file_event_channel_capacity),
     })
 }
 

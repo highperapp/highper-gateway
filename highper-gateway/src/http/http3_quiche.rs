@@ -182,9 +182,18 @@ impl Http3Server {
         info!("HTTP/3 server listening on UDP {} (quiche, protocol v{})",
             addr, quiche::PROTOCOL_VERSION);
 
-        // Create channels for async backend communication
-        let (req_tx, req_rx) = mpsc::unbounded_channel::<BackendRequest>();
-        let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<BackendResponse>();
+        // Create channels for async backend communication.
+        // B11.4 + B11.5: bounded channels; capacities tunable via
+        // HIGHPER_HTTP3_BACKEND_{REQUEST,RESPONSE}_CHANNEL_CAPACITY.
+        // try_current() so unit tests work without runtime_config::install.
+        let req_capacity = crate::runtime_config::try_current()
+            .map(|c| *c.http3.backend_request_channel_capacity.get() as usize)
+            .unwrap_or(1024);
+        let resp_capacity = crate::runtime_config::try_current()
+            .map(|c| *c.http3.backend_response_channel_capacity.get() as usize)
+            .unwrap_or(1024);
+        let (req_tx, req_rx) = mpsc::channel::<BackendRequest>(req_capacity.max(1));
+        let (resp_tx, mut resp_rx) = mpsc::channel::<BackendResponse>(resp_capacity.max(1));
 
         // Clone config and upstreams for the event loop
         let config_clone = Arc::new(config.clone());
@@ -255,7 +264,9 @@ impl Http3Server {
                                 }
                             };
 
-                            if let Err(e) = resp_tx_worker.send(response) {
+                            // B11.5: bounded — send().await blocks if full.
+                            // Workers are async; backpressure is fine.
+                            if let Err(e) = resp_tx_worker.send(response).await {
                                 error!("Failed to send response back to main loop: {:?}", e);
                             }
                         }
@@ -631,7 +642,7 @@ impl Http3Server {
         body_rx: Option<mpsc::Receiver<Result<Bytes, String>>>,
         config: &Config,
         upstreams: &HashMap<String, Arc<Upstream>>,
-        req_tx: &mpsc::UnboundedSender<BackendRequest>,
+        req_tx: &mpsc::Sender<BackendRequest>,
     ) {
         // Parse HTTP/3 headers to extract method, path, and authority
         let mut method_str = None;
@@ -724,11 +735,23 @@ impl Http3Server {
                             upstream_name: route.upstream.clone(),
                         };
 
-                        // Send to async worker pool
-                        if let Err(e) = req_tx.send(backend_req) {
-                            error!("Failed to send request to worker pool: {:?}", e);
-                            Self::send_error_response(h3_conn, quic_conn, stream_id, 500, "Internal Server Error: Worker pool unavailable");
-                            return;
+                        // Send to async worker pool. B11.4: try_send is
+                        // sync (handle_request is sync — runs in the QUIC
+                        // event loop; blocking would freeze all in-flight
+                        // HTTP/3 connections). On full, return 503 to
+                        // signal backpressure to the client.
+                        match req_tx.try_send(backend_req) {
+                            Ok(()) => {}
+                            Err(mpsc::error::TrySendError::Full(_)) => {
+                                warn!("HTTP/3 backend worker pool saturated; returning 503");
+                                Self::send_error_response(h3_conn, quic_conn, stream_id, 503, "Service Unavailable: Backend worker pool saturated, retry later");
+                                return;
+                            }
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                error!("HTTP/3 backend worker pool channel closed (request dropped)");
+                                Self::send_error_response(h3_conn, quic_conn, stream_id, 500, "Internal Server Error: Worker pool unavailable");
+                                return;
+                            }
                         }
 
                         info!("Forwarded HTTP/3 request to backend worker pool: {} {}", method, path);
