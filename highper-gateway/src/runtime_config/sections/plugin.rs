@@ -18,6 +18,13 @@ pub struct PluginRuntimeConfig {
     /// `HIGHPER_PLUGIN_IDLE_POLL` — polling interval while waiting for the
     /// active-request count to reach zero. Default 100ms.
     pub idle_poll: Reloadable<Duration>,
+
+    /// `HIGHPER_PLUGIN_HOT_RELOAD_SETTLE` — settle delay after detecting a
+    /// plugin file change before triggering reload (lets the file write
+    /// complete on slow filesystems). Default 100ms. Stage 2 migration of
+    /// the previously-hardcoded `Duration::from_millis(100)` at
+    /// `src/plugin/hot_reload.rs:181`.
+    pub hot_reload_settle: Reloadable<Duration>,
 }
 
 impl Default for PluginRuntimeConfig {
@@ -25,6 +32,7 @@ impl Default for PluginRuntimeConfig {
         Self {
             drain: Reloadable::new(Duration::from_secs(30)),
             idle_poll: Reloadable::new(Duration::from_millis(100)),
+            hot_reload_settle: Reloadable::new(Duration::from_millis(100)),
         }
     }
 }
@@ -47,9 +55,15 @@ pub(crate) fn load() -> Result<PluginRuntimeConfig, RuntimeConfigError> {
         Some(raw) => parse_duration("HIGHPER_PLUGIN_IDLE_POLL", &raw)?,
     };
 
+    let hot_reload_settle = match env_string("PLUGIN_HOT_RELOAD_SETTLE") {
+        None => Duration::from_millis(100),
+        Some(raw) => parse_duration("HIGHPER_PLUGIN_HOT_RELOAD_SETTLE", &raw)?,
+    };
+
     Ok(PluginRuntimeConfig {
         drain: Reloadable::new(drain),
         idle_poll: Reloadable::new(idle_poll),
+        hot_reload_settle: Reloadable::new(hot_reload_settle),
     })
 }
 

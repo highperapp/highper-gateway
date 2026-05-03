@@ -176,9 +176,11 @@ impl HotReloadMonitor {
 
         tracing::info!("Plugin file changed, triggering reload: {}", plugin_name);
 
-        // Add a small delay to ensure file write is complete
-        // allow: Stage 2 — migrate to PluginRuntimeConfig::hot_reload_settle (HIGHPER_PLUGIN_HOT_RELOAD_SETTLE)
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Add a small delay to ensure file write is complete. Stage 2
+        // migrated this from a hardcoded 100ms literal to
+        // PluginRuntimeConfig::hot_reload_settle (HIGHPER_PLUGIN_HOT_RELOAD_SETTLE).
+        let settle = *crate::runtime_config::current().plugin.hot_reload_settle.get();
+        tokio::time::sleep(settle).await;
 
         // TODO: Actual reload would need to be coordinated through PluginManager
         // For now, just log that we detected the change

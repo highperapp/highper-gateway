@@ -50,6 +50,7 @@ impl Default for DiskCacheConfig {
             max_size: 10 * 1024 * 1024 * 1024, // 10GB
             min_object_size: 0,                 // Cache everything
             compression: false,
+            // allow: Stage 3 — disk-cache cleanup default; could move to CacheRuntimeConfig::disk_cleanup_interval
             cleanup_interval: Duration::from_secs(300), // 5 minutes
         }
     }

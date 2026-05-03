@@ -16,7 +16,14 @@
 use std::process::ExitCode;
 use walkdir::WalkDir;
 
-const STAGE1_PATHS: &[&str] = &["highper-gateway/src/plugin"];
+// Stage 2 widening (per RUNTIME_CONFIG_STAGE2_PR_PLAN.md §5).
+// Stage 3 will go project-wide.
+const STAGE_PATHS: &[&str] = &[
+    "highper-gateway/src/plugin",
+    "highper-gateway/src/cluster",
+    "highper-gateway/src/cache",
+    "highper-gateway/src/ai",
+];
 
 const ENV_VAR_PATTERNS: &[&str] = &["std::env::var", "env::var("];
 
@@ -29,7 +36,12 @@ const DURATION_PATTERNS: &[&str] = &[
 fn main() -> ExitCode {
     let mut violations: Vec<String> = Vec::new();
 
-    for root in STAGE1_PATHS {
+    for root in STAGE_PATHS {
+        // Skip non-existent paths silently — `src/ai/` doesn't exist until
+        // Phase 2 starts; same for any pre-Stage-3 holes.
+        if !std::path::Path::new(root).exists() {
+            continue;
+        }
         for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
             if !path.is_file() {
@@ -99,7 +111,7 @@ fn main() -> ExitCode {
     }
 
     if violations.is_empty() {
-        println!("lint-runtime-config: clean ({} paths checked)", STAGE1_PATHS.len());
+        println!("lint-runtime-config: clean ({} paths checked)", STAGE_PATHS.len());
         ExitCode::SUCCESS
     } else {
         eprintln!("lint-runtime-config: {} violation(s):", violations.len());
@@ -107,8 +119,9 @@ fn main() -> ExitCode {
             eprintln!("  {v}");
         }
         eprintln!();
-        eprintln!("Stage 1 scope: src/plugin/. Stage 2 expands; Stage 3 goes project-wide.");
-        eprintln!("See docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md §5.");
+        eprintln!("Stage 2 scope: src/plugin/, src/cluster/, src/cache/, src/ai/.");
+        eprintln!("Stage 3 will go project-wide.");
+        eprintln!("See docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md §5.");
         ExitCode::FAILURE
     }
 }

@@ -17,10 +17,13 @@ mod secret_ref;
 mod sections;
 
 pub use error::RuntimeConfigError;
-pub use loader::load;
+pub use loader::{load, validate_against_config};
 pub use reload::Reloadable;
 pub use secret_ref::{SecretRef, SecretValue};
-pub use sections::{ClusterRuntimeConfig, PluginRuntimeConfig};
+pub use sections::{
+    AiRuntimeConfig, BodyRuntimeConfig, ClusterRuntimeConfig, PluginRuntimeConfig,
+    SecretsRuntimeConfig, ShutdownRuntimeConfig,
+};
 
 use arc_swap::ArcSwap;
 use std::sync::{Arc, OnceLock};
@@ -29,7 +32,10 @@ use std::sync::{Arc, OnceLock};
 pub struct RuntimeConfig {
     pub cluster: ClusterRuntimeConfig,
     pub plugin: PluginRuntimeConfig,
-    // Stage 2: ai, body, shutdown, secrets
+    pub ai: AiRuntimeConfig,
+    pub body: BodyRuntimeConfig,
+    pub shutdown: ShutdownRuntimeConfig,
+    pub secrets: SecretsRuntimeConfig,
     // Stage 3: http3, tls, ratelimit, circuit_breaker, geo, cache,
     //          signals, config_watcher, observability
 }

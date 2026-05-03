@@ -46,7 +46,7 @@
 //! ).await?;
 //!
 //! // Use cache
-//! cache.set("key", "value", Some(Duration::from_secs(300))).await?;
+//! cache.set("key", "value", Some(Duration::from_secs(300))).await?; // allow: doc-comment example
 //! let value: Option<String> = cache.get("key").await?;
 //! ```
 

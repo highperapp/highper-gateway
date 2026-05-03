@@ -99,6 +99,7 @@ impl CacheManager {
                     max_size,
                     min_object_size,
                     compression,
+                    // allow: Stage 3 — disk-cache cleanup default; CacheRuntimeConfig::disk_cleanup_interval
                     cleanup_interval: Duration::from_secs(300),
                 };
                 Arc::new(DiskBackend::new(config).await?)
@@ -115,9 +116,11 @@ impl CacheManager {
                     max_size: disk_size,
                     min_object_size: 0,
                     compression,
+                    // allow: Stage 3 — disk-cache cleanup default; CacheRuntimeConfig::disk_cleanup_interval
                     cleanup_interval: Duration::from_secs(300),
                 };
                 let disk = Arc::new(DiskBackend::new(disk_config).await?);
+                // allow: Stage 3 — tiered hot-tier TTL; CacheRuntimeConfig::tiered_hot_ttl
                 Arc::new(TieredBackend::new(disk, hot_max_size, Duration::from_secs(300)))
             }
 
@@ -153,6 +156,7 @@ impl CacheManager {
                         max_size,
                         min_object_size,
                         compression,
+                        // allow: Stage 3 — disk-cache cleanup default; CacheRuntimeConfig::disk_cleanup_interval
                         cleanup_interval: Duration::from_secs(300),
                     };
                     Ok(Arc::new(DiskBackend::new(config).await?) as Arc<dyn CacheBackend>)
@@ -169,9 +173,11 @@ impl CacheManager {
                         max_size: disk_size,
                         min_object_size: 0,
                         compression,
+                        // allow: Stage 3 — disk-cache cleanup default; CacheRuntimeConfig::disk_cleanup_interval
                         cleanup_interval: Duration::from_secs(300),
                     };
                     let disk = Arc::new(DiskBackend::new(disk_config).await?);
+                    // allow: Stage 3 — tiered hot-tier TTL; CacheRuntimeConfig::tiered_hot_ttl
                     Ok(Arc::new(TieredBackend::new(disk, hot_max_size, Duration::from_secs(300))) as Arc<dyn CacheBackend>)
                 }
 

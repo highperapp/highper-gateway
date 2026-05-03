@@ -17,7 +17,11 @@ use crate::runtime_config::error::RuntimeConfigError;
 pub enum SecretRef {
     Literal(String),
     File { path: PathBuf, lazy: bool },
-    // Secrets { uri: String, lazy: bool },  // Stage 2 — needs SecretsRuntimeConfig
+    /// Resolved via the secrets-resolver selected by `SecretsRuntimeConfig`
+    /// (Stage 2 ships the parse path + struct field; actual Vault / AWS /
+    /// K8s clients ship in Phase 1.4 — `resolve_eager` returns a clear
+    /// "not implemented" error until then).
+    Secrets { uri: String, lazy: bool },
 }
 
 #[derive(Debug, Clone)]
@@ -38,10 +42,17 @@ impl SecretRef {
                 lazy,
             });
         }
+        if let Some(rest) = value.strip_prefix("secrets://") {
+            let (uri, lazy) = parse_lazy_query(rest);
+            return Ok(SecretRef::Secrets {
+                uri: uri.to_string(),
+                lazy,
+            });
+        }
         Err(RuntimeConfigError::ParseError {
             env_var: env_var.to_string(),
             value: value.to_string(),
-            expected: "literal:<value> or file:///<path>[?lazy=true]",
+            expected: "literal:<value>, file:///<path>[?lazy=true], or secrets://<uri>[?lazy=true]",
         })
     }
 
@@ -60,6 +71,16 @@ impl SecretRef {
                     }
                 })?;
                 Ok(Some(SecretValue(contents.trim_end().to_string())))
+            }
+            SecretRef::Secrets { uri, lazy: _ } => {
+                // Stage 2 stub. Phase 1.4 wires the actual Vault / AWS Secrets
+                // Manager / K8s Secret resolvers via SecretsRuntimeConfig.
+                Err(RuntimeConfigError::InvalidCombination {
+                    rule: "secrets:// resolution not yet implemented",
+                    details: format!(
+                        "uri={uri}; ships in Phase 1.4 with SecretsRuntimeConfig.provider"
+                    ),
+                })
             }
         }
     }
@@ -114,6 +135,43 @@ mod tests {
     fn rejects_unknown_scheme() {
         let r = SecretRef::parse("HIGHPER_TEST", "vault://kv/secret");
         assert!(matches!(r, Err(RuntimeConfigError::ParseError { .. })));
+    }
+
+    #[test]
+    fn parses_secrets_uri() {
+        let r = SecretRef::parse("HIGHPER_TEST", "secrets://kv/secret/highper").unwrap();
+        match r {
+            SecretRef::Secrets { uri, lazy } => {
+                assert_eq!(uri, "kv/secret/highper");
+                assert!(!lazy);
+            }
+            _ => panic!("expected Secrets"),
+        }
+    }
+
+    #[test]
+    fn parses_secrets_lazy_query() {
+        let r = SecretRef::parse("HIGHPER_TEST", "secrets://kv/secret/highper?lazy=true").unwrap();
+        match r {
+            SecretRef::Secrets { lazy, .. } => assert!(lazy),
+            _ => panic!("expected Secrets"),
+        }
+    }
+
+    #[test]
+    fn secrets_resolve_eager_returns_not_implemented() {
+        let r = SecretRef::Secrets {
+            uri: "kv/foo".into(),
+            lazy: false,
+        };
+        let res = r.resolve_eager();
+        assert!(matches!(
+            res,
+            Err(RuntimeConfigError::InvalidCombination {
+                rule: "secrets:// resolution not yet implemented",
+                ..
+            })
+        ));
     }
 
     #[test]

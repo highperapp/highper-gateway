@@ -333,6 +333,11 @@ async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
 
     info!("Configuration loaded and validated successfully");
 
+    // Stage 2: cross-subsystem validation that needs both RuntimeConfig
+    // (env-var driven) AND Config (file driven). Closes §11.2 rules 1/2/3/5.
+    runtime_config::validate_against_config(&runtime_config::current(), &config)
+        .context("Cross-subsystem validation (RuntimeConfig × Config) failed")?;
+
     // Create and run the runtime
     let runtime = if hot_reload {
         info!("Hot reload enabled - configuration changes will be applied automatically");
