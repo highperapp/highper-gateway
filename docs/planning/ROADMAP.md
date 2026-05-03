@@ -760,6 +760,7 @@ Workstreams **0.A, 0.B, 0.D, 0.G** are largely independent. **0.I** is independe
 - [ ] Sample systemd unit, container image, Helm chart, compose file (baseline single-node, persona-agnostic). **3 days.**
 - [ ] `SECURITY.md` (project root, 3.6 KB, `SECURITY.md`) updated with disclosure policy + bounty link. **0.5 day.**
 - [ ] **`docs/SECURITY_CLUSTER_BASELINE.md` (NEW) (added 2026-05-02 — supports `HA_ARCHITECTURE.md` §7.4):** per-type security hardening templates. Sections: Valkey AUTH config + TLS setup; etcd client/peer mTLS config + RBAC role examples; K8s `NetworkPolicy` YAML templates per cluster type; VM/BM firewall-rules templates (iptables / nftables / ufw); secrets-rotation playbook (Valkey password, etcd certs); recovery procedures. **3 days.**
+- [ ] **`docs/INTEGRATION_GUIDE.md` (NEW) (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §11.5):** operator-facing guide consolidating all five UC16 integration surfaces with concrete examples. Sections: (1) plugin hooks — Presidio PII redactor (WASM), custom validator (FFI dylib), Bedrock-Guardrails caller (HTTP via plugin); (2) metrics consumption — sample Prometheus scrape config, sample OTLP collector config, screenshots of Langfuse / Helicone dashboards wired to highper's OTLP output; (3) audit-log export — sample S3-forwarder cron, sample syslog-forwarder, NDJSON schema doc; (4) inference engine integration — example wrapping vLLM as an `AiProvider` plugin (HTTP shape), reference to UC17 design when it lands; (5) configuration sources — etcd config push (Phase 4.2+), GitOps pattern, admin-API push pattern. UC16-and-beyond complement to existing `docs/DEPLOYMENT_GUIDE.md` (which covers UC1–UC15). **4 days.**
 
 ##### 1.3.1 Cluster deployment templates — 3 personas × 3 infrastructures (added 2026-05-02)
 
@@ -837,6 +838,13 @@ appropriate for that infrastructure (manifest / unit + keepalived / playbook).
 - [ ] Triage process: any unwaived finding blocks the v1.0 tag. Document waiver process (record CVE/CWE, justification, expiry) in `docs/SECURITY_SCANNING.md` (NEW).
 - [ ] Schedule weekly re-scans post-GA; surface results in `docs/SECURITY_SCANNING_RESULTS_<YYYY-MM-DD>.md`.
 - [ ] **B13 RSA Marvin attack (added 2026-05-02):** verify `oidc` feature off by default; new CI job runs `cargo tree --no-default-features` and asserts `rsa` is **not** present in the dep graph; document RUSTSEC-2023-0071 + operator guidance in `docs/SECURITY_SCANNING.md`; track upstream `rsa` constant-time fix as a follow-up to remove the gate altogether. **1 day.**
+- [ ] **UC16 external-integrations CI compatibility matrix (UC16 #12, 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §11.5.4):** end-to-end CI tests guarding the §11.5.2 stability promises. Five tests:
+      • Prometheus scrape — spin up Prometheus container against highper `/metrics`; verify all 30+ UC16 metrics scraped with stable label sets.
+      • OTLP receiver — send traces via Jaeger / Tempo / OpenTelemetry Collector; verify spans tagged with `tenant`, `key_id`, `model_alias`, `provider`, `request_id`.
+      • OpenAI-shape inbound (LiteLLM-compatible) — Python `openai` SDK against highper; verify request/response cycle.
+      • Anthropic-shape inbound (Portkey-pattern compatible) — Python `anthropic` SDK against highper with OpenAI upstream; verify shape translation works end-to-end.
+      • Plugin hot-load — drop a `.wasm` plugin into the watch dir mid-traffic; verify drain (per UC16 §3.3.7) + load + new plugin handles next request.
+      Failure on any test = stability-promise regression; blocks the v1.0 tag. **3 days.**
 
 #### 1.6 Cheap P1 hygiene (NEW — added 2026-05-02)
 
@@ -1624,7 +1632,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row (decision #10).
   - Memory `uc16_scope.md` updated with the cancel-on-close-default,
     tpm-warn-default, plugin-chunk-budget, and stream-buffer rules.
-- **2026-05-03 (fifteenth revision, current):** UC16 topic #11 fold-in
+- **2026-05-03 (fifteenth revision):** UC16 topic #11 fold-in
   (cluster behaviour and failure modes).
   - **UC16 design decision #11:** USECASE_16 §12 entry #18 added and
     marked DECIDED. Six sub-decisions in §3.6:
@@ -1658,6 +1666,39 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
       invalidation via Valkey pub/sub (1.5 days).
   - **§13 status snapshot** gains 1 row (decision #11).
   - Memory `uc16_scope.md` updated with the cluster-behaviour rules.
+- **2026-05-03 (sixteenth revision, current):** UC16 topic #12 fold-in
+  (external integrations contract) — **closes the 12-topic UC16 design
+  sequence**.
+  - **UC16 design decision #12:** USECASE_16 §12 entry #19 added and
+    marked DECIDED. Three sub-decisions:
+    (1) **Five integration surfaces** as the canonical operator-facing
+    list — plugin hooks, metrics surface, audit-log export, inference
+    engine integration (UC17 forward-compat via `AiProvider` plugin),
+    configuration sources (Phase 4.2 `ConfigSource` trait).
+    (2) **Semver-style stability promise** on operator-facing surfaces:
+    metric names + label sets, plugin trait shapes, admin API URLs +
+    JSON shapes, DSL syntax, env var names + value formats. No promise
+    on internal trait shapes or source code structure.
+    (3) **`docs/INTEGRATION_GUIDE.md` (NEW)** as Phase 1.3 deliverable
+    (4 days) consolidating all five surfaces with concrete examples.
+  - **USECASE_16 §11.5 added** with five sub-sections — numbered §11.5
+    to avoid renumbering downstream sections, consistent with the
+    ".5" convention used elsewhere in the doc for content added later.
+  - **Phase 1.5 gains a CI compatibility test matrix** (3 days) with
+    five end-to-end tests guarding the §11.5.2 stability promises:
+    Prometheus scrape, OTLP receiver, OpenAI-shape inbound, Anthropic-
+    shape inbound, plugin hot-load. CI failure on any test = stability-
+    promise regression; blocks the v1.0 tag.
+  - **§13 status snapshot** gains 2 rows (decision #12; sequence-complete
+    marker).
+  - Memory `uc16_scope.md` updated with the integrations-contract rules.
+  - **Sequence summary**: UC16 design sequence #1–#12 complete over the
+    2026-05-02 → 2026-05-03 sessions. All 12 topics resolved. All §12
+    open design questions either DECIDED or queued behind respective
+    phase owner gates. UC16 ready for Phase 2.1 implementation work
+    once owner gates #1 (Phase 0 priority), #3 (UC16 scope+design
+    revision against fence), and #4 (HA architecture sub-decisions)
+    clear.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1711,6 +1752,8 @@ and planning**. No source code has changed. Phase 0 has not started.
 | UC16 design decision #9 recorded 2026-05-02 (routing strategies) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.4 / §12 #17 | layered MVP (priority + rate-limit-aware + health-aware + capability-aware stacked); 3-attempt retry budget default with per-virtual-key override; cooldown state in Type B Valkey when configured else local `DashMap`; structured 503 with per-attempt details on exhaustion; cost-aware (Beta) / latency-aware (GA) / weighted-canary (Beta) queued for later phases |
 | UC16 design decision #10 recorded 2026-05-03 (streaming + cancellation) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.5 / §12 #8, #9 | cancel-upstream-on-client-close default with per-virtual-key drain-and-record opt-in; TPM mid-stream defaults to post-stream warning with per-key hard-stop opt-in; per-chunk plugin budget (default 500 µs, fail-open on overrun); bounded stream buffer (default 64 events, drop-oldest on overflow); 4 new streaming-specific metrics |
 | UC16 design decision #11 recorded 2026-05-03 (cluster behaviour + failure modes) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.6 (six sub-sections) / §12 #18 | per-replica vs cluster-shared state inventory; per-component failure-mode matrix; `HIGHPER_AI_VALKEY_FAIL_MODE=local_fallback` default (mirrors UC4 distributed limiter); UC4↔UC16 Valkey shard isolation via `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (mirrors UC4 `HIGHPER_RATELIMIT_KEY_SHARDS`); single-node UC16 = dev/staging/small-prod default with explicit 0% FT acknowledgement; multi-region per HA §6.5.3 deferred to Phase 4 (gate #7) |
+| UC16 design decision #12 recorded 2026-05-03 (external integrations contract) — **closes the 12-topic UC16 design sequence** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §11.5 (five sub-sections) / §12 #19 | five integration surfaces (plugin hooks / metrics / audit-log export / inference engine via `AiProvider` plugin / configuration sources via `ConfigSource` trait); semver-style stability promise on operator-facing surfaces (metrics, plugin traits, admin API, DSL, env vars); `docs/INTEGRATION_GUIDE.md` (NEW) Phase 1.3 deliverable; CI compatibility test matrix in Phase 1.5 guards the stability promises |
+| **UC16 12-topic design sequence complete** | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §12 entries #1–#19 | all 12 topics from the original 2026-05-02 design plan resolved over the 2026-05-02 → 2026-05-03 sessions; UC16 ready for Phase 2.1 implementation work; 19 §12 questions either DECIDED or queued for owner-side decisions before respective phases |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |

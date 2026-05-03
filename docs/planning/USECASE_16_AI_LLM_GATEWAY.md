@@ -1515,6 +1515,110 @@ YAML-equivalent shipped alongside. Hot-reloadable via existing watcher + admin A
 
 ---
 
+## 11.5 External integrations contract (UC16 design decision #12, 2026-05-03)
+
+> *(Top-level cross-cutting concern. Numbered §11.5 to avoid renumbering
+> §12–§17 — consistent with the ".5" convention used elsewhere in this
+> doc for sections added later.)*
+
+The scope fence (§3.1 + §1 non-goals) drew a clear line: highper-gateway
+is the proxy / gateway, while guardrails / AI observability / vector DBs
+/ inference engines / dashboards live in customer-side services. This
+section documents how those external layers plug in — the **contract**
+highper exposes to the ecosystem.
+
+The principle from decisions #1–#11: highper is a **thin orchestration
+layer with pluggable everything**. Topic #12 is the contract — what
+highper *promises* to external integrators.
+
+### 11.5.1 Five integration surfaces
+
+Every external integration goes through one of five surfaces:
+
+| # | Surface | What plugs in | Existing trait / mechanism |
+|---|---|---|---|
+| 1 | **Plugin hooks** (operator-supplied logic) | Guardrails (PII redact / content filter / jailbreak detect), request validators (JSON-schema, custom auth), request / response transformers, streaming-chunk hooks (output PII redact, toxicity score) | `Plugin` trait at `src/plugin/trait_def.rs:35-100` (existing, hot-loadable per UC16 §3.3.7); `AiProvider` trait per UC16 §3.3 (third-party plugin loading opens Phase 3); `VectorIndex` trait per UC16 §6.2; `AiStateStore` trait per UC16 §3.5 / §7.1.2 |
+| 2 | **Metrics surface** (observability tools consume) | Prometheus / Grafana, Langfuse, Helicone (OSS), Phoenix, Arize, Datadog / NewRelic / Honeycomb, custom analytics | Prometheus `/metrics` scrape; OTLP traces with UC16 spans tagged `tenant`, `key_id`, `model_alias`, `provider`, `request_id`; structured JSON logs; admin API for spend rollups |
+| 3 | **Audit-log export** (SOC2 / regulated billing) | SIEM forwarders, billing reconciliation tools, compliance auditors | Daily NDJSON export with hash-chain integrity (per §7.3); admin API query (`GET /admin/ai/logs`); real-time OTLP log signal (Beta — Phase 3) |
+| 4 | **Inference engine integration** (UC17 forward-compat) | `mistral.rs`, `candle`, vLLM, TGI, Ollama, custom on-prem inference | Wraps via `AiProvider` plugin (per UC16 §3.3); UC17 ships as additive work, not a refactor — that's the point of the plugin architecture |
+| 5 | **Configuration sources** (Phase 4 ConfigSource trait) | etcd / xDS / GitOps / operator's control plane | File watcher today (existing `src/config/{watcher,reloader}.rs`); etcd / xDS / GitOps via `ConfigSource` trait extraction (ROADMAP §4.4 #8, Phase 4.2) |
+
+These five surfaces are the **canonical integration list**. Anything an
+operator wants to integrate goes through one of them — no other
+integration points are supported. New integration patterns either fit
+an existing surface or trigger a new top-level surface decision.
+
+### 11.5.2 Stability promise (semver-style)
+
+Highper-gateway commits to semver-style stability on **operator-facing
+surfaces**. Internal trait shapes can change freely between minor
+versions; operator-facing surfaces cannot.
+
+| Surface | Stability promise |
+|---|---|
+| **Metric names + label sets** | Semver. Renaming or removing a metric requires a minor-version bump and a one-version deprecation cycle (old name emitted alongside new for one release). |
+| **Plugin trait shapes** (`Plugin`, `AiProvider`, `VectorIndex`, `AiStateStore`) | Semver. Trait ABI breaking change only on major version. The trait shape stabilises during MVP per UC16 #3 — that's why third-party plugin loading opens at Phase 3 Beta, not MVP. |
+| **Admin API URLs + JSON shapes** | Semver. Operator tooling depends on these; deprecation cycle of one minor version before removal. |
+| **DSL syntax** | Semver. Operator config is the source of truth for deployment behaviour; breaking DSL changes require a major version + migration guide (`docs/UPGRADE.md`). |
+| **Env var names + value formats** | Semver. Same shape as DSL. |
+| **Internal trait shapes** (request flow intermediate types, internal helpers) | **No promise.** Can change between minor versions. |
+| **Source code structure** (file layout, module boundaries) | No promise; refactors land freely. |
+
+This is consistent with what mature OSS projects (Kubernetes, Envoy,
+Linkerd) commit to: stable on the *interface* operators see; flexible
+on the *implementation* maintainers own.
+
+### 11.5.3 Documentation surface — `docs/INTEGRATION_GUIDE.md`
+
+A new operator-facing doc collects all five surfaces with concrete
+examples. Phase 1.3 deliverable.
+
+Sections planned:
+
+1. Plugin hooks — examples for: a Presidio PII redactor (WASM), a custom validator (FFI dylib), a Bedrock-Guardrails caller (HTTP via plugin)
+2. Metrics consumption — sample Prometheus scrape config, sample OTLP collector config, screenshot of a Langfuse / Helicone dashboard wired to highper's OTLP output
+3. Audit-log export — sample S3-forwarder cron, sample syslog-forwarder, schema documentation for the JSONL format
+4. Inference engine integration — example wrapping vLLM as an `AiProvider` plugin (HTTP shape); reference to UC17 design when it lands
+5. Configuration sources — example etcd config push (Phase 4.2 onward), GitOps pattern, admin-API push pattern
+
+Replaces ad-hoc references scattered across HA / UC16 / ROADMAP. The
+existing `docs/DEPLOYMENT_GUIDE.md` (54 KB) covers UC1–UC15 deployment;
+`INTEGRATION_GUIDE.md` is its UC16-and-beyond complement.
+
+### 11.5.4 CI compatibility test matrix
+
+Phase 1.5 (SBOM + DAST + ZAP baseline) gains a compatibility test
+matrix that exercises real external integrations end-to-end:
+
+| Integration | CI test |
+|---|---|
+| Prometheus scrape | Spin up Prometheus container against highper `/metrics`; verify all 30+ UC16 metrics scraped |
+| OTLP receiver | Send via Jaeger / Tempo / OpenTelemetry Collector; verify spans tagged correctly |
+| LiteLLM-shape inbound | Existing `openai`/`anthropic` Python SDK against highper; verify response parses |
+| Portkey-shape inbound | Same — verify operator can drop highper in front of Portkey-using app code unchanged |
+| Plugin hot-load | Drop a `.wasm` plugin into the watch dir mid-traffic; verify drain + load (per UC16 §3.3.7) |
+
+These tests guard the stability promises in §11.5.2 — a CI break is
+the early-warning signal for an accidental ABI change.
+
+### 11.5.5 What's still external (re-stating the boundary)
+
+To close the loop with §3.1 + §1 + §6.4 + §8: these stay in
+customer-side services regardless of how integration evolves.
+
+| Concern | Why external |
+|---|---|
+| Guardrail engines | Per §8 — content policy is jurisdiction-specific and changes faster than highper releases |
+| AI observability dashboards (Langfuse, Helicone, Phoenix, Arize) | Per §1 + §9 — highper exposes the metrics surface; the platform layer is operator's choice |
+| Vector DB infrastructure | Per §6.4 — operator runs Qdrant / Redis-Stack / PgVector themselves; highper provides the `VectorIndex` trait |
+| Embedding model | Per §6.4 — operator picks via `AiProvider` registry; no bundled embedding model |
+| Cache backend product | Per §6.4 — operator runs Valkey / Redis / etc. themselves; no SaaS cache layer |
+| KMS / secrets manager | Per §11 — operator brings Vault / AWS Secrets / K8s Secret; highper resolves via the secrets-resolver from Phase 1.4 |
+| Inference engine (vLLM, TGI, Ollama, mistral.rs, candle) | Per §3.1 + §15 #15 — UC17 forward-compat via `AiProvider` plugin; no bundled inference |
+| SIEM / log aggregation | Per §11.5.3 — highper emits structured logs + OTLP; SIEM is operator's choice |
+
+---
+
 ## 12. Open design questions
 
 This section now reflects the resolved decisions from the 2026-05-02
@@ -1549,6 +1653,7 @@ and reference the design-decision number.
 16. **AiStateStore single → multi node migration** (new question, opened by UC16 #4): is there a documented path for an operator who starts on ReDB (single-node) and later adopts ScyllaDB (multi-node)? Options: (a) export tool that walks ReDB and writes to ScyllaDB; (b) operator runs both side-by-side during the transition (dual-write at the trait layer); (c) operator restarts fresh — accept that the single-node deployment was throwaway. Recommended for design discussion: **(a) export tool**, ship in Phase 3.
 17. **DECIDED (UC16 #9, 2026-05-02)** — Routing strategies and fallback. Layered MVP: priority + rate-limit-aware skip + health-aware (circuit breaker) + capability-aware filter. Stack ships together at Phase 2.3. Cost-aware (Beta), latency-aware (GA), session affinity (Beta — N23), weighted/canary (Beta) are subsequent additions. Retry budget default **3 attempts max across providers** with per-virtual-key override. Cooldown state in Type B Valkey when configured (cluster-wide consistency), local per-replica fallback. Structured 503 with per-attempt details on exhaustion. §3.4 above.
 18. **DECIDED (UC16 #11, 2026-05-03)** — Cluster behaviour and failure modes. Six sub-decisions in §3.6: (1) per-replica vs cluster-shared state inventory captured in §3.6.1 — every new mutable state in `src/gateway/ai/` must be classified before merge; (2) per-component failure-mode matrix in §3.6.2; (3) Valkey fail-mode policy `HIGHPER_AI_VALKEY_FAIL_MODE` defaulting to **`local_fallback`** (mirrors UC4's `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`), with `fail_open` and `fail_closed` opt-ins; (4) UC4↔UC16 Valkey shard isolation via **`HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS`** (mirrors UC4's `HIGHPER_RATELIMIT_KEY_SHARDS` from Phase 0.C); (5) single-node deployment as default for dev / staging / small prod (ReDB + single-node Valkey + local cooldown + acknowledged 0% FT); (6) multi-region per HA §6.5.3 — v1.0 single-region only; multi-region is ROADMAP §6 gate #7.
+19. **DECIDED (UC16 #12, 2026-05-03)** — External integrations contract. **Five integration surfaces** (plugin hooks / metrics surface / audit-log export / inference engine integration / configuration sources) are the canonical operator-facing list — anything an external integrator wants to plug in goes through one of these five. **Semver-style stability promise** on metric names + label sets, plugin trait shapes, admin API URLs + JSON shapes, DSL syntax, env var names + value formats; no promise on internal trait shapes or source code structure. New `docs/INTEGRATION_GUIDE.md` (Phase 1.3 deliverable) consolidates all five surfaces with concrete examples. Phase 1.5 gains a CI compatibility test matrix exercising real external integrations end-to-end (Prometheus, OTLP, LiteLLM/Portkey-shape inbound, plugin hot-load). §11.5 above closes the 12-topic UC16 design sequence.
 
 ---
 
@@ -1782,4 +1887,24 @@ See `ROADMAP.md` §5 for sequencing.
     gains 3 new tasks (Valkey fail-mode handler 2 days, token-quota
     hot-key sharding 1.5 days, per-replica key validation cache with
     cluster-wide pub/sub invalidation 1.5 days).
+- **2026-05-03 (decision #12 — external integrations contract, current):** topic-#12 fold-in. **Closes the 12-topic UC16 design sequence.**
+  - **§11.5 (new) External integrations contract** with five
+    sub-sections: 11.5.1 five integration surfaces (plugin hooks /
+    metrics / audit-log export / inference engine integration via
+    `AiProvider` plugin / configuration sources via `ConfigSource`
+    trait) / 11.5.2 semver-style stability promise on operator-facing
+    surfaces / 11.5.3 `docs/INTEGRATION_GUIDE.md` (NEW Phase 1.3
+    deliverable) / 11.5.4 CI compatibility test matrix (Phase 1.5) /
+    11.5.5 re-statement of what stays external (closes loop with §3.1
+    + §1 + §6.4 + §8 boundary tables).
+  - **§11.5 numbered to avoid renumbering §12–§17** — consistent with
+    the ".5" convention used elsewhere in this doc for content added
+    later.
+  - **§12 entry #19 added and marked DECIDED.**
+  - ROADMAP Phase 1.3 gains `docs/INTEGRATION_GUIDE.md` (4 days).
+    Phase 1.5 gains CI compatibility test matrix (3 days).
+  - **All 12 UC16 design topics resolved.** Decisions #1–#12 captured;
+    all §12 open questions either DECIDED or queued behind respective
+    phase owner gates. UC16 design sequence complete; ready for Phase 2.1
+    implementation work once owner gates #1, #3, #4 clear.
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.
