@@ -682,6 +682,149 @@ OpenAI / Bedrock formats vary). The post-stream accounting layer
 This lets operators measure how much the provider's prompt cache is
 saving them, separately from highper's own §6.1 exact cache.
 
+### 3.6 Cluster behaviour and failure modes (UC16 design decision #11, 2026-05-03)
+
+UC16 sits inside the cluster types defined in `HA_ARCHITECTURE.md`. This
+section pins down UC16-specific cluster behaviour: which state lives
+where, how UC16 fails on each component outage, and how the
+single-node-to-multi-node spectrum is served.
+
+#### 3.6.1 Per-replica vs cluster-shared state inventory
+
+| State | Per-replica or cluster-shared? | Backend | Notes |
+|---|---|---|---|
+| Virtual key validation cache | Per-replica LRU | Local memory | TTL `HIGHPER_AI_KEY_CACHE_TTL_SECS` default 300 s; serves brief `AiStateStore` outages |
+| Virtual key truth (master) | Cluster-shared, durable | `AiStateStore` (UC16 #4) | ReDB / RocksDB / ScyllaDB |
+| Token-quota counters (TPM bucket) | Cluster-shared | Type B Valkey | Hot path; sharded per §3.6.4 |
+| RPM / RPD buckets | Cluster-shared | Type B Valkey | Hot path |
+| Budget rollups (durable, audit-grade) | Cluster-shared, durable | `AiStateStore` | Reconciled from Valkey counters periodically |
+| Provider rate-limit cooldown (UC16 #9 §3.4.5) | Cluster-shared (Valkey when configured) or local | Type B Valkey or local `DashMap` | `HIGHPER_AI_COOLDOWN_BACKEND=auto` |
+| Pricing snapshot (current rows) | Per-replica | In-memory `Arc<RwLock<HashMap>>` | Each replica refreshes weekly per UC16 #7 |
+| Pricing overrides | Cluster-shared, durable | `AiStateStore` `ai/pricing_overrides/` | Replicas read-through with TTL cache (default 60 s) |
+| Connection pools to providers (HTTP/2) | Per-replica | Local | Per-(provider, region); reused via `src/proxy/connection_pool.rs` |
+| Per-stream session state | Per-replica | Local | The request is owned by exactly one replica from accept to `[DONE]` |
+| Session-affinity table (N23 sessions, Phase 2.5) | Cluster-shared | Type B Valkey | Same cluster as token quotas, different key prefix |
+| Audit log | Cluster-shared, append-only | `AiStateStore` audit namespace | Hash-chain integrity per §7.3 |
+| Pricing override cache (read-through) | Per-replica | In-memory | TTL 60 s; admin override hot-applies after TTL or via flush header |
+
+**Implication for new code:** every `static`-like or thread-local
+mutable state piece introduced in `src/gateway/ai/` must be classified
+into one of these rows before merge. Reviewers cite this table.
+
+#### 3.6.2 Failure modes per component
+
+What happens to UC16 traffic when each cluster component fails:
+
+| Failure | UC16 behaviour | Operator-visible signal |
+|---|---|---|
+| One highper replica dies | Other replicas serve; in-flight streams on the dead replica TCP-RST; clients reconnect (idempotency keys at Phase 4.1 prevent double-billing) | `up` metric drops; `ai_active_streams` on the dead replica goes to zero |
+| Valkey primary dies, Sentinel/cluster failover (Type 2 prod) | Brief unavailability of hot-path counters → behaviour governed by `HIGHPER_AI_VALKEY_FAIL_MODE` (see §3.6.3) | `ai_valkey_unavailable_total` counter; failover-window in metrics |
+| Entire Valkey cluster down | All Type B-backed UCs degraded; UC16 falls back per `HIGHPER_AI_VALKEY_FAIL_MODE`; budget enforcement may be temporarily inaccurate | Same metric pegged; alert at SLO level |
+| `AiStateStore` unavailable | New virtual-key issuance via admin API returns 503; existing virtual keys validated via per-replica cache continue working briefly until cache TTL expires (default 300 s); after that, validation returns 503 | `ai_state_store_unavailable_total` counter; `/admin/ai/keys` endpoints return 503 |
+| etcd / Consul down (Type 4 only) | UC03 ACME / UC12 discovery affected, **not UC16 directly** — UC16 doesn't depend on Type C state | None on UC16 metrics |
+| One provider down (e.g. OpenAI 503) | Routing layer per §3.4 falls through to next candidate; circuit breaker opens for that provider | `ai_route_circuit_breaker_open` gauge; `ai_route_fallback_taken_total` counter |
+| All providers in a model alias down | Routing exhausts candidates; structured 503 to client (§3.4.4) | `ai_route_exhausted_total` counter |
+| Pricing refresh fails | Per `HIGHPER_AI_PRICING_REFRESH_FAIL_MODE` — `last_known_good` (default; keep current prices) or `fail_closed` (refuse new requests with 503) | `ai_pricing_refresh_failed_total{reason}` counter; `/health/ai/pricing` endpoint reports staleness |
+| Provider returns malformed response | Translator emits `ai_translator_parse_errors_total{provider}`; routing falls through to next candidate | Same counter; tail-latency may spike |
+
+#### 3.6.3 Valkey fail-mode policy
+
+When Valkey is unreachable (cluster down, network partition, Sentinel
+not yet failed over), highper-gateway's UC16 hot path needs a
+deterministic fall-back. Three modes — operator picks via
+`HIGHPER_AI_VALKEY_FAIL_MODE`:
+
+| Mode | Behaviour | When to pick |
+|---|---|---|
+| **`local_fallback` (default)** | Hot-path counters fall back to in-process `DashMap` for the duration of the outage. Token quotas, RPM/TPM buckets, cooldown all operate per-replica. When Valkey returns, replicas re-sync; brief budget over-spend possible during the window. | Most operators — same posture as UC4 distributed limiter (`HIGHPER_RATELIMIT_REDIS_FAIL_MODE` from Phase 0.C). |
+| **`fail_open`** | Hot-path counters skipped entirely during outage; budget / TPM enforcement paused; requests proceed without throttling. | Cost-tolerant deployments where availability matters more than billing precision (free-tier services, demo deployments). |
+| **`fail_closed`** | All UC16 requests rejected with 503 until Valkey returns. | Regulated billing environments where over-spend is unacceptable. |
+
+Mirrors UC4's existing `HIGHPER_RATELIMIT_REDIS_FAIL_MODE` design (Phase
+0.C) so operators don't learn two patterns. Default `local_fallback`
+matches that mode's name in UC4.
+
+When `local_fallback` is active during a Valkey outage, the gateway
+emits `ai_valkey_fallback_active` gauge = 1 and continues normal
+operation; once Valkey returns, the per-replica `DashMap` totals are
+*not* reconciled into Valkey (acknowledged drift) — the budget window
+re-aligns at the next reset boundary (next minute for TPM, next day
+for daily budget).
+
+#### 3.6.4 Valkey shard isolation between UC4 and UC16
+
+Per HA research line 40, when both UC04 (rate-limit) and UC16 (AI token
+quota) are enabled, **shard Valkey keys to avoid cross-UC contention**.
+This builds on the hot-key sharding pattern from Phase 0.C (`HIGHPER_RATELIMIT_KEY_SHARDS`).
+
+| Approach | Trade-off | Recommendation |
+|---|---|---|
+| Same Valkey cluster, different key prefixes | Simple but they share shard slots; hot keys in either UC affect the other | Default for low-traffic |
+| Same cluster + sharded keys for both UCs | Hot-key contention reduced; one cluster, more keys | **Default for moderate-to-high traffic** |
+| Two Valkey clusters (one for UC04, one for UC16) | Best isolation; doubles operational complexity | Reserve for very-high-traffic deployments where one cluster's hotspots affect the other measurably |
+
+Concrete env vars (UC16-side mirrors UC4-side):
+
+| Knob | Env var | Default |
+|---|---|---|
+| UC04 rate-limit hot-key shards | `HIGHPER_RATELIMIT_KEY_SHARDS` (Phase 0.C) | `1` (no sharding) |
+| **UC16 token-quota hot-key shards** | `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (added 2026-05-03) | `1` (no sharding); set ≥4 for moderate traffic; ≥16 for very-high traffic |
+
+When `>1`, the gateway writes to N sub-keys (`ai:tpm:vkey:<vkey>:<shard>`, etc.)
+chosen by stable hash of the request, and reads aggregate by summing
+all N at decision time. Adds ~0.1 ms per check (N Valkey reads instead
+of 1) but eliminates single-shard contention for popular virtual keys.
+
+For the very-high-traffic case where two clusters genuinely warrant
+isolation, the existing `HIGHPER_CLUSTER_TYPEB_ADDRS` is single-cluster.
+Phase 4 adds a second-cluster knob (`HIGHPER_AI_TOKEN_QUOTA_VALKEY_ADDRS`)
+for operators who exceed single-cluster throughput; deferred until
+real-world load surfaces the need.
+
+#### 3.6.5 Single-node deployment (UC16 dev / staging / small prod)
+
+Single-node UC16 is the **default for dev / staging / prototype**:
+
+```bash
+HIGHPER_CLUSTER_INFRA=single
+HIGHPER_CLUSTER_TYPEB_BACKEND=valkey
+HIGHPER_CLUSTER_TYPEB_ADDRS=localhost:6379
+HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=true     # acknowledges 0% storage-layer FT
+HIGHPER_AI_STATE_BACKEND=redb               # embedded; zero external deps
+HIGHPER_AI_STATE_PATH=./data/highper-ai
+HIGHPER_AI_KEY_PEPPER=dev-only-pepper-please-rotate-in-prod
+```
+
+In this configuration:
+- Valkey is single-node — Sentinel / cluster failover not needed for dev.
+- ReDB is embedded — no external storage process.
+- Cooldown state is local (per-replica) automatically — `auto` selection sees single-node and picks local.
+- Pricing refresh still works (one replica refreshes weekly).
+- Plugin hot-load works (file watcher per UC16 §3.3.7).
+- Everything else (canonical hashing, routing, streaming, accounting) is identical to multi-node behaviour.
+
+**Acknowledged trade-offs:**
+- 0% fault tolerance on Valkey (process restart loses TPM / RPM bucket state for the current window — accepted in dev).
+- 0% fault tolerance on ReDB (host disk failure loses durable state — accepted in dev).
+- Single point of failure for the highper-gateway process itself.
+
+The **same configuration works as production for small deployments**
+(< 1 M tokens / month, single tenant, low-stakes use cases) where the
+trade-offs are explicit operator choice.
+
+#### 3.6.6 Multi-region UC16 — see HA_ARCHITECTURE.md §6.5.3
+
+Multi-region UC16 patterns are documented in `HA_ARCHITECTURE.md` §6.5.3.
+Three options summarised: per-region UC16 with regional virtual keys
+(simple, regional budgets); per-region UC16 with central durable state
+(probable v2 default — token-quota counters regional, virtual keys +
+budgets central, ~30–100 ms latency for budget checks); active-active
+full state (Postgres multi-master / Spanner / FoundationDB; highest
+consistency, highest cost; Phase 4+).
+
+**v1.0 ships single-region UC16 only.** Multi-region is `ROADMAP.md`
+§6 owner gate #7.
+
 ---
 
 ## 4. Canonical request / response types
@@ -1405,6 +1548,7 @@ and reference the design-decision number.
 15. **Inference-engine integration (UC17)** — explicit non-goal here, but with the §3.3 plugin architecture, a self-hosted-models integration becomes "an `AiProvider` plugin that wraps `mistral.rs` / `candle` in-process." Recommended: **defer to UC17** but the router contract is now plugin-shaped which makes UC17 strictly additive.
 16. **AiStateStore single → multi node migration** (new question, opened by UC16 #4): is there a documented path for an operator who starts on ReDB (single-node) and later adopts ScyllaDB (multi-node)? Options: (a) export tool that walks ReDB and writes to ScyllaDB; (b) operator runs both side-by-side during the transition (dual-write at the trait layer); (c) operator restarts fresh — accept that the single-node deployment was throwaway. Recommended for design discussion: **(a) export tool**, ship in Phase 3.
 17. **DECIDED (UC16 #9, 2026-05-02)** — Routing strategies and fallback. Layered MVP: priority + rate-limit-aware skip + health-aware (circuit breaker) + capability-aware filter. Stack ships together at Phase 2.3. Cost-aware (Beta), latency-aware (GA), session affinity (Beta — N23), weighted/canary (Beta) are subsequent additions. Retry budget default **3 attempts max across providers** with per-virtual-key override. Cooldown state in Type B Valkey when configured (cluster-wide consistency), local per-replica fallback. Structured 503 with per-attempt details on exhaustion. §3.4 above.
+18. **DECIDED (UC16 #11, 2026-05-03)** — Cluster behaviour and failure modes. Six sub-decisions in §3.6: (1) per-replica vs cluster-shared state inventory captured in §3.6.1 — every new mutable state in `src/gateway/ai/` must be classified before merge; (2) per-component failure-mode matrix in §3.6.2; (3) Valkey fail-mode policy `HIGHPER_AI_VALKEY_FAIL_MODE` defaulting to **`local_fallback`** (mirrors UC4's `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`), with `fail_open` and `fail_closed` opt-ins; (4) UC4↔UC16 Valkey shard isolation via **`HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS`** (mirrors UC4's `HIGHPER_RATELIMIT_KEY_SHARDS` from Phase 0.C); (5) single-node deployment as default for dev / staging / small prod (ReDB + single-node Valkey + local cooldown + acknowledged 0% FT); (6) multi-region per HA §6.5.3 — v1.0 single-region only; multi-region is ROADMAP §6 gate #7.
 
 ---
 
@@ -1623,4 +1767,19 @@ See `ROADMAP.md` §5 for sequencing.
   - ROADMAP Phase 0.J gains 5 streaming env vars; Phase 2.5 streaming
     work grows from ~6 to ~11 days (chunker, cancellation, TPM
     mid-stream, metrics).
+- **2026-05-03 (decision #11 — cluster behaviour, current):** topic-#11 fold-in.
+  - **§3.6 (new) Cluster behaviour and failure modes** with six
+    sub-sections: 3.6.1 per-replica vs cluster-shared state inventory
+    (12-row classification table) / 3.6.2 failure modes per component
+    (9-row matrix) / 3.6.3 Valkey fail-mode policy (`local_fallback`
+    default; `fail_open` / `fail_closed` opt-ins) / 3.6.4 UC4↔UC16
+    Valkey shard isolation (`HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` mirrors
+    `HIGHPER_RATELIMIT_KEY_SHARDS`) / 3.6.5 single-node deployment as
+    dev/staging/small-prod default / 3.6.6 multi-region cross-reference
+    to HA §6.5.3.
+  - **§12 entry #18 added and marked DECIDED.**
+  - ROADMAP Phase 0.J gains 4 cluster-behaviour env vars; Phase 2.4
+    gains 3 new tasks (Valkey fail-mode handler 2 days, token-quota
+    hot-key sharding 1.5 days, per-replica key validation cache with
+    cluster-wide pub/sub invalidation 1.5 days).
 - **Future:** edit in place. Append revision entries here; do not silently rewrite without an entry.

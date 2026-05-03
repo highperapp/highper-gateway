@@ -721,6 +721,7 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 - [ ] **UC16 cache + vector backend env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §6.0):** `HIGHPER_AI_CACHE_BACKEND` (default `valkey` → uses cluster Type B Valkey; alternatives: `redis` / `memory` / `disk` / `multi-tier` — same set as existing `src/cache/` trait); `HIGHPER_AI_VECTOR_BACKEND` (default `none`; one of `qdrant` / `redis-stack` / `pgvector` / `hnsw` — only required when semantic cache is enabled); `HIGHPER_AI_VECTOR_ADDRS` (host:port comma-list for non-`hnsw` backends); `HIGHPER_AI_VECTOR_AUTH` (auth token / file path / secrets-resolver ref). Refuse-to-start when an `ai_route` block enables `semantic_cache` and the vector backend / addrs are not set. **0.5 day.**
 - [ ] **UC16 routing env vars (added 2026-05-02 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.4):** `HIGHPER_AI_RETRY_BUDGET` (default `3`; max attempts across providers per request; per-virtual-key override via scope's `retry_budget`); `HIGHPER_AI_COOLDOWN_BACKEND` (`auto` default → Valkey when Type B configured, local otherwise; alternatives `valkey` / `local` for forced override); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN` (default `50`); `HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX` (default `200`); `HIGHPER_AI_DEFAULT_COOLDOWN_SECS_NO_HEADER` (default `30`; used when provider 429s without `Retry-After`). **0.5 day.**
 - [ ] **UC16 streaming env vars (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.5):** `HIGHPER_PLUGIN_CHUNK_BUDGET_US` (default `500` µs; plugin overshooting budget per chunk is logged + skipped for the rest of the stream — fail-open at chunk level); `HIGHPER_AI_STREAM_BUFFER_DEPTH` (default `64` events per stream); `HIGHPER_AI_STREAM_BUFFER_OVERFLOW_POLICY` (`drop_oldest` default; alternatives `block` / `error`); `HIGHPER_AI_DEFAULT_CANCEL_ON_CLOSE` (default `true`; per-virtual-key override via scope); `HIGHPER_AI_DEFAULT_TPM_HARD_STOP` (default `false`; per-virtual-key override via scope). **0.5 day.**
+- [ ] **UC16 cluster-behaviour env vars (added 2026-05-03 — supports `USECASE_16_AI_LLM_GATEWAY.md` §3.6):** `HIGHPER_AI_VALKEY_FAIL_MODE` (`local_fallback` default mirrors UC4 `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`; alternatives `fail_open` / `fail_closed`); `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (default `1`; set ≥4 for moderate traffic, ≥16 for very-high; mirrors UC4 `HIGHPER_RATELIMIT_KEY_SHARDS` from Phase 0.C); `HIGHPER_AI_KEY_CACHE_TTL_SECS` (default `300`; per-replica virtual-key validation cache TTL — serves brief `AiStateStore` outages); `HIGHPER_AI_PRICING_OVERRIDE_CACHE_TTL_SECS` (default `60`; per-replica pricing-override read-through cache). **0.5 day.**
 
 #### Phase 0 deliverables
 
@@ -909,6 +910,13 @@ Quick wins that materially reduce risk for v1.0 and cost <2 days each.
 - [ ] **Exact cache engine (UC16 #8, 2026-05-02 — see `USECASE_16_AI_LLM_GATEWAY.md` §6.0–§6.1):** module at `src/gateway/ai/cache_exact.rs` with canonical-JSON key (sorted, no float reformat, byte-stable for §6.3 provider prompt-cache compatibility), TTL handling, streaming replay, per-tenant key-space isolation. Backed by the existing `src/cache/` trait — operator picks KV backend (Valkey via existing Redis client / disk / memory / multi-tier) via DSL `cache.backend`. Admin invalidation API: `POST /admin/ai/cache/invalidate` (tag / pattern / per-tenant). **2 days.**
 - [ ] **`x-cache` response header + `x-cache-ttl` request header (UC16 #8):** wire response header `HIT | MISS | BYPASS | SEMANTIC` and per-request TTL override. **0.5 day.**
 - [ ] **Admin cache-invalidation endpoint (UC16 #8):** `POST /admin/ai/cache/invalidate` with `{tag}` / `{pattern}` / `{tenant_id}` body shapes. Audit event per call into `AiStateStore` audit log. **1 day.**
+- [ ] **Valkey fail-mode handler for UC16 hot path (UC16 #11, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.6.3):** wrapper around Type B Valkey calls in `src/gateway/ai/{budget,rate_limit_buckets,cooldown}.rs` that handles `HIGHPER_AI_VALKEY_FAIL_MODE`:
+      • `local_fallback` (default) — fall back to per-replica `DashMap` for the duration of the outage; emit `ai_valkey_fallback_active` gauge = 1; do not reconcile the local totals back into Valkey when it returns (acknowledged drift; budget window re-aligns at next reset boundary).
+      • `fail_open` — skip enforcement entirely during outage; requests proceed without throttling.
+      • `fail_closed` — return 503 to all UC16 requests until Valkey returns.
+      Emits `ai_valkey_unavailable_total` counter regardless of mode. Mirrors UC4 distributed limiter design (Phase 0.C `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`). **2 days.**
+- [ ] **UC16 token-quota hot-key sharding (UC16 #11, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.6.4):** when `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS > 1`, gateway writes token-quota counters to N sub-keys (`ai:tpm:vkey:<vkey>:<shard>`) chosen by stable request hash, reads aggregate by summing all N at decision time. Mirrors the rate-limit pattern from Phase 0.C. ~0.1 ms latency cost; eliminates single-shard contention for popular virtual keys. **1.5 days.**
+- [ ] **Per-replica virtual-key validation cache (UC16 #11, 2026-05-03 — see `USECASE_16_AI_LLM_GATEWAY.md` §3.6.1):** in-process LRU cache for validated virtual keys with TTL `HIGHPER_AI_KEY_CACHE_TTL_SECS` (default 300 s). Serves brief `AiStateStore` outages and reduces lookups for hot keys. Cache invalidates on admin-API key revocation via `POST /admin/ai/cache/invalidate-keys` (cluster-wide via Type B Valkey pub/sub). **1.5 days.**
 
 #### 2.5 Streaming + admin + tests (week 5)
 
@@ -1581,7 +1589,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row (decision #9).
   - Memory `uc16_scope.md` updated with the layered-routing rule and
     the cooldown-shared-via-Valkey-when-available guidance.
-- **2026-05-03 (fourteenth revision, current):** UC16 topic #10 fold-in
+- **2026-05-03 (fourteenth revision):** UC16 topic #10 fold-in
   (streaming and cancellation semantics).
   - **UC16 design decision #10:** USECASE_16 §12 #8 and #9 marked
     DECIDED. Cancel-upstream-on-client-close as default; per-virtual-key
@@ -1616,6 +1624,40 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row (decision #10).
   - Memory `uc16_scope.md` updated with the cancel-on-close-default,
     tpm-warn-default, plugin-chunk-budget, and stream-buffer rules.
+- **2026-05-03 (fifteenth revision, current):** UC16 topic #11 fold-in
+  (cluster behaviour and failure modes).
+  - **UC16 design decision #11:** USECASE_16 §12 entry #18 added and
+    marked DECIDED. Six sub-decisions in §3.6:
+    (1) per-replica vs cluster-shared state inventory in §3.6.1 — every
+    new mutable state in `src/gateway/ai/` must be classified before
+    merge;
+    (2) per-component failure-mode matrix in §3.6.2 — what happens to
+    UC16 traffic when each cluster component fails;
+    (3) Valkey fail-mode policy `HIGHPER_AI_VALKEY_FAIL_MODE` defaulting
+    to `local_fallback` (mirrors UC4 `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`
+    from Phase 0.C); `fail_open` and `fail_closed` opt-ins for
+    cost-tolerant or regulated environments;
+    (4) UC4↔UC16 Valkey shard isolation via
+    `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (mirrors UC4's
+    `HIGHPER_RATELIMIT_KEY_SHARDS`); same-cluster sharded keys for
+    moderate traffic, two-cluster split deferred to Phase 4;
+    (5) single-node UC16 as dev/staging/small-prod default — ReDB +
+    single-node Valkey + local cooldown + acknowledged 0% FT; same
+    config works as production for low-traffic single-tenant cases;
+    (6) multi-region UC16 per HA §6.5.3 — v1.0 single-region only;
+    multi-region is ROADMAP §6 owner gate #7.
+  - **USECASE_16 §3.6 added** with six sub-sections.
+  - **Phase 0.J** gains 4 cluster-behaviour env vars
+    (`HIGHPER_AI_VALKEY_FAIL_MODE`, `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS`,
+    `HIGHPER_AI_KEY_CACHE_TTL_SECS`,
+    `HIGHPER_AI_PRICING_OVERRIDE_CACHE_TTL_SECS`) — 0.5 day.
+  - **Phase 2.4** gains 3 new tasks:
+    - Valkey fail-mode handler (2 days).
+    - Token-quota hot-key sharding (1.5 days).
+    - Per-replica virtual-key validation cache with cluster-wide
+      invalidation via Valkey pub/sub (1.5 days).
+  - **§13 status snapshot** gains 1 row (decision #11).
+  - Memory `uc16_scope.md` updated with the cluster-behaviour rules.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -1668,6 +1710,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | §4.4 interface-first audit extended from 10 to 11 boundaries | ROADMAP §4.4 | row 11 (`VectorIndex`) added — greenfield UC16 trait, Phase 2.4 trait + Qdrant impl, Phase 3.1 for Redis-Stack / PgVector / HNSW; total trait extractions 10.5 → 11 person-weeks |
 | UC16 design decision #9 recorded 2026-05-02 (routing strategies) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.4 / §12 #17 | layered MVP (priority + rate-limit-aware + health-aware + capability-aware stacked); 3-attempt retry budget default with per-virtual-key override; cooldown state in Type B Valkey when configured else local `DashMap`; structured 503 with per-attempt details on exhaustion; cost-aware (Beta) / latency-aware (GA) / weighted-canary (Beta) queued for later phases |
 | UC16 design decision #10 recorded 2026-05-03 (streaming + cancellation) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.5 / §12 #8, #9 | cancel-upstream-on-client-close default with per-virtual-key drain-and-record opt-in; TPM mid-stream defaults to post-stream warning with per-key hard-stop opt-in; per-chunk plugin budget (default 500 µs, fail-open on overrun); bounded stream buffer (default 64 events, drop-oldest on overflow); 4 new streaming-specific metrics |
+| UC16 design decision #11 recorded 2026-05-03 (cluster behaviour + failure modes) | [`USECASE_16_AI_LLM_GATEWAY.md`](USECASE_16_AI_LLM_GATEWAY.md) §3.6 (six sub-sections) / §12 #18 | per-replica vs cluster-shared state inventory; per-component failure-mode matrix; `HIGHPER_AI_VALKEY_FAIL_MODE=local_fallback` default (mirrors UC4 distributed limiter); UC4↔UC16 Valkey shard isolation via `HIGHPER_AI_TOKEN_QUOTA_KEY_SHARDS` (mirrors UC4 `HIGHPER_RATELIMIT_KEY_SHARDS`); single-node UC16 = dev/staging/small-prod default with explicit 0% FT acknowledgement; multi-region per HA §6.5.3 deferred to Phase 4 (gate #7) |
 | Phase 1.3.1 cluster-deployment templates queued | §5 Phase 1.3.1 | 9 cells (3 personas × 3 infrastructures) under `examples/configs/clusters/` + decision-flow README + CI validation harness |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
