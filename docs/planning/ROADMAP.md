@@ -15,7 +15,8 @@
   - `docs/planning/GRAPHQL_FEDERATION.md` — frozen-state design for UC13 Apollo Federation v2 (deferred to Phase 4.2). Cited from §3.4 + §6 #2 + Phase 4.2.
   - `docs/planning/OWNER_GATES_2026-05-03.md` — version-controlled decision log for the 6 owner gates closed 2026-05-03 (Phase 0 unblocked + Phase 2 conditionally unblocked). Future gate batches follow the `OWNER_GATES_YYYY-MM-DD.md` pattern.
   - `docs/planning/SETTINGS_SCAFFOLD.md` — Workstream 0.J `RuntimeConfig` design (signed-off 2026-05-03). 7 decisions captured (centralized `src/runtime_config/` layout, `OnceLock<ArcSwap>` singleton, hand-rolled loader, `RuntimeConfig` naming, `for_test()`, eager `SecretRef` with `lazy:bool` opt-out, Tier 1+2+3 hot-reload). 3-stage progressive PR plan; Stage 1 ready to begin.
-  - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (draft, awaiting sign-off on 5 §10 questions). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint. ~600–800 LoC across 8 new files + 4 modified.
+  - `docs/planning/RUNTIME_CONFIG_STAGE1_PR_PLAN.md` — Stage 1 PR implementation contract (signed off + landed 2026-05-03 in commits `6897310` + `c8e1e8c` + `c9f1304`; verified end-to-end in Rancher Desktop / containerd). File-by-file diff outline for `src/runtime_config/` foundation + `cluster` + `plugin` sections + `manager.rs` migration + scoped CI lint.
+  - `docs/planning/RUNTIME_CONFIG_STAGE2_PR_PLAN.md` — Stage 2 PR implementation contract (draft 2026-05-03, awaiting sign-off on 7 §11 questions). 4 new sections (`ai` 25 env vars, `body` 3, `shutdown` 3, `secrets` 5), cross-subsystem validator (AI/Cluster invariants + §11.2 rules 1/2/3/5 via new `validate_against_config(&Config, &RuntimeConfig)` entry point), `Secrets://` `SecretRef` variant, `hot_reload.rs:181` migration, CI lint widening. ~900–1100 LoC across 5 new + 7 modified files.
   - `docs/AUDIT_2026-05-02.md` — original gap audit; cited from this document as the source for many entries.
   - `docs/CONFIG_ENV.md` (NEW, to be created in Phase 0) — authoritative reference for every `HIGHPER_*` environment variable.
 - Superseded documents (do not read for current state):
@@ -1983,7 +1984,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row recording the design sign-off.
   - **Net effect:** Workstream 0.J is design-complete. Stage 1 PR can
     begin against the signed-off doc.
-- **2026-05-03 (twenty-second revision, current):** Workstream 0.J
+- **2026-05-03 (twenty-second revision):** Workstream 0.J
   Stage 1 PR plan drafted. New companion doc
   [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md)
   captures the file-by-file implementation contract for the first
@@ -2037,6 +2038,68 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **Net effect:** Workstream 0.J Stage 1 is implementation-ready
     pending the 5 sign-off questions. No source code lands until
     those answers come back.
+- **2026-05-03 (twenty-third revision, current):** Workstream 0.J
+  Stage 1 **landed and verified end-to-end** + Stage 2 PR plan drafted.
+  - **Stage 1 land + verify (3 commits):**
+    - `6897310` — `runtime_config` Stage 1 source: 8 new files in
+      `src/runtime_config/` (`mod` + `error` + `loader` + `reload` +
+      `secret_ref` + `sections/{mod, cluster, plugin}.rs`) + 4 modified
+      (`Cargo.toml` adds `arc-swap = "1.7"` and `serial_test = "3.1"`,
+      `lib.rs` adds `pub mod runtime_config`, `main.rs` wires
+      `runtime_config::install(load()?)` at start_server, `plugin/manager.rs`
+      migrates `:255` + `:268` from hardcoded `Duration::from_secs(30)` and
+      `Duration::from_millis(100)` to `runtime_config::current().plugin.{drain,
+      idle_poll}.get()`). Plus xtask CI lint binary, `docs/CONFIG_ENV.md`
+      skeleton.
+    - `c8e1e8c` — `.dockerignore` + `Dockerfile` updated to handle xtask
+      workspace member.
+    - `c9f1304` — 6 pre-existing Dockerfile blockers fixed (none from
+      Stage 1; all latent maintenance issues): missing dummy `[[bench]]`
+      files for manifest parse; `Cargo.lock` v4 needs Rust 1.78+; edition
+      2024 needs 1.85+ (bumped to `rust:1.86-bookworm`); `quiche`/`boringssl`
+      needs cmake + nasm + perl; second-stage manifest parse needs
+      benches/ retained (don't `rm -rf`); `build.rs` was never copied
+      into container so `env!()` macros in `version_command` failed at
+      compile time. Each fix has inline comment in the Dockerfile.
+  - **Stage 1 verification:** `nerdctl build` produced
+    `highper-gateway:stage1-rc` (55.21 MB) on Rancher Desktop /
+    containerd. `nerdctl run --rm highper-gateway:stage1-rc version
+    --verbose` printed clean output with `build.rs`-set env vars
+    (`rustc 1.86.0`, `x86_64-unknown-linux-gnu`, `release`,
+    `2026-05-03 06:49:52 UTC`). End-to-end refuse-to-boot test: setting
+    `HIGHPER_PLUGIN_DRAIN=2s` (below 5s minimum) produced exactly the
+    `RuntimeConfigError::OutOfRange::Display` message
+    `HIGHPER_PLUGIN_DRAIN="2s" is out of range (valid: >= 5s)` —
+    confirming `main.rs:315` → `runtime_config::load()` →
+    `sections::plugin::load()` → range check → operator-friendly error
+    → `anyhow::Context` propagation → process exit. Happy-path test
+    (`HIGHPER_PLUGIN_DRAIN=45s`) logged `RuntimeConfig loaded and
+    installed` from `main.rs:322` confirming full wiring.
+  - **Stage 2 plan drafted:** new
+    [`RUNTIME_CONFIG_STAGE2_PR_PLAN.md`](RUNTIME_CONFIG_STAGE2_PR_PLAN.md)
+    captures the implementation contract for the next ~5-day stage.
+    4 new sections: `AiRuntimeConfig` (25 env vars), `BodyRuntimeConfig`
+    (3), `ShutdownRuntimeConfig` (3), `SecretsRuntimeConfig` (5).
+    Cross-subsystem validator (`validate_against_config(&RuntimeConfig,
+    &Config)`) closes the §11.2 rules 1/2/3/5 deferred from Stage 1
+    once `Config` provides the enabled-UC list. New AI/Cluster
+    invariants: cache=valkey or cooldown=valkey requires Type B.
+    `Secrets://` `SecretRef` variant adds parse path + struct field
+    (actual resolver implementations Phase 1.4). `hot_reload.rs:181`
+    migrated. CI lint widens from `src/plugin/` to also cover
+    `src/cluster/`, `src/cache/`, `src/ai/`. ~900–1100 LoC across 5
+    new + 7 modified files; ~250 LoC of tests.
+  - **§0 conventions companion-docs list** updated: Stage 1 plan now
+    "signed off + landed"; Stage 2 plan added (draft, awaiting §11
+    sign-off).
+  - **§13 status snapshot** gains 2 rows (Stage 1 landed + Stage 2 plan
+    drafted).
+  - **Net effect:** Workstream 0.J is half-shipped. Stage 1 landed and
+    verified in real container. Stage 2 implementation-ready pending
+    7 sign-off questions in `RUNTIME_CONFIG_STAGE2_PR_PLAN.md` §11.
+    Stage 3 (~4 days: remaining 9 sections + Tier 1 SIGHUP reload +
+    admin diff endpoint + project-wide CI lint + B12/B14 literal
+    migrations) follows Stage 2.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2101,6 +2164,8 @@ and planning**. No source code has changed. Phase 0 has not started.
 | §4.4 interface-first audit extended from 11 to 12 boundaries (PeerDiscovery, 2026-05-03) | ROADMAP §4.4 row 12 | greenfield HA trait per §6 #4 (iii); `static` / `k8s_headless` / `dns` / `consul` impls; ~5 days at Phase 1.4 alongside `AuthProvider` + Metrics/LogBackend. Total trait-extraction effort 11 → 12 person-weeks. |
 | **Workstream 0.J `RuntimeConfig` design signed off 2026-05-03** | [`SETTINGS_SCAFFOLD.md`](SETTINGS_SCAFFOLD.md) + ROADMAP §5 Phase 0.J + §12 (21st revision) | 7 decisions captured: centralized `src/runtime_config/` layout (avoids circular dep by construction); `OnceLock<ArcSwap<RuntimeConfig>>` singleton; hand-rolled loader extending `src/config/env_override.rs:24-58`; `RuntimeConfig` naming (parallels existing `Config` cleanly); `for_test()` defaults-only constructor; eager `SecretRef` with `lazy:bool` opt-out; Tier 1 SIGHUP hot-reload + Tier 2 admin-diff endpoint + Tier 3 xDS/GitOps deferred to Phase 4.2; field-level `Reloadable<T>` classification (+1 day). 3-stage progressive PR rollout: Stage 1 (~4d) cluster + plugin; Stage 2 (~5d) AI + body + shutdown + secrets + cross-subsystem validator; Stage 3 (~4d) remaining 9 sub-structs + Tier 1 reload + admin diff endpoint + project-wide CI lint. Total ~12.6 days. Stage 1 PR can begin against the design doc. |
 | **Workstream 0.J Stage 1 PR plan drafted 2026-05-03** (awaiting §10 sign-off) | [`RUNTIME_CONFIG_STAGE1_PR_PLAN.md`](RUNTIME_CONFIG_STAGE1_PR_PLAN.md) + ROADMAP §5 Phase 0.J + §12 (22nd revision) | File-by-file diff outline: 8 new files in `src/runtime_config/` (mod / error / loader / reload / secret_ref + `sections/{cluster, plugin}.rs`) + 4 modified (`src/lib.rs` +1 line, `src/main.rs` +5 lines, `src/plugin/manager.rs` :254 + :265 migrated, `Cargo.toml` `arc-swap = "1.7"`). ~600–800 LoC across new files; ~150 LoC of new tests. CI lint scoped to `src/plugin/` only. 5 sign-off questions in §10 (PR shape, single-PR-vs-split, arc-swap dep, temp_env dep, lint shell). All concrete identifiers verified via `Read` of `manager.rs:240-267` + `env_override.rs:55-139` + `lib.rs:1-43` + `main.rs:1-80` + `Cargo.toml:12,76,167` 2026-05-03. |
+| **Workstream 0.J Stage 1 LANDED 2026-05-03** — verified end-to-end in containerd | commits `6897310` (runtime_config + xtask + manager.rs migration), `c8e1e8c` (.dockerignore + Dockerfile xtask handling), `c9f1304` (6 pre-existing Dockerfile blockers fixed) | Image `highper-gateway:stage1-rc` (55.21 MB) built via `nerdctl` on Rancher Desktop. End-to-end verification: `HIGHPER_PLUGIN_DRAIN=2s` → exact `RuntimeConfigError::OutOfRange` flowed back ("HIGHPER_PLUGIN_DRAIN=\"2s\" is out of range (valid: >= 5s)"); `HIGHPER_PLUGIN_DRAIN=45s` → `RuntimeConfig loaded and installed` log line at main.rs:322 confirms full wiring. Six Dockerfile blockers documented inline with reasons (rust 1.86 base bump, cmake+nasm+perl for boringssl, dummy bench files, build.rs copy, benches/ retention). |
+| **Workstream 0.J Stage 2 PR plan drafted 2026-05-03** (awaiting §11 sign-off) | [`RUNTIME_CONFIG_STAGE2_PR_PLAN.md`](RUNTIME_CONFIG_STAGE2_PR_PLAN.md) + ROADMAP §5 Phase 0.J + §12 (23rd revision) | 4 new sections: `AiRuntimeConfig` (25 env vars across state/storage/routing/streaming/pricing per UC16 §3.4–§3.6 + §5.5), `BodyRuntimeConfig` (B12 — 3 fields), `ShutdownRuntimeConfig` (B14 — 3 fields), `SecretsRuntimeConfig` (Phase 1.4 prep — provider selector + 5 fields). Cross-subsystem validator: AI cache=valkey requires Cluster Type B (unless allow_single_node); AI cooldown=valkey requires Type B. New `validate_against_config(&RuntimeConfig, &Config)` entry point closes §11.2 rules 1/2/3/5 once `Config` is loaded. `Secrets://` `SecretRef` variant lands (parse path + struct field; actual resolver Phase 1.4). `hot_reload.rs:181` migrated to `PluginRuntimeConfig::hot_reload_settle`. CI lint widens to `src/plugin/` + `src/cluster/` + `src/cache/` + `src/ai/`. Tests ~250 LoC. 7 sign-off questions in §11 (PR split shape, dev-dep, validator-on-SIGHUP, Secrets:// scope, types.rs:181 migration, lint scope, plan-as-is). |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
