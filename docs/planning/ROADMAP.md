@@ -2513,7 +2513,7 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     re-applicable to a different blocker (B11) with no scaffold work
     needed — adding fields to existing sections + per-site call-site
     edits + per-site overflow-policy decisions. The pattern is mature.
-- **2026-05-03 (thirty-fifth revision, current):** **B4.1 (Workstream
+- **2026-05-03 (thirty-fifth revision):** **B4.1 (Workstream
   0.C, partial) landed.** XFF trust mode wired into
   `rate_limit::extract_client_ip`. Single commit `3d5f4dc` (2 files;
   +40 / −6). Security fix: previous behavior trusted first hop in
@@ -2526,6 +2526,72 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   `key_shards` + `redis_fail_mode` consumer migration in
   `src/gateway/ratelimit/`) remains. Image `highper-gateway:b4-1-rc`
   boots cleanly with `HIGHPER_RATELIMIT_XFF_TRUST=last`.
+- **2026-05-06 (thirty-sixth revision, current):** **B4.2 (Workstream
+  0.C) COMPLETE — closes B4 release blocker.** Distributed-mode
+  `key_shards` + `redis_fail_mode` consumer migration in
+  `src/gateway/ratelimit/distributed.rs`. Single commit (1 file in
+  src/, ~+260 / −40). Closes the second half of Workstream 0.C; B4
+  joins B11 (Workstream 0.F) as the second of B1–B14 release
+  blockers ✅.
+  - **`redis_fail_mode` consumer wiring:** prior behaviour was
+    implicit `fail_open` — Redis errors silently allowed the request
+    (safety hole when limiter sat behind a quota-protected upstream).
+    New `on_redis_error` reads `runtime_config::try_current()
+    .ratelimit.redis_fail_mode.get()` with `LocalFallback` default and
+    branches into three operator-selectable behaviours: (a) `FailOpen`
+    — explicit allow + structured `error!` log; (b) `FailClosed` —
+    reject with `retry_after = window.as_secs()`; (c) `LocalFallback`
+    — best-effort per-replica window counter (new `LocalBucket` struct
+    + `Arc<DashMap<String, LocalBucket>>` per limiter). Mirrors UC16
+    §3.6.2 Valkey fallback pattern (counters reset per replica;
+    no reconciliation back to Redis when it returns; budget
+    re-aligns at next window boundary).
+  - **`key_shards` consumer wiring:** when
+    `runtime_config::current().ratelimit.key_shards > 1`, INCR lands
+    on a per-request randomly-chosen shard
+    (`<base_key>:<rand_u32 % N>`) with EXPIRE; decision sums all N
+    shards via single Redis pipeline (results[2..2+N]). Mitigates
+    Valkey hot-key contention per `HA_ARCHITECTURE.md` §1.5.4 F1.
+    Defaults to 1 (no sharding); `current_key_shards()` clamps to
+    `max(1)` so `RuntimeConfig::for_test()` (where `u32::default() =
+    0`) never divides by zero. `reset()` and `get_count()` updated
+    symmetrically: del all N shards / sum all N reads.
+  - **Token-bucket variant:** `DistributedTokenBucketLimiter` shares
+    the same `redis_fail_mode` 3-branch logic and the same
+    `LocalBucket` fallback store (degraded vs token bucket — bucket
+    state is order-sensitive across shards and cannot be summed
+    without losing fairness). `key_shards` deliberately not applied
+    to the token-bucket variant for that reason; documented inline
+    as a separate workstream (caller-level pre-shard).
+  - **Pure helpers extracted for testability:** `local_check(store,
+    key, max, window) -> RateLimitResult` and `current_key_shards()
+    -> u32`. New `cfg(test)` unit tests (4): under-max allows;
+    over-max limits with `retry_after >= 1`; window rolls over after
+    `Duration::from_millis(70)` sleep with 50 ms window (CI-safe);
+    `current_key_shards` defaults to ≥ 1 even without `install()`.
+    Existing Redis-required tests stay `#[ignore]`.
+  - **Build verification:** `nerdctl build` produced
+    `highper-gateway:b4-2-rc` (sha256 `93af2722917e`) in 9 m 20 s.
+    Lib compile: 86 warnings + 0 errors — same baseline as
+    Workstream 0.J + B11 + B4.1 (zero new warnings/errors). Boot
+    test inside container: `HIGHPER_RATELIMIT_KEY_SHARDS=8 +
+    HIGHPER_RATELIMIT_REDIS_FAIL_MODE=fail_closed +
+    HIGHPER_RATELIMIT_MODE=distributed` produced the full
+    `Starting Highper Gateway` → `RuntimeConfig loaded and
+    installed` (main.rs:322) → `SIGHUP handler installed`
+    (main.rs:331) sequence — runtime_config accepted the new env
+    values cleanly. Negative tests confirmed the loader's range and
+    parse checks: `KEY_SHARDS=0` →
+    `"0" is out of range (valid: >= 1)`;
+    `REDIS_FAIL_MODE=bogus` →
+    `"bogus" could not be parsed (expected local_fallback|fail_open|fail_closed)`.
+  - **Other XFF-handling sites unchanged** (consistent with B4.1
+    note): `ddos_protection.rs:274` and `security_audit.rs:285` use
+    a different intent and stay on their own pattern.
+  - **§13 status snapshot** gains 1 row recording B4.2 closure +
+    Workstream 0.C ✅. Phase 0 progress: **3 of 14 release blockers
+    closed** (B11, B4 [via B4.1+B4.2], and B12 partial / B14
+    partial via Workstream 0.J Stage 3c-2/3c-3).
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2603,6 +2669,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **Workstream 0.J Stage 3c-3 LANDED 2026-05-03 — WORKSTREAM 0.J COMPLETE** | commit `7c00488` (2 files; +54 / −9) | **B14 drain delay** in `src/runtime/mod.rs` between "Shutting down gracefully…" and abort-all-tasks sequence: reads `runtime_config::current().shutdown.spawn_task_drain_secs` (default 10s; tunable via `HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN`); operators see "Draining spawned tasks for Ns" log on SIGTERM. Per-task `SpawnedTaskTracker` deferred — would touch ~20+ tokio::spawn sites across `src/runtime/` and is its own future workstream. **`derive_enabled_ucs` populated** in `runtime_config/loader.rs` for UC4 (rate-limit; `Config.rate_limit.is_some()` OR any route has rate_limit) + UC11 (CDN cache; `Config.cache.is_some()` OR any route has cache). When either fires and `HIGHPER_CLUSTER_TYPEB_BACKEND` is none and `HIGHPER_CLUSTER_ALLOW_SINGLE_NODE=false`, `validate_against_config` refuses to boot per §11.2 rule 1. Other UCs documented as per-UC PR follow-ups via inline TODO. **Workstream 0.J closes:** 8 implementation commits across 3 stages; 15 sections of `RuntimeConfig`; ~85 `HIGHPER_*` env vars; Tier 1 SIGHUP atomic swap; `/api/runtime-config` + `/api/runtime-config/diff` admin endpoints; B12 + B14 hot-path consumers wired; cross-subsystem validator catches AI/Cluster + UC4/UC11 misconfig at boot; `SecretRef::Debug` redacts in all output channels; project-wide lint enforcement deferred to Stage 4+ (~150 pre-existing literals surveyed and tracked). |
 | **B11 (Workstream 0.F) STARTED 2026-05-03** — bound 5 production `unbounded_channel` sites | commit `fef5bb4` (B11.1: cert_watcher; 3 files; +55 / −5) | First of 5 sub-commits per ROADMAP §4.1 B11 (8 unbounded sites — 5 production + 3 test fixtures left as-is). Each production site has different send-context semantics (sync closure vs async fn) and overflow policy (drop vs block); each is its own focused commit. **B11.1 cert_watcher** (`src/tls/cert_watcher.rs:49`): added `cert_watcher_event_channel_capacity: Reloadable<u32>` (default 32) to `TlsRuntimeConfig` (`HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY`); `mpsc::unbounded_channel()` → bounded `mpsc::channel(N)`; sync closure now uses `try_send` with explicit drop-on-full (file-watch is idempotent — next change re-triggers). Public API signature changed `UnboundedReceiver<CertEvent>` → `Receiver<CertEvent>`; the single caller in `cert_reloader.rs:99` uses `.recv().await` which works on both. New `runtime_config::try_current()` non-panicking accessor added for code paths that may run before `install()` (unit tests). Image `highper-gateway:b11-1-rc` boots cleanly with `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY=128`. **B11.2–B11.5 (4 sites remaining)** queued with per-site overflow-policy recommendations: B11.2 `config/reloader.rs:79` drop-on-full (multiple reload triggers fold to one); B11.3 `config/watcher.rs:36` drop-on-full (file-watch idempotent); B11.4/B11.5 `http3_quiche.rs:186/187` block-on-full (HTTP/3 backend channels need backpressure into clients). |
 | **B4.1 (Workstream 0.C, partial) LANDED 2026-05-03** — XFF trust mode wired into `rate_limit::extract_client_ip` | commit `3d5f4dc` (2 files; +40 / −6) | Closes the security half of B4 (Workstream 0.C). `extract_client_ip` in `src/middleware/rate_limit.rs:162` previously trusted the first hop in `X-Forwarded-For` unconditionally — an attacker-controlled XFF header bypassed IP-keyed rate limits when no trusted proxy was in front. Now reads `runtime_config::current().ratelimit.xff_trust_mode` (Stage 3a `RatelimitRuntimeConfig` field; `HIGHPER_RATELIMIT_XFF_TRUST`). Default `none` (secure: ignore XFF entirely; fall through to X-Real-IP / `"unknown"`). `first` matches pre-B4 behavior (single trusted LB). `last` for service-mesh sidecar (innermost-only trust). Module visibility fix: `runtime_config/mod.rs` re-exports `RatelimitMode`/`RedisFailMode`/`XffTrustMode` as public top-level types so consumers can match variants without crossing the private `sections::` boundary. Image `highper-gateway:b4-1-rc` boots cleanly with `HIGHPER_RATELIMIT_XFF_TRUST=last`. **B4.2** (distributed-rate-limit safety: `key_shards` + `redis_fail_mode` consumer migration in `src/gateway/ratelimit/`) is the remaining half. Other XFF-handling sites in `ddos_protection.rs:274` + `security_audit.rs:285` left on their own pattern (different intent — separate workstream if/when. |
+| **B4.2 (Workstream 0.C) COMPLETE 2026-05-06 — closes B4 release blocker** | single commit (1 src file; ~+260 / −40) | Closes the distributed-rate-limit-safety half of Workstream 0.C; **B4 ✅ — second of B1–B14 release blockers closed (B11 was the first).** Migrates `src/gateway/ratelimit/distributed.rs` consumers to read `runtime_config::current().ratelimit.{redis_fail_mode, key_shards}`. **`redis_fail_mode`:** new `on_redis_error` branches `FailOpen` / `FailClosed` / `LocalFallback`; default is `LocalFallback` (per-replica window counter via new `LocalBucket` struct + `Arc<DashMap<String, LocalBucket>>` per limiter; mirrors UC16 §3.6.2 Valkey fallback pattern). Closes the safety hole where Redis errors silently allowed requests. **`key_shards`:** when `> 1`, INCR lands on a per-request randomly-chosen shard (`<base_key>:<rand_u32 % N>`) with EXPIRE; decision sums all N shards in one Redis pipeline. Mitigates Valkey hot-key contention per `HA_ARCHITECTURE.md` §1.5.4 F1. `current_key_shards()` clamps `max(1)` so `for_test()` defaults never divide by zero. `reset()` + `get_count()` updated symmetrically. Token-bucket variant shares the 3-branch fail-mode logic; `key_shards` deliberately not applied (bucket state is order-sensitive across shards). 4 new `cfg(test)` unit tests for pure helpers (`local_check`, `current_key_shards`); existing Redis-required tests stay `#[ignore]`. Image `highper-gateway:b4-2-rc` (sha256 `93af2722917e`; 9 m 20 s build) boots cleanly with `HIGHPER_RATELIMIT_KEY_SHARDS=8 + HIGHPER_RATELIMIT_REDIS_FAIL_MODE=fail_closed + HIGHPER_RATELIMIT_MODE=distributed` — full `RuntimeConfig loaded and installed` log line at main.rs:322. Negative tests pass: `KEY_SHARDS=0` and `REDIS_FAIL_MODE=bogus` both produce exact loader rejection messages. 86 warnings + 0 errors at lib compile (same baseline as Workstream 0.J + B11 + B4.1; zero new warnings/errors). |
 | **B11 (Workstream 0.F) COMPLETE 2026-05-03** — all 5 production `unbounded_channel` sites bounded | commit `9159aa4` (B11.2–B11.5 bundle: 7 files; +132 / −31) | Bundle commit closing B11. Sites bundled because they share `ConfigWatcherRuntimeConfig` (B11.2 reload trigger + B11.3 file events) and `Http3RuntimeConfig` (B11.4 backend request + B11.5 backend response) field additions. **B11.2** (`config/reloader.rs:79`): bounded; cascading type changes through `AdminServer::reload_tx` + `with_reload_trigger` + `setup_signals_with_reload`; callers use `try_send` (drop-on-full; duplicates fold). **B11.3** (`config/watcher.rs:36`): bounded; sync `notify` closure uses `try_send` for all 4 event variants. **B11.4** (`http3_quiche.rs:186`): **recommendation refined** from original "block-on-full" — `handle_request` is sync (QUIC event loop), so `try_send` + `send_error_response 503` is correct; blocking would freeze all HTTP/3 connections. **B11.5** (`http3_quiche.rs:187`): bounded; async worker uses `send().await` (block-on-full appropriate in async context). 4 new env vars: `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` (default 16), `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` (32), `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` (1024), `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` (1024). Image `highper-gateway:b11-final-rc` boots cleanly with custom values. **B11 closes; Workstream 0.F is one release blocker out of B1–B14 ✅.** Test sites in `src/runtime/signals.rs:196/211/229` stay unbounded (test fixtures). |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
