@@ -2589,9 +2589,68 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     note): `ddos_protection.rs:274` and `security_audit.rs:285` use
     a different intent and stay on their own pattern.
   - **§13 status snapshot** gains 1 row recording B4.2 closure +
-    Workstream 0.C ✅. Phase 0 progress: **3 of 14 release blockers
-    closed** (B11, B4 [via B4.1+B4.2], and B12 partial / B14
-    partial via Workstream 0.J Stage 3c-2/3c-3).
+    Workstream 0.C ✅. Phase 0 progress: **2 of 14 release blockers
+    fully closed** (B11, B4 [via B4.1+B4.2]); B12 + B14 are partial
+    via Workstream 0.J Stage 3c-2/3c-3.
+- **2026-05-06 (thirty-seventh revision, current):** **B5 (Workstream
+  0.E, partial) COMPLETE — closes B5 release blocker.** GraphQL
+  depth + complexity analyzers wired to the parsed AST in
+  `gateway/graphql/mod.rs::handle_request`; queries that exceed the
+  operator-configured thresholds are rejected before any backend
+  dispatch. Phase 0 progress now **3 of 14 release blockers fully
+  closed** (B11, B4, B5).
+  - **New `GraphqlRuntimeConfig` section (16th total)** in
+    `runtime_config/sections/graphql.rs`: `max_depth: Reloadable<u32>`
+    (default 15; `HIGHPER_GRAPHQL_MAX_DEPTH`); `max_complexity:
+    Reloadable<u32>` (default 1000; `HIGHPER_GRAPHQL_MAX_COMPLEXITY`);
+    `enforce: Reloadable<bool>` (default true;
+    `HIGHPER_GRAPHQL_ENFORCE_LIMITS`). Defaults match the
+    Apollo / async-graphql convention. `enforce=false` is the
+    log-only rollout escape hatch.
+  - **New `analyzer.rs` module** (`gateway/graphql/analyzer.rs`):
+    pure walker over `async_graphql_parser::types::ExecutableDocument`.
+    Computes max depth across operations + total field-selection
+    complexity (with named-fragment expansion + cycle detection +
+    unknown-fragment rejection). Inline fragments do not add a
+    depth layer (they're a type-narrowing wrapper, not nesting).
+    `Selection::Field` / `Selection::InlineFragment` /
+    `Selection::FragmentSpread` all handled. 8 unit tests cover
+    flat / nested / fragment-inlined / cycle / unknown-fragment /
+    inline-fragment-depth / multi-operation cases.
+  - **Wiring point:** new `analyze_request` method in
+    `GraphQLGateway`. After `parse_query` succeeds, reads the three
+    thresholds via `runtime_config::try_current()` (with safe `(15,
+    1000, true)` fallback), runs the analyzer, and on any breach or
+    analyzer error returns a structured `GraphQLResponse { data:
+    None, errors: Some(...) }` — no backend dispatch. When
+    `enforce=false`, breaches are logged via `warn!()` only.
+  - **New direct dep:** `async-graphql-value = "7.0"` (already a
+    transitive dep at 7.0.17 via `async-graphql-parser`; promoted to
+    direct so `Name` is in scope for the analyzer's
+    `HashSet<&Name>` cycle-detection set). Cargo.lock unchanged.
+  - **Build verification:** image `highper-gateway:b5-rc` (sha256
+    `1d9fa9cd02ca`) built in 9 m 30 s; lib compile **86 warnings + 0
+    errors** — same baseline as Workstream 0.J + B11 + B4 (zero new
+    warnings/errors introduced). Boot test inside container with
+    `HIGHPER_GRAPHQL_MAX_DEPTH=8 +
+    HIGHPER_GRAPHQL_MAX_COMPLEXITY=200 +
+    HIGHPER_GRAPHQL_ENFORCE_LIMITS=true` produced the full
+    `Starting Highper Gateway` → `RuntimeConfig loaded and
+    installed` (main.rs:322) → `SIGHUP handler installed`
+    (main.rs:331) sequence. Negative tests: `MAX_DEPTH=0` →
+    `"0" is out of range (valid: >= 1)`;
+    `ENFORCE_LIMITS=maybe` →
+    `"maybe" could not be parsed (expected true|false (or 1|0))`.
+  - **What's deliberately not in scope:** per-field complexity
+    weights via `@cost` / `@complexity` directives (operators today
+    get a uniform "1 per visited field" weight); rate-limit-aware
+    per-virtual-key thresholds; the federation-mode parser in
+    `stitcher.rs:194` (a re-parse downstream of the
+    handle_request guard, so already protected). All queued for
+    Phase 1.6 polish.
+  - **§13 status snapshot** gains 1 row recording B5 closure.
+    Workstream 0.E remains open — B6 (PostgreSQL pool real
+    validation) is the remaining sibling task.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2670,6 +2729,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **B11 (Workstream 0.F) STARTED 2026-05-03** — bound 5 production `unbounded_channel` sites | commit `fef5bb4` (B11.1: cert_watcher; 3 files; +55 / −5) | First of 5 sub-commits per ROADMAP §4.1 B11 (8 unbounded sites — 5 production + 3 test fixtures left as-is). Each production site has different send-context semantics (sync closure vs async fn) and overflow policy (drop vs block); each is its own focused commit. **B11.1 cert_watcher** (`src/tls/cert_watcher.rs:49`): added `cert_watcher_event_channel_capacity: Reloadable<u32>` (default 32) to `TlsRuntimeConfig` (`HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY`); `mpsc::unbounded_channel()` → bounded `mpsc::channel(N)`; sync closure now uses `try_send` with explicit drop-on-full (file-watch is idempotent — next change re-triggers). Public API signature changed `UnboundedReceiver<CertEvent>` → `Receiver<CertEvent>`; the single caller in `cert_reloader.rs:99` uses `.recv().await` which works on both. New `runtime_config::try_current()` non-panicking accessor added for code paths that may run before `install()` (unit tests). Image `highper-gateway:b11-1-rc` boots cleanly with `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY=128`. **B11.2–B11.5 (4 sites remaining)** queued with per-site overflow-policy recommendations: B11.2 `config/reloader.rs:79` drop-on-full (multiple reload triggers fold to one); B11.3 `config/watcher.rs:36` drop-on-full (file-watch idempotent); B11.4/B11.5 `http3_quiche.rs:186/187` block-on-full (HTTP/3 backend channels need backpressure into clients). |
 | **B4.1 (Workstream 0.C, partial) LANDED 2026-05-03** — XFF trust mode wired into `rate_limit::extract_client_ip` | commit `3d5f4dc` (2 files; +40 / −6) | Closes the security half of B4 (Workstream 0.C). `extract_client_ip` in `src/middleware/rate_limit.rs:162` previously trusted the first hop in `X-Forwarded-For` unconditionally — an attacker-controlled XFF header bypassed IP-keyed rate limits when no trusted proxy was in front. Now reads `runtime_config::current().ratelimit.xff_trust_mode` (Stage 3a `RatelimitRuntimeConfig` field; `HIGHPER_RATELIMIT_XFF_TRUST`). Default `none` (secure: ignore XFF entirely; fall through to X-Real-IP / `"unknown"`). `first` matches pre-B4 behavior (single trusted LB). `last` for service-mesh sidecar (innermost-only trust). Module visibility fix: `runtime_config/mod.rs` re-exports `RatelimitMode`/`RedisFailMode`/`XffTrustMode` as public top-level types so consumers can match variants without crossing the private `sections::` boundary. Image `highper-gateway:b4-1-rc` boots cleanly with `HIGHPER_RATELIMIT_XFF_TRUST=last`. **B4.2** (distributed-rate-limit safety: `key_shards` + `redis_fail_mode` consumer migration in `src/gateway/ratelimit/`) is the remaining half. Other XFF-handling sites in `ddos_protection.rs:274` + `security_audit.rs:285` left on their own pattern (different intent — separate workstream if/when. |
 | **B4.2 (Workstream 0.C) COMPLETE 2026-05-06 — closes B4 release blocker** | single commit (1 src file; ~+260 / −40) | Closes the distributed-rate-limit-safety half of Workstream 0.C; **B4 ✅ — second of B1–B14 release blockers closed (B11 was the first).** Migrates `src/gateway/ratelimit/distributed.rs` consumers to read `runtime_config::current().ratelimit.{redis_fail_mode, key_shards}`. **`redis_fail_mode`:** new `on_redis_error` branches `FailOpen` / `FailClosed` / `LocalFallback`; default is `LocalFallback` (per-replica window counter via new `LocalBucket` struct + `Arc<DashMap<String, LocalBucket>>` per limiter; mirrors UC16 §3.6.2 Valkey fallback pattern). Closes the safety hole where Redis errors silently allowed requests. **`key_shards`:** when `> 1`, INCR lands on a per-request randomly-chosen shard (`<base_key>:<rand_u32 % N>`) with EXPIRE; decision sums all N shards in one Redis pipeline. Mitigates Valkey hot-key contention per `HA_ARCHITECTURE.md` §1.5.4 F1. `current_key_shards()` clamps `max(1)` so `for_test()` defaults never divide by zero. `reset()` + `get_count()` updated symmetrically. Token-bucket variant shares the 3-branch fail-mode logic; `key_shards` deliberately not applied (bucket state is order-sensitive across shards). 4 new `cfg(test)` unit tests for pure helpers (`local_check`, `current_key_shards`); existing Redis-required tests stay `#[ignore]`. Image `highper-gateway:b4-2-rc` (sha256 `93af2722917e`; 9 m 20 s build) boots cleanly with `HIGHPER_RATELIMIT_KEY_SHARDS=8 + HIGHPER_RATELIMIT_REDIS_FAIL_MODE=fail_closed + HIGHPER_RATELIMIT_MODE=distributed` — full `RuntimeConfig loaded and installed` log line at main.rs:322. Negative tests pass: `KEY_SHARDS=0` and `REDIS_FAIL_MODE=bogus` both produce exact loader rejection messages. 86 warnings + 0 errors at lib compile (same baseline as Workstream 0.J + B11 + B4.1; zero new warnings/errors). |
+| **B5 (Workstream 0.E, partial) COMPLETE 2026-05-06 — closes B5 release blocker** | single commit (5 files: `runtime_config/sections/graphql.rs` + 3 wiring + `gateway/graphql/analyzer.rs`; ~+450 / −5) | Closes the GraphQL depth/complexity half of Workstream 0.E; **B5 ✅ — third of B1–B14 release blockers fully closed (after B11 + B4).** New `GraphqlRuntimeConfig` section (16th total) lands `max_depth` (default 15; `HIGHPER_GRAPHQL_MAX_DEPTH`), `max_complexity` (default 1000; `HIGHPER_GRAPHQL_MAX_COMPLEXITY`), `enforce` bool (default true; `HIGHPER_GRAPHQL_ENFORCE_LIMITS` — log-only escape hatch for staged rollout). New `gateway/graphql/analyzer.rs` walks `async_graphql_parser::types::ExecutableDocument` computing max depth + total field-count complexity, with named-fragment inline expansion, fragment-cycle rejection, unknown-fragment rejection. Inline fragments do not add a depth layer (type-narrowing wrapper, not nesting). New `analyze_request` method in `GraphQLGateway::handle_request` runs after `parse_query` succeeds; on threshold breach OR analyzer error, returns a structured `GraphQLResponse { errors: ... }` without backend dispatch. New direct dep `async-graphql-value = "7.0"` (already transitive at 7.0.17; Cargo.lock unchanged). 8 new analyzer unit tests cover flat / nested / fragment-inlined / cycle / unknown / inline-fragment-depth / multi-operation cases; 5 new section unit tests cover defaults, range checks, parse errors. Image `highper-gateway:b5-rc` (sha256 `1d9fa9cd02ca`; 9 m 30 s build) boots cleanly with `HIGHPER_GRAPHQL_MAX_DEPTH=8 + HIGHPER_GRAPHQL_MAX_COMPLEXITY=200 + HIGHPER_GRAPHQL_ENFORCE_LIMITS=true` — full `RuntimeConfig loaded and installed` log line at main.rs:322. Negative tests: `MAX_DEPTH=0` → `"0" is out of range (valid: >= 1)`; `ENFORCE_LIMITS=maybe` → `"maybe" could not be parsed (expected true|false (or 1|0))`. 86 warnings + 0 errors at lib compile (same baseline; zero new warnings/errors). Out of scope (queued for Phase 1.6): per-field `@cost` directive weights; per-virtual-key thresholds. **B6** (PostgreSQL pool real validation) remains in Workstream 0.E. |
 | **B11 (Workstream 0.F) COMPLETE 2026-05-03** — all 5 production `unbounded_channel` sites bounded | commit `9159aa4` (B11.2–B11.5 bundle: 7 files; +132 / −31) | Bundle commit closing B11. Sites bundled because they share `ConfigWatcherRuntimeConfig` (B11.2 reload trigger + B11.3 file events) and `Http3RuntimeConfig` (B11.4 backend request + B11.5 backend response) field additions. **B11.2** (`config/reloader.rs:79`): bounded; cascading type changes through `AdminServer::reload_tx` + `with_reload_trigger` + `setup_signals_with_reload`; callers use `try_send` (drop-on-full; duplicates fold). **B11.3** (`config/watcher.rs:36`): bounded; sync `notify` closure uses `try_send` for all 4 event variants. **B11.4** (`http3_quiche.rs:186`): **recommendation refined** from original "block-on-full" — `handle_request` is sync (QUIC event loop), so `try_send` + `send_error_response 503` is correct; blocking would freeze all HTTP/3 connections. **B11.5** (`http3_quiche.rs:187`): bounded; async worker uses `send().await` (block-on-full appropriate in async context). 4 new env vars: `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` (default 16), `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` (32), `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` (1024), `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` (1024). Image `highper-gateway:b11-final-rc` boots cleanly with custom values. **B11 closes; Workstream 0.F is one release blocker out of B1–B14 ✅.** Test sites in `src/runtime/signals.rs:196/211/229` stay unbounded (test fixtures). |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
