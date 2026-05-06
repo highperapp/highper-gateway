@@ -169,17 +169,61 @@ impl PooledDatabaseConnection {
         }
     }
 
-    /// Validate PostgreSQL connection
+    /// Validate PostgreSQL connection (B6 — Workstream 0.E).
+    ///
+    /// Issues a `SELECT 1` simple query and drains the response message
+    /// stream until `ReadyForQuery` (`Z`). Returns `true` only when the
+    /// final transaction status byte is `'I'` (idle) — connections that
+    /// are still inside a transaction (`'T'`) or in a failed transaction
+    /// (`'E'`) are unsafe to hand back to the pool and are rejected.
+    ///
+    /// Wire format (per
+    /// <https://www.postgresql.org/docs/current/protocol-message-formats.html>):
+    /// - Frontend `Query`: `Q` + length(big-endian u32, includes itself) + `SELECT 1\0`.
+    /// - Backend response sequence: `RowDescription` (`T`) + `DataRow` (`D`)
+    ///   + `CommandComplete` (`C`) + `ReadyForQuery` (`Z`). Every message has
+    ///   a 1-byte type + 4-byte length header followed by `length - 4`
+    ///   body bytes. We read each header, skip the body, and stop on `Z`.
     async fn validate_postgres(&mut self, timeout: Duration) -> bool {
-        // Simple query message for PostgreSQL
-        // This is a simplified validation - in production you'd use a proper protocol implementation
-        match tokio::time::timeout(timeout, async {
-            let mut buf = [0u8; 1];
-            self.stream.peek(&mut buf).await
-        }).await {
-            Ok(Ok(_)) => true,
-            _ => false,
-        }
+        // `Q` + len=13 (4 + 9 bytes for "SELECT 1\0") + body. 14 bytes total.
+        const SELECT_ONE_QUERY: &[u8] = b"Q\x00\x00\x00\x0dSELECT 1\x00";
+        // Defensive cap on a single response-message body. Real responses
+        // for `SELECT 1` are tiny (~30 bytes for RowDescription); a 1 MiB
+        // ceiling rejects pathological / malformed responses without
+        // refusing legitimate ones.
+        const MAX_MESSAGE_BODY: u32 = 1 << 20;
+
+        let result = tokio::time::timeout(timeout, async {
+            self.stream.write_all(SELECT_ONE_QUERY).await?;
+
+            loop {
+                let mut header = [0u8; 5];
+                self.stream.read_exact(&mut header).await?;
+                let msg_type = header[0];
+                let length = u32::from_be_bytes([header[1], header[2], header[3], header[4]]);
+                if length < 4 || length > MAX_MESSAGE_BODY {
+                    return Ok::<bool, std::io::Error>(false);
+                }
+                let body_len = (length - 4) as usize;
+                // We don't need to inspect intermediate-message bodies;
+                // just drain them to keep the stream byte-aligned for the
+                // next pool user.
+                let mut body = vec![0u8; body_len];
+                if body_len > 0 {
+                    self.stream.read_exact(&mut body).await?;
+                }
+                if msg_type == b'Z' {
+                    // ReadyForQuery: body is exactly 1 byte — the
+                    // transaction status. Only `'I'` (idle) is safe to
+                    // return to the pool.
+                    return Ok(body.first().copied() == Some(b'I'));
+                }
+                // Other messages (T/D/C/N/...) — keep reading until Z.
+            }
+        })
+        .await;
+
+        matches!(result, Ok(Ok(true)))
     }
 
     /// Validate Redis connection with PING command
@@ -698,6 +742,114 @@ mod tests {
         let stats = PoolStatistics::new();
         assert_eq!(stats.total_created.load(Ordering::Relaxed), 0);
         assert_eq!(stats.total_reused.load(Ordering::Relaxed), 0);
+    }
+
+    /// Spin up a one-shot fake PostgreSQL server that:
+    /// 1. Reads (and discards) the client's `SELECT 1` query frame
+    ///    (14 bytes: `Q\x00\x00\x00\x0dSELECT 1\0`).
+    /// 2. Writes the supplied response bytes back.
+    /// Returns the listener's bound address so the test can connect.
+    async fn spawn_fake_postgres_server(response: Vec<u8>) -> SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut sock, _)) = listener.accept().await {
+                let mut query_buf = [0u8; 14];
+                let _ = sock.read_exact(&mut query_buf).await;
+                let _ = sock.write_all(&response).await;
+                // Hold the socket open briefly so the client can read.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+        addr
+    }
+
+    /// Build a synthetic PostgreSQL response stream for `SELECT 1` ending
+    /// in `ReadyForQuery` with the given transaction-status byte.
+    fn synth_select_1_response(ready_status: u8) -> Vec<u8> {
+        // Each message: 1 type byte + 4 length bytes (big-endian, includes
+        // the 4 length bytes) + `length - 4` body bytes.
+        let mut out = Vec::new();
+        // RowDescription `T` — minimal body: 2-byte field count + per-field
+        // metadata. For test, we lie with an empty body of length 4 (length
+        // field only). The validator drains by length without parsing.
+        out.extend_from_slice(b"T\x00\x00\x00\x04");
+        // DataRow `D` — empty body.
+        out.extend_from_slice(b"D\x00\x00\x00\x04");
+        // CommandComplete `C` — body "SELECT 1\0" (9 bytes), length = 13.
+        out.extend_from_slice(b"C\x00\x00\x00\x0dSELECT 1\x00");
+        // ReadyForQuery `Z` — 1 status byte, length = 5.
+        out.extend_from_slice(&[b'Z', 0, 0, 0, 5, ready_status]);
+        out
+    }
+
+    #[tokio::test]
+    async fn test_validate_postgres_idle_returns_true() {
+        let addr = spawn_fake_postgres_server(synth_select_1_response(b'I')).await;
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut conn = PooledDatabaseConnection::new(
+            stream,
+            "test-pg".to_string(),
+            DatabaseProtocol::PostgreSQL,
+        );
+        assert!(conn.validate(Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn test_validate_postgres_failed_tx_returns_false() {
+        let addr = spawn_fake_postgres_server(synth_select_1_response(b'E')).await;
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut conn = PooledDatabaseConnection::new(
+            stream,
+            "test-pg".to_string(),
+            DatabaseProtocol::PostgreSQL,
+        );
+        // Failed-tx state is unsafe to return to the pool.
+        assert!(!conn.validate(Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn test_validate_postgres_in_tx_returns_false() {
+        let addr = spawn_fake_postgres_server(synth_select_1_response(b'T')).await;
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut conn = PooledDatabaseConnection::new(
+            stream,
+            "test-pg".to_string(),
+            DatabaseProtocol::PostgreSQL,
+        );
+        // A connection inside an open transaction is also unsafe to reuse.
+        assert!(!conn.validate(Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn test_validate_postgres_truncated_response_returns_false() {
+        // Server writes only a partial response header — `read_exact`
+        // returns UnexpectedEof. Validator must not block forever.
+        let addr = spawn_fake_postgres_server(b"T\x00\x00".to_vec()).await;
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut conn = PooledDatabaseConnection::new(
+            stream,
+            "test-pg".to_string(),
+            DatabaseProtocol::PostgreSQL,
+        );
+        assert!(!conn.validate(Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn test_validate_postgres_oversized_message_returns_false() {
+        // Server claims a 100 MiB message body — must be rejected by the
+        // 1 MiB cap without attempting the read.
+        let mut response = Vec::new();
+        response.extend_from_slice(b"T");
+        response.extend_from_slice(&100_000_000_u32.to_be_bytes());
+        let addr = spawn_fake_postgres_server(response).await;
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let mut conn = PooledDatabaseConnection::new(
+            stream,
+            "test-pg".to_string(),
+            DatabaseProtocol::PostgreSQL,
+        );
+        assert!(!conn.validate(Duration::from_secs(1)).await);
     }
 
     #[tokio::test]
