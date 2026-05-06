@@ -155,6 +155,7 @@ ip2location = "0.4"
 # GraphQL support
 async-graphql = "7.0"
 async-graphql-parser = "7.0"
+async-graphql-value = "7.0"
 
 # Service discovery
 consul = { version = "0.4", optional = true }

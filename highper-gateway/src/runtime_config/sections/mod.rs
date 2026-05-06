@@ -20,6 +20,7 @@ pub mod cache;
 pub mod signals;
 pub mod config_watcher;
 pub mod observability;
+pub mod graphql;
 
 pub use cluster::ClusterRuntimeConfig;
 pub use plugin::PluginRuntimeConfig;
@@ -36,3 +37,4 @@ pub use cache::CacheRuntimeConfig;
 pub use signals::SignalsRuntimeConfig;
 pub use config_watcher::ConfigWatcherRuntimeConfig;
 pub use observability::ObservabilityRuntimeConfig;
+pub use graphql::GraphqlRuntimeConfig;

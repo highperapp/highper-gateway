@@ -7,6 +7,7 @@ pub mod schema;
 pub mod stitcher;
 pub mod executor;
 pub mod cache;
+pub mod analyzer;
 
 use anyhow::{Context, Result};
 use async_graphql_parser::parse_query;
@@ -169,8 +170,25 @@ impl GraphQLGateway {
     /// Handle GraphQL request
     pub async fn handle_request(&self, req: GraphQLRequest) -> Result<GraphQLResponse> {
         // Parse query
-        let _document = parse_query(&req.query)
+        let document = parse_query(&req.query)
             .context("Failed to parse GraphQL query")?;
+
+        // B5 — depth/complexity analyzer. Reads thresholds from
+        // `runtime_config::current().graphql`; when `enforce` is true
+        // and either the depth or complexity limit is exceeded (or the
+        // analyzer rejects the query — fragment cycle / unknown
+        // fragment), reply with a structured GraphQL error and bypass
+        // backend dispatch entirely.
+        if let Some(rejection) = self.analyze_request(&document) {
+            return Ok(GraphQLResponse {
+                data: None,
+                errors: Some(vec![GraphQLError {
+                    message: rejection,
+                    locations: None,
+                    path: None,
+                }]),
+            });
+        }
 
         // Check cache if enabled
         if self.config.enable_cache {
@@ -313,6 +331,65 @@ impl GraphQLGateway {
         }
 
         Ok(responses)
+    }
+
+    /// Apply depth + complexity limits from `runtime_config::current()
+    /// .graphql`. Returns `Some(rejection_message)` if the query must
+    /// be refused; otherwise `None`. When `enforce` is false, limit
+    /// breaches are logged but the request proceeds.
+    fn analyze_request(
+        &self,
+        document: &async_graphql_parser::types::ExecutableDocument,
+    ) -> Option<String> {
+        use crate::runtime_config;
+
+        let cfg = runtime_config::try_current();
+        let (max_depth, max_complexity, enforce) = match cfg.as_ref() {
+            Some(c) => (
+                *c.graphql.max_depth.get(),
+                *c.graphql.max_complexity.get(),
+                *c.graphql.enforce.get(),
+            ),
+            None => (15, 1000, true), // safe defaults when runtime_config not yet installed
+        };
+
+        match analyzer::analyze(document) {
+            Ok(stats) => {
+                if stats.depth > max_depth {
+                    let msg = format!(
+                        "GraphQL query depth {} exceeds limit {}",
+                        stats.depth, max_depth
+                    );
+                    if enforce {
+                        warn!("{} — rejecting", msg);
+                        return Some(msg);
+                    }
+                    warn!("{} — log-only (enforce=false)", msg);
+                }
+                if stats.complexity > max_complexity {
+                    let msg = format!(
+                        "GraphQL query complexity {} exceeds limit {}",
+                        stats.complexity, max_complexity
+                    );
+                    if enforce {
+                        warn!("{} — rejecting", msg);
+                        return Some(msg);
+                    }
+                    warn!("{} — log-only (enforce=false)", msg);
+                }
+                None
+            }
+            Err(e) => {
+                let msg = format!("GraphQL query rejected by analyzer: {}", e);
+                if enforce {
+                    warn!("{}", msg);
+                    Some(msg)
+                } else {
+                    warn!("{} — log-only (enforce=false)", msg);
+                    None
+                }
+            }
+        }
     }
 
     fn generate_cache_key(&self, req: &GraphQLRequest) -> String {

@@ -25,8 +25,8 @@ pub use secret_ref::{SecretRef, SecretValue};
 // (not re-exported here since it's defined in this module's body).
 pub use sections::{
     AiRuntimeConfig, BodyRuntimeConfig, CacheRuntimeConfig, CircuitBreakerRuntimeConfig,
-    ClusterRuntimeConfig, ConfigWatcherRuntimeConfig, GeoRuntimeConfig, Http3RuntimeConfig,
-    ObservabilityRuntimeConfig, PluginRuntimeConfig, RatelimitRuntimeConfig,
+    ClusterRuntimeConfig, ConfigWatcherRuntimeConfig, GeoRuntimeConfig, GraphqlRuntimeConfig,
+    Http3RuntimeConfig, ObservabilityRuntimeConfig, PluginRuntimeConfig, RatelimitRuntimeConfig,
     SecretsRuntimeConfig, ShutdownRuntimeConfig, SignalsRuntimeConfig, TlsRuntimeConfig,
 };
 // Re-export inner enums + types that consumers reference. Add new ones
@@ -54,6 +54,7 @@ pub struct RuntimeConfig {
     pub signals: SignalsRuntimeConfig,
     pub config_watcher: ConfigWatcherRuntimeConfig,
     pub observability: ObservabilityRuntimeConfig,
+    pub graphql: GraphqlRuntimeConfig,
 }
 
 impl RuntimeConfig {
