@@ -1,12 +1,27 @@
 //! Distributed rate limiting with Redis
 //!
 //! Provides rate limiting across multiple proxy instances using Redis.
+//!
+//! Operator tunables (B4.2 — Workstream 0.C):
+//! - `HIGHPER_RATELIMIT_KEY_SHARDS` — when `>1`, INCR lands on one of N
+//!   shard sub-keys chosen randomly per request; the decision sums all N
+//!   shards. Mitigates Valkey hot-key contention per `HA_ARCHITECTURE.md`
+//!   §1.5.4 F1. Defaults to `1` (no sharding).
+//! - `HIGHPER_RATELIMIT_REDIS_FAIL_MODE` — behaviour when Redis is
+//!   unavailable: `local_fallback` (default; per-replica window counter),
+//!   `fail_open` (allow), `fail_closed` (reject). Local fallback is
+//!   best-effort — counters reset per replica and do not reconcile back
+//!   into Redis when it returns.
 
-use super::{RateLimitResult, RateLimitKey};
+use super::{RateLimitKey, RateLimitResult};
+use dashmap::DashMap;
 use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Client, RedisError};
-use std::time::Duration;
-use tracing::{debug, error};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tracing::{debug, error, warn};
+
+use crate::runtime_config::{self, RedisFailMode};
 
 /// Distributed rate limiter configuration
 #[derive(Debug, Clone)]
@@ -32,10 +47,21 @@ impl Default for DistributedRateLimiterConfig {
     }
 }
 
+/// Per-replica window-counter fallback used when Redis is unreachable and
+/// `redis_fail_mode == LocalFallback`. State does not reconcile back into
+/// Redis when it returns; the budget window re-aligns at the next reset
+/// boundary (acknowledged drift, mirrors UC16 §3.6.2 Valkey fallback).
+#[derive(Debug)]
+struct LocalBucket {
+    count: u32,
+    window_start: Instant,
+}
+
 /// Distributed rate limiter using Redis
 pub struct DistributedRateLimiter {
     config: DistributedRateLimiterConfig,
     connection: ConnectionManager,
+    local_fallback: Arc<DashMap<String, LocalBucket>>,
 }
 
 impl DistributedRateLimiter {
@@ -44,7 +70,11 @@ impl DistributedRateLimiter {
         let client = Client::open(config.redis_url.clone())?;
         let connection = ConnectionManager::new(client).await?;
 
-        Ok(Self { config, connection })
+        Ok(Self {
+            config,
+            connection,
+            local_fallback: Arc::new(DashMap::new()),
+        })
     }
 
     /// Check if a request is allowed using Redis INCR and EXPIRE
@@ -53,56 +83,140 @@ impl DistributedRateLimiter {
 
         match self.check_redis(&key_str).await {
             Ok(result) => result,
-            Err(e) => {
-                error!("Redis rate limit check failed: {}", e);
-                // Fail open - allow request if Redis is unavailable
-                RateLimitResult::Allowed
+            Err(e) => self.on_redis_error(&key_str, e),
+        }
+    }
+
+    /// Perform Redis rate limit check using sliding window counter.
+    /// When `key_shards > 1`, write lands on one shard chosen randomly
+    /// and the decision sums all shards.
+    async fn check_redis(&mut self, base_key: &str) -> Result<RateLimitResult, RedisError> {
+        let key_shards = current_key_shards();
+        let window_secs = self.config.window.as_secs() as i64;
+
+        if key_shards <= 1 {
+            // Fast path — no sharding.
+            let mut pipe = redis::pipe();
+            pipe.incr(base_key, 1);
+            pipe.expire(base_key, window_secs);
+            pipe.get(base_key);
+
+            let results: Vec<i64> = pipe.query_async(&mut self.connection).await?;
+            let count = results.get(2).copied().unwrap_or(0);
+
+            if count as u32 <= self.config.max_requests {
+                debug!("Rate limit check passed: {}/{}", count, self.config.max_requests);
+                Ok(RateLimitResult::Allowed)
+            } else {
+                let ttl: i64 = self.connection.ttl(base_key).await.unwrap_or(window_secs);
+                debug!(
+                    "Rate limit exceeded: {}/{}, retry after {}s",
+                    count, self.config.max_requests, ttl
+                );
+                Ok(RateLimitResult::Limited { retry_after: ttl as u64 })
+            }
+        } else {
+            // Sharded path — INCR one shard, sum all.
+            let chosen = rand::random::<u32>() % key_shards;
+            let chosen_key = format!("{}:{}", base_key, chosen);
+
+            let mut pipe = redis::pipe();
+            pipe.incr(&chosen_key, 1);
+            pipe.expire(&chosen_key, window_secs);
+            for s in 0..key_shards {
+                pipe.get(format!("{}:{}", base_key, s));
+            }
+            let results: Vec<i64> = pipe.query_async(&mut self.connection).await?;
+            // results[0] = INCR new value, results[1] = EXPIRE (1/0),
+            // results[2..2+key_shards] = per-shard counts.
+            let total: i64 = results
+                .iter()
+                .skip(2)
+                .take(key_shards as usize)
+                .sum();
+
+            if total as u32 <= self.config.max_requests {
+                debug!(
+                    "Rate limit check passed (sharded x{}): {}/{}",
+                    key_shards, total, self.config.max_requests
+                );
+                Ok(RateLimitResult::Allowed)
+            } else {
+                let ttl: i64 = self
+                    .connection
+                    .ttl(&chosen_key)
+                    .await
+                    .unwrap_or(window_secs);
+                debug!(
+                    "Rate limit exceeded (sharded x{}): {}/{}, retry after {}s",
+                    key_shards, total, self.config.max_requests, ttl
+                );
+                Ok(RateLimitResult::Limited { retry_after: ttl as u64 })
             }
         }
     }
 
-    /// Perform Redis rate limit check using sliding window counter
-    async fn check_redis(&mut self, key: &str) -> Result<RateLimitResult, RedisError> {
-        // Use Redis pipeline for atomic operations
-        let mut pipe = redis::pipe();
+    /// Apply the operator-selected `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`
+    /// when a Redis call fails. Defaults to `local_fallback` when the
+    /// runtime config is not yet installed (test/library paths).
+    fn on_redis_error(&self, key: &str, err: RedisError) -> RateLimitResult {
+        let mode = runtime_config::try_current()
+            .map(|c| *c.ratelimit.redis_fail_mode.get())
+            .unwrap_or(RedisFailMode::LocalFallback);
 
-        // INCR the counter
-        pipe.incr(key, 1);
-        // Set TTL if key was just created
-        pipe.expire(key, self.config.window.as_secs() as i64);
-        // Get the current count
-        pipe.get(key);
-
-        let results: Vec<i64> = pipe.query_async(&mut self.connection).await?;
-
-        let count = results.get(2).copied().unwrap_or(0);
-
-        if count as u32 <= self.config.max_requests {
-            debug!("Rate limit check passed: {}/{}", count, self.config.max_requests);
-            Ok(RateLimitResult::Allowed)
-        } else {
-            // Get remaining TTL
-            let ttl: i64 = self.connection.ttl(key).await.unwrap_or(60);
-            debug!("Rate limit exceeded: {}/{}, retry after {}s",
-                   count, self.config.max_requests, ttl);
-
-            Ok(RateLimitResult::Limited {
-                retry_after: ttl as u64,
-            })
+        match mode {
+            RedisFailMode::FailOpen => {
+                error!(error = %err, "Redis rate limit check failed; fail_open: allowing");
+                RateLimitResult::Allowed
+            }
+            RedisFailMode::FailClosed => {
+                error!(error = %err, "Redis rate limit check failed; fail_closed: rejecting");
+                RateLimitResult::Limited {
+                    retry_after: self.config.window.as_secs(),
+                }
+            }
+            RedisFailMode::LocalFallback => {
+                warn!(error = %err, "Redis rate limit check failed; local_fallback: best-effort per-replica counter");
+                local_check(
+                    &self.local_fallback,
+                    key,
+                    self.config.max_requests,
+                    self.config.window,
+                )
+            }
         }
     }
 
     /// Reset rate limit for a specific key
     pub async fn reset<K: RateLimitKey>(&mut self, key: K) -> Result<(), RedisError> {
         let key_str = format!("{}:{}", self.config.key_prefix, key.to_key());
-        self.connection.del(&key_str).await
+        let key_shards = current_key_shards();
+        if key_shards <= 1 {
+            self.connection.del(&key_str).await
+        } else {
+            let mut pipe = redis::pipe();
+            for s in 0..key_shards {
+                pipe.del(format!("{}:{}", key_str, s));
+            }
+            pipe.query_async(&mut self.connection).await
+        }
     }
 
-    /// Get current count for a key
+    /// Get current count for a key (sums all shards when sharding is on)
     pub async fn get_count<K: RateLimitKey>(&mut self, key: K) -> Result<u32, RedisError> {
         let key_str = format!("{}:{}", self.config.key_prefix, key.to_key());
-        let count: i64 = self.connection.get(&key_str).await.unwrap_or(0);
-        Ok(count as u32)
+        let key_shards = current_key_shards();
+        if key_shards <= 1 {
+            let count: i64 = self.connection.get(&key_str).await.unwrap_or(0);
+            Ok(count as u32)
+        } else {
+            let mut pipe = redis::pipe();
+            for s in 0..key_shards {
+                pipe.get(format!("{}:{}", key_str, s));
+            }
+            let results: Vec<i64> = pipe.query_async(&mut self.connection).await?;
+            Ok(results.iter().sum::<i64>() as u32)
+        }
     }
 }
 
@@ -112,6 +226,7 @@ pub struct DistributedTokenBucketLimiter {
     connection: ConnectionManager,
     capacity: u32,
     refill_rate: f64,
+    local_fallback: Arc<DashMap<String, LocalBucket>>,
 }
 
 impl DistributedTokenBucketLimiter {
@@ -129,6 +244,7 @@ impl DistributedTokenBucketLimiter {
             connection,
             capacity,
             refill_rate,
+            local_fallback: Arc::new(DashMap::new()),
         })
     }
 
@@ -139,17 +255,18 @@ impl DistributedTokenBucketLimiter {
 
         match self.check_redis(&key_str, tokens).await {
             Ok(result) => result,
-            Err(e) => {
-                error!("Redis token bucket check failed: {}", e);
-                // Fail open
-                RateLimitResult::Allowed
-            }
+            Err(e) => self.on_redis_error(&key_str, e),
         }
     }
 
-    /// Perform Redis token bucket check using Lua script
+    /// Perform Redis token bucket check using Lua script.
+    ///
+    /// Note: token-bucket sharding is not applied here — bucket state
+    /// (`tokens`, `last_refill`) is order-sensitive and cannot be summed
+    /// across shards without losing fairness. Hot-key mitigation for the
+    /// token-bucket variant is a separate workstream (see B4
+    /// follow-up: route-level pre-shard at the caller).
     async fn check_redis(&mut self, key: &str, tokens: f64) -> Result<RateLimitResult, RedisError> {
-        // Lua script for atomic token bucket operation
         let script = r#"
             local key = KEYS[1]
             local capacity = tonumber(ARGV[1])
@@ -202,11 +319,125 @@ impl DistributedTokenBucketLimiter {
             })
         }
     }
+
+    /// Apply the operator-selected `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`
+    /// when a Redis call fails. Local fallback uses a window counter
+    /// sized at `capacity` over `window` (degraded vs token bucket;
+    /// acceptable as outage emergency).
+    fn on_redis_error(&self, key: &str, err: RedisError) -> RateLimitResult {
+        let mode = runtime_config::try_current()
+            .map(|c| *c.ratelimit.redis_fail_mode.get())
+            .unwrap_or(RedisFailMode::LocalFallback);
+
+        match mode {
+            RedisFailMode::FailOpen => {
+                error!(error = %err, "Redis token bucket check failed; fail_open: allowing");
+                RateLimitResult::Allowed
+            }
+            RedisFailMode::FailClosed => {
+                error!(error = %err, "Redis token bucket check failed; fail_closed: rejecting");
+                RateLimitResult::Limited {
+                    retry_after: self.config.window.as_secs(),
+                }
+            }
+            RedisFailMode::LocalFallback => {
+                warn!(error = %err, "Redis token bucket check failed; local_fallback: best-effort per-replica window counter");
+                local_check(
+                    &self.local_fallback,
+                    key,
+                    self.capacity,
+                    self.config.window,
+                )
+            }
+        }
+    }
+}
+
+/// Read `HIGHPER_RATELIMIT_KEY_SHARDS` via the runtime config singleton.
+/// Defaults to 1 (no sharding) when not yet installed.
+fn current_key_shards() -> u32 {
+    runtime_config::try_current()
+        .map(|c| c.ratelimit.key_shards)
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// Per-replica window counter used for `local_fallback` when Redis is
+/// unreachable. Pure (no I/O); shared by both limiter variants.
+fn local_check(
+    store: &DashMap<String, LocalBucket>,
+    key: &str,
+    max: u32,
+    window: Duration,
+) -> RateLimitResult {
+    let now = Instant::now();
+    let mut entry = store
+        .entry(key.to_string())
+        .or_insert(LocalBucket {
+            count: 0,
+            window_start: now,
+        });
+
+    if now.duration_since(entry.window_start) >= window {
+        entry.count = 0;
+        entry.window_start = now;
+    }
+    entry.count = entry.count.saturating_add(1);
+
+    if entry.count <= max {
+        RateLimitResult::Allowed
+    } else {
+        let elapsed = now.duration_since(entry.window_start);
+        let retry_after = window.saturating_sub(elapsed).as_secs().max(1);
+        RateLimitResult::Limited { retry_after }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_fallback_allows_under_max() {
+        let store: DashMap<String, LocalBucket> = DashMap::new();
+        for _ in 0..3 {
+            let r = local_check(&store, "user:a", 5, Duration::from_secs(60));
+            assert!(r.is_allowed(), "under-max requests should be allowed");
+        }
+    }
+
+    #[test]
+    fn local_fallback_limits_over_max() {
+        let store: DashMap<String, LocalBucket> = DashMap::new();
+        for _ in 0..2 {
+            assert!(local_check(&store, "user:b", 2, Duration::from_secs(60)).is_allowed());
+        }
+        // Third request crosses max=2.
+        let limited = local_check(&store, "user:b", 2, Duration::from_secs(60));
+        assert!(!limited.is_allowed());
+        assert!(limited.retry_after().unwrap() >= 1);
+    }
+
+    #[test]
+    fn local_fallback_window_rolls_over() {
+        let store: DashMap<String, LocalBucket> = DashMap::new();
+        // Use a tiny window so the test rolls over within reasonable
+        // sleep time without slowing CI.
+        let win = Duration::from_millis(50);
+        assert!(local_check(&store, "k", 1, win).is_allowed());
+        assert!(!local_check(&store, "k", 1, win).is_allowed());
+        std::thread::sleep(Duration::from_millis(70));
+        // After the window elapses, the counter resets.
+        assert!(local_check(&store, "k", 1, win).is_allowed());
+    }
+
+    #[test]
+    fn current_key_shards_defaults_to_one_without_runtime_config() {
+        // When runtime_config is not installed (or installed as default),
+        // shards must be at least 1 and never zero.
+        let shards = current_key_shards();
+        assert!(shards >= 1);
+    }
 
     // Note: These tests require a running Redis instance
     // Skip them in CI if Redis is not available
