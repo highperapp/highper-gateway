@@ -2651,6 +2651,56 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
   - **§13 status snapshot** gains 1 row recording B5 closure.
     Workstream 0.E remains open — B6 (PostgreSQL pool real
     validation) is the remaining sibling task.
+- **2026-05-06 (thirty-eighth revision, current):** **B6 (Workstream
+  0.E) COMPLETE — closes B6 release blocker; Workstream 0.E ✅.**
+  Real PostgreSQL pool-validation probe replaces a 1-byte-`peek`
+  stub. Phase 0 progress now **4 of 14 release blockers fully
+  closed** (B11, B4, B5, B6); Workstream 0.E joins 0.C and 0.F as
+  the third workstream completed.
+  - **The bug being closed:** `proxy/database_pool.rs:173-183`
+    `validate_postgres` was an explicit "simplified validation"
+    placeholder that called `stream.peek(1 byte)` — a quiescent
+    PostgreSQL connection has nothing queued to peek, so the call
+    almost always returned `Ok(0)` (success-with-empty-buffer) and
+    the pool happily handed broken connections back to callers.
+  - **The fix:** issue a real `SELECT 1` simple-query frame
+    (`Q\x00\x00\x00\x0dSELECT 1\x00`, 14 bytes), read PostgreSQL
+    message headers (1 type byte + 4-byte big-endian length), drain
+    each message body until `ReadyForQuery` (`Z`). Validation
+    succeeds **only** when the final transaction-status byte is
+    `'I'` (idle); connections in `'T'` (open transaction) or `'E'`
+    (failed transaction) state are rejected — both are unsafe to
+    return to the pool. 1 MiB defensive cap on a single message
+    body protects against pathological response framings.
+  - **Pre-existing reference:** `tcp/health.rs:238-261`
+    `check_postgresql` already did a `SELECT 1` for the *health-
+    check* code path (a separate concern); the new pool-validation
+    code mirrors that wire format but uses `read_exact` (clean
+    stream consumption) and drains the full response sequence
+    rather than reading 1024 bytes once and stopping.
+  - **5 new unit tests** (`#[tokio::test]` against in-process
+    `tokio::net::TcpListener` mock servers): (1) `'I'` →
+    accept; (2) `'E'` (failed-tx) → reject; (3) `'T'` (open-tx) →
+    reject; (4) truncated-response → reject without hanging;
+    (5) oversized-message-claim (100 MiB body) → reject without
+    attempting the read. Mock server reads the 14-byte query
+    frame then writes a synthesized RowDescription /
+    DataRow / CommandComplete / ReadyForQuery sequence built by a
+    `synth_select_1_response(status_byte)` helper. Existing
+    `test_connection_expiry` unaffected.
+  - **Build verification:** `nerdctl build` produced
+    `highper-gateway:b6-rc` (BuildKit cached the COPY layer at
+    sha256 `1d9fa9cd02ca` — the runtime binary is byte-identical
+    to b5-rc after release optimisation; the underlying lib *did*
+    recompile in 9 m 44 s and emitted 86 warnings + 0 errors,
+    same baseline as Workstream 0.J + B11 + B4 + B5).
+  - **What's NOT in this commit (queued for separate Workstream
+    0.E follow-ups per ROADMAP §0.E):** PostgreSQL STARTTLS /
+    SSLRequest negotiation (3 days); DB-pool failover wired to
+    circuit breaker (2 days). Both are independent of the
+    validation-correctness fix and don't gate any release blocker.
+  - **§13 status snapshot** gains 1 row recording B6 closure +
+    Workstream 0.E ✅.
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
@@ -2730,6 +2780,7 @@ and planning**. No source code has changed. Phase 0 has not started.
 | **B4.1 (Workstream 0.C, partial) LANDED 2026-05-03** — XFF trust mode wired into `rate_limit::extract_client_ip` | commit `3d5f4dc` (2 files; +40 / −6) | Closes the security half of B4 (Workstream 0.C). `extract_client_ip` in `src/middleware/rate_limit.rs:162` previously trusted the first hop in `X-Forwarded-For` unconditionally — an attacker-controlled XFF header bypassed IP-keyed rate limits when no trusted proxy was in front. Now reads `runtime_config::current().ratelimit.xff_trust_mode` (Stage 3a `RatelimitRuntimeConfig` field; `HIGHPER_RATELIMIT_XFF_TRUST`). Default `none` (secure: ignore XFF entirely; fall through to X-Real-IP / `"unknown"`). `first` matches pre-B4 behavior (single trusted LB). `last` for service-mesh sidecar (innermost-only trust). Module visibility fix: `runtime_config/mod.rs` re-exports `RatelimitMode`/`RedisFailMode`/`XffTrustMode` as public top-level types so consumers can match variants without crossing the private `sections::` boundary. Image `highper-gateway:b4-1-rc` boots cleanly with `HIGHPER_RATELIMIT_XFF_TRUST=last`. **B4.2** (distributed-rate-limit safety: `key_shards` + `redis_fail_mode` consumer migration in `src/gateway/ratelimit/`) is the remaining half. Other XFF-handling sites in `ddos_protection.rs:274` + `security_audit.rs:285` left on their own pattern (different intent — separate workstream if/when. |
 | **B4.2 (Workstream 0.C) COMPLETE 2026-05-06 — closes B4 release blocker** | single commit (1 src file; ~+260 / −40) | Closes the distributed-rate-limit-safety half of Workstream 0.C; **B4 ✅ — second of B1–B14 release blockers closed (B11 was the first).** Migrates `src/gateway/ratelimit/distributed.rs` consumers to read `runtime_config::current().ratelimit.{redis_fail_mode, key_shards}`. **`redis_fail_mode`:** new `on_redis_error` branches `FailOpen` / `FailClosed` / `LocalFallback`; default is `LocalFallback` (per-replica window counter via new `LocalBucket` struct + `Arc<DashMap<String, LocalBucket>>` per limiter; mirrors UC16 §3.6.2 Valkey fallback pattern). Closes the safety hole where Redis errors silently allowed requests. **`key_shards`:** when `> 1`, INCR lands on a per-request randomly-chosen shard (`<base_key>:<rand_u32 % N>`) with EXPIRE; decision sums all N shards in one Redis pipeline. Mitigates Valkey hot-key contention per `HA_ARCHITECTURE.md` §1.5.4 F1. `current_key_shards()` clamps `max(1)` so `for_test()` defaults never divide by zero. `reset()` + `get_count()` updated symmetrically. Token-bucket variant shares the 3-branch fail-mode logic; `key_shards` deliberately not applied (bucket state is order-sensitive across shards). 4 new `cfg(test)` unit tests for pure helpers (`local_check`, `current_key_shards`); existing Redis-required tests stay `#[ignore]`. Image `highper-gateway:b4-2-rc` (sha256 `93af2722917e`; 9 m 20 s build) boots cleanly with `HIGHPER_RATELIMIT_KEY_SHARDS=8 + HIGHPER_RATELIMIT_REDIS_FAIL_MODE=fail_closed + HIGHPER_RATELIMIT_MODE=distributed` — full `RuntimeConfig loaded and installed` log line at main.rs:322. Negative tests pass: `KEY_SHARDS=0` and `REDIS_FAIL_MODE=bogus` both produce exact loader rejection messages. 86 warnings + 0 errors at lib compile (same baseline as Workstream 0.J + B11 + B4.1; zero new warnings/errors). |
 | **B5 (Workstream 0.E, partial) COMPLETE 2026-05-06 — closes B5 release blocker** | single commit (5 files: `runtime_config/sections/graphql.rs` + 3 wiring + `gateway/graphql/analyzer.rs`; ~+450 / −5) | Closes the GraphQL depth/complexity half of Workstream 0.E; **B5 ✅ — third of B1–B14 release blockers fully closed (after B11 + B4).** New `GraphqlRuntimeConfig` section (16th total) lands `max_depth` (default 15; `HIGHPER_GRAPHQL_MAX_DEPTH`), `max_complexity` (default 1000; `HIGHPER_GRAPHQL_MAX_COMPLEXITY`), `enforce` bool (default true; `HIGHPER_GRAPHQL_ENFORCE_LIMITS` — log-only escape hatch for staged rollout). New `gateway/graphql/analyzer.rs` walks `async_graphql_parser::types::ExecutableDocument` computing max depth + total field-count complexity, with named-fragment inline expansion, fragment-cycle rejection, unknown-fragment rejection. Inline fragments do not add a depth layer (type-narrowing wrapper, not nesting). New `analyze_request` method in `GraphQLGateway::handle_request` runs after `parse_query` succeeds; on threshold breach OR analyzer error, returns a structured `GraphQLResponse { errors: ... }` without backend dispatch. New direct dep `async-graphql-value = "7.0"` (already transitive at 7.0.17; Cargo.lock unchanged). 8 new analyzer unit tests cover flat / nested / fragment-inlined / cycle / unknown / inline-fragment-depth / multi-operation cases; 5 new section unit tests cover defaults, range checks, parse errors. Image `highper-gateway:b5-rc` (sha256 `1d9fa9cd02ca`; 9 m 30 s build) boots cleanly with `HIGHPER_GRAPHQL_MAX_DEPTH=8 + HIGHPER_GRAPHQL_MAX_COMPLEXITY=200 + HIGHPER_GRAPHQL_ENFORCE_LIMITS=true` — full `RuntimeConfig loaded and installed` log line at main.rs:322. Negative tests: `MAX_DEPTH=0` → `"0" is out of range (valid: >= 1)`; `ENFORCE_LIMITS=maybe` → `"maybe" could not be parsed (expected true|false (or 1|0))`. 86 warnings + 0 errors at lib compile (same baseline; zero new warnings/errors). Out of scope (queued for Phase 1.6): per-field `@cost` directive weights; per-virtual-key thresholds. **B6** (PostgreSQL pool real validation) remains in Workstream 0.E. |
+| **B6 (Workstream 0.E) COMPLETE 2026-05-06 — closes B6 release blocker; Workstream 0.E ✅** | single commit (1 src file; ~+135 / −10) | Closes the second half of Workstream 0.E; **B6 ✅ — fourth of B1–B14 release blockers fully closed (after B11, B4, B5).** Replaces a 1-byte-`peek` stub at `proxy/database_pool.rs:173-183` with a real PostgreSQL `SELECT 1` probe: writes the 14-byte `Q` frame, reads message headers (1 type byte + 4-byte big-endian length), drains each body until `ReadyForQuery` (`Z`). Validation succeeds **only** when the final transaction-status byte is `'I'` (idle); connections in `'T'` (open tx) or `'E'` (failed tx) are rejected as unsafe to reuse. 1 MiB defensive cap on individual message bodies. 5 new `#[tokio::test]` unit tests against in-process `tokio::net::TcpListener` mock servers cover idle / failed-tx / open-tx / truncated-response / oversized-message-claim. Pattern mirrors the working `tcp/health.rs:238-261::check_postgresql` reference (used by the *health-check* code path) but uses `read_exact` for clean stream consumption. Lib compile baseline preserved (86 warnings + 0 errors, image `highper-gateway:b6-rc`, 9 m 44 s build). What's NOT in scope (separate Workstream 0.E follow-ups, neither gating any release blocker): PostgreSQL STARTTLS/SSLRequest negotiation (3 days); DB-pool failover wired to circuit breaker (2 days). |
 | **B11 (Workstream 0.F) COMPLETE 2026-05-03** — all 5 production `unbounded_channel` sites bounded | commit `9159aa4` (B11.2–B11.5 bundle: 7 files; +132 / −31) | Bundle commit closing B11. Sites bundled because they share `ConfigWatcherRuntimeConfig` (B11.2 reload trigger + B11.3 file events) and `Http3RuntimeConfig` (B11.4 backend request + B11.5 backend response) field additions. **B11.2** (`config/reloader.rs:79`): bounded; cascading type changes through `AdminServer::reload_tx` + `with_reload_trigger` + `setup_signals_with_reload`; callers use `try_send` (drop-on-full; duplicates fold). **B11.3** (`config/watcher.rs:36`): bounded; sync `notify` closure uses `try_send` for all 4 event variants. **B11.4** (`http3_quiche.rs:186`): **recommendation refined** from original "block-on-full" — `handle_request` is sync (QUIC event loop), so `try_send` + `send_error_response 503` is correct; blocking would freeze all HTTP/3 connections. **B11.5** (`http3_quiche.rs:187`): bounded; async worker uses `send().await` (block-on-full appropriate in async context). 4 new env vars: `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` (default 16), `HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY` (32), `HIGHPER_HTTP3_BACKEND_REQUEST_CHANNEL_CAPACITY` (1024), `HIGHPER_HTTP3_BACKEND_RESPONSE_CHANNEL_CAPACITY` (1024). Image `highper-gateway:b11-final-rc` boots cleanly with custom values. **B11 closes; Workstream 0.F is one release blocker out of B1–B14 ✅.** Test sites in `src/runtime/signals.rs:196/211/229` stay unbounded (test fixtures). |
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
