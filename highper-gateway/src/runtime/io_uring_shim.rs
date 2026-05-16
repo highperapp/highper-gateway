@@ -255,7 +255,7 @@ impl IoUringRuntime {
         let mut addrlen: libc::socklen_t = std::mem::size_of::<libc::sockaddr_storage>() as u32;
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build accept operation
             let accept_op = opcode::Accept::new(
@@ -278,7 +278,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_accepts).insert(op_id, tx);
+        safe_lock!(self.pending_accepts).insert(op_id, tx);
 
         // Wait for completion
         let result_fd = rx
@@ -337,7 +337,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build read operation
             let read_op = opcode::Read::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32)
@@ -356,7 +356,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_ops).insert(op_id, tx);
+        safe_lock!(self.pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -383,7 +383,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build write operation
             let write_op = opcode::Write::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32)
@@ -402,7 +402,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_ops).insert(op_id, tx);
+        safe_lock!(self.pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -420,7 +420,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build close operation
             let close_op = opcode::Close::new(types::Fd(fd))
@@ -439,7 +439,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_ops).insert(op_id, tx);
+        safe_lock!(self.pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -450,8 +450,8 @@ impl IoUringRuntime {
 
     /// Get statistics about io_uring usage
     pub fn stats(&self) -> IoUringStats {
-        let pending_count = self.safe_lock!(pending_ops).len();
-        let pending_accepts = self.safe_lock!(pending_accepts).len();
+        let pending_count = safe_lock!(self.pending_ops).len();
+        let pending_accepts = safe_lock!(self.pending_accepts).len();
 
         IoUringStats {
             pending_operations: pending_count,
@@ -482,7 +482,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build read_fixed operation (zero-copy with registered buffers)
             let read_op = opcode::ReadFixed::new(
@@ -506,7 +506,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_ops).insert(op_id, tx);
+        safe_lock!(self.pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
@@ -535,7 +535,7 @@ impl IoUringRuntime {
         let (tx, rx) = oneshot::channel();
 
         {
-            let mut ring_guard = self.safe_lock!(ring);
+            let mut ring_guard = safe_lock!(self.ring);
 
             // Build write_fixed operation (zero-copy with registered buffers)
             let write_op = opcode::WriteFixed::new(
@@ -559,7 +559,7 @@ impl IoUringRuntime {
         }
 
         // Register pending operation
-        self.safe_lock!(pending_ops).insert(op_id, tx);
+        safe_lock!(self.pending_ops).insert(op_id, tx);
 
         // Wait for completion
         rx.await
