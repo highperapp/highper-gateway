@@ -2,11 +2,14 @@
 
 A high-performance reverse proxy and API gateway written in Rust, designed for extreme throughput and low latency.
 
-> **Release status (2026-05-02):** v1.0 has not been GA-tagged. The codebase is **v1.0-rc**;
-> 14 release blockers (B1–B14) are tracked in [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md)
-> §4.1 and must close before any v1.0 announcement. Earlier statements implying
-> production-ready / v1.0 status in this README and `CHANGELOG.md` predate that audit
-> and are being reconciled.
+> **Release status (refreshed 2026-05-16):** v1.0 has not been GA-tagged. The codebase
+> is **v1.0-rc**; remaining work to v1.0 is tracked in
+> [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md) (v2 roadmap, per-UC
+> organisation, ~10 calendar weeks to GA at two-engineer pace). 4 of 14 prior B-blockers
+> closed during 2026-05-03 → 2026-05-06 (rate-limit safety, GraphQL depth/complexity,
+> PostgreSQL pool validation, bounded channels); 10 still open and folded into per-UC
+> §2 sections. The v1 roadmap and prior planning artifacts are archived at
+> [`docs/planning/archive/2026-05-16-v1/`](docs/planning/archive/2026-05-16-v1/).
 
 ## Performance
 

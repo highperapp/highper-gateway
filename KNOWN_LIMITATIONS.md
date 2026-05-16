@@ -6,30 +6,23 @@
 
 ---
 
-> ## ⚠️ Reconciliation banner — 2026-05-02
+> ## ⚠️ Reconciliation banner — refreshed 2026-05-16
 >
 > **This document's "only 1 remaining item" summary (line 42) is OUT OF DATE for release tracking.**
 >
-> The 2026-05-02 audit (`docs/AUDIT_2026-05-02.md`) and the consolidated roadmap
-> (`docs/planning/ROADMAP.md` §4.1) identify **14 release blockers** (B1–B14) that
-> must close before any v1.0 GA tag. They include:
+> The current authoritative source for v1.0 GA tracking is the v2 roadmap at
+> [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md), organised per-UC
+> (UC1–UC15) with cross-cutting workstreams in §3. As of 2026-05-16, **4 of the
+> 14 prior B-blockers are closed** (rate-limit safety, GraphQL depth/complexity,
+> PostgreSQL pool validation, bounded channels); the remaining 10 are folded
+> into the per-UC §2 sections. Approximate remaining effort: ~180 engineer-days
+> (~10 calendar weeks at two-engineer pace).
 >
-> - **B1** UC10 Hybrid not wired (Runtime never starts TCP server)
-> - **B2** Admin API stubbed (~20 TODOs)
-> - **B3** OCSP request body never built; stapling never attached; ACME `needs_renewal()` always `false`
-> - **B4** Distributed rate-limiter fails open silently; `X-Forwarded-For` blindly trusted
-> - **B5** GraphQL depth/complexity not enforced; stitcher is acknowledged-stub
-> - **B6** PostgreSQL pool validation is `peek()` only — broken connections returned
-> - **B7** gRPC: fresh hyper client per request, no pooling
-> - **B8** HTTP/3: `unwrap()` in receive loop; backend response fully buffered; migration disabled
-> - **B9** 9 of 15 use cases never validated against real cloud backends
-> - **B10** No 7-day or 30-day soak data at the 1M+ connection target
-> - **B11** 8 `unbounded_channel()` sites without backpressure caps (OOM-under-abuse risk)
-> - **B12** Hardcoded body-size limits duplicated across 10+ files; no central env-driven config
-> - **B13** Optional `openidconnect` dep transitively pulls vulnerable `rsa` crate (RUSTSEC-2023-0071)
-> - **B14** Federation executor + HTTP/3 worker pool spawn tasks with no graceful drain
+> The earlier `B1`–`B14` list and the 2026-05-02 audit that founded it are
+> preserved in the archive at
+> [`docs/planning/archive/2026-05-16-v1/`](docs/planning/archive/2026-05-16-v1/)
+> with an `ARCHIVE_MANIFEST.md` cross-reference.
 >
-> **Authoritative source for current release status:** `docs/planning/ROADMAP.md`.
 > The "Fixed in v1.1.0" tables below remain accurate for the items they describe;
 > they do **not** describe everything blocking v1.0 GA.
 >
@@ -541,7 +534,7 @@ Configuration is only needed to override these intelligent defaults.
 For a comprehensive comparison with industry leaders and planned improvements, see:
 
 - **Feature Comparison Matrix:** [deploy/docs/FEATURE_COMPARISON_MATRIX.md](deploy/docs/FEATURE_COMPARISON_MATRIX.md)
-- **Feature Improvement Roadmap:** [docs/FEATURE_IMPROVEMENT_ROADMAP.md](docs/FEATURE_IMPROVEMENT_ROADMAP.md)
+- **Feature Improvement Roadmap:** archived at [docs/planning/archive/2026-05-16-v1/FEATURE_IMPROVEMENT_ROADMAP.md](docs/planning/archive/2026-05-16-v1/FEATURE_IMPROVEMENT_ROADMAP.md); current planning lives in [docs/planning/ROADMAP.md](docs/planning/ROADMAP.md)
 
 ### Key Improvements (v1.1.0)
 

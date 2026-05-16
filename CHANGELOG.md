@@ -5,27 +5,34 @@ All notable changes to Highper Gateway will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Reconciliation note (2026-05-02).** The `[1.0.0] - 2026-01-10` entry below described
-> the codebase as "Complete Production Release". The 2026-05-02 audit
-> (`docs/AUDIT_2026-05-02.md`) and consolidated roadmap (`docs/planning/ROADMAP.md` §4.1)
-> identify **14 release blockers** (B1–B14) that must close before any v1.0 GA tag.
-> The historical `[1.0.0]` entry below is **retained as authored** for changelog
-> integrity but should be read as **v1.0-rc**, not GA. The next GA tag will land
-> after Phase 0 of the roadmap completes.
+> **Reconciliation note (refreshed 2026-05-16).** The `[1.0.0] - 2026-01-10` entry
+> below described the codebase as "Complete Production Release". Current tracking is
+> in the v2 roadmap at [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md),
+> organised per-UC (UC1–UC15) with cross-cutting workstreams in §3. The historical
+> `[1.0.0]` entry should be read as **v1.0-rc**, not GA. As of 2026-05-16, **4 of
+> the 14 prior B-blockers are closed** (rate-limit safety, GraphQL depth/complexity,
+> PostgreSQL pool validation, bounded channels). Remaining ~180 engineer-days /
+> ~10 calendar weeks at two-engineer pace. Prior planning artifacts archived at
+> [`docs/planning/archive/2026-05-16-v1/`](docs/planning/archive/2026-05-16-v1/).
 
 ## [Unreleased] — v1.0-rc trajectory
 
 ### Tracking
 
-All in-flight work is tracked in [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md). Highlights:
+All in-flight work is tracked in [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md)
+(v2; per-UC organisation). Highlights:
 
-- Phase 0 — close 14 release blockers B1–B14.
-- Phase 1 — cloud-validation matrix, 7-/30-day soak, SBOM (Trivy + syft+Grype),
-  DAST (Dastardly + OWASP ZAP), OTLP, Vault/Secrets integration.
-- Phase 2 — UC16 AI/LLM Gateway MVP (conditional on owner-finalized design;
-  see `docs/planning/USECASE_16_AI_LLM_GATEWAY.md`).
-- Phases 3 & 4 — UC16 Beta/GA + competitor-feature catch-up + ecosystem
-  (xDS, K8s operator, kTLS, post-quantum TLS).
+- **§2 Per-UC remaining work** (UC1–UC15): TCP wiring, TLS honesty, HTTP/3 panic
+  removal, gRPC pool + trailers, WAF body decompression, UC15 P0 fixes, etc.
+- **§3 Cross-cutting**: admin API completion (~60–70% already shipped),
+  graceful-shutdown spawn coverage, RSA Marvin CI gate, SAST stack, CONFIG_ENV
+  backfill, Phase 1.4 traits (AuthProvider / MetricsBackend / PeerDiscovery /
+  SecretRef resolver / LoadBalancerStrategy / CircuitBreaker), Phase 1.3 docs,
+  cluster cookbooks, validation + 7-day soak.
+- **UC16 (AI/LLM Gateway)**: platform extensibility ships in v1.0 (env-var
+  scaffold + cross-subsystem validator); vertical implementation deferred to v1.x
+  per §0.5 core-first convention. Design preserved in
+  [`docs/planning/archive/2026-05-16-v1/USECASE_16_AI_LLM_GATEWAY.md`](docs/planning/archive/2026-05-16-v1/USECASE_16_AI_LLM_GATEWAY.md).
 
 ### Planned (legacy entries, retained for reference)
 - Static service discovery implementation

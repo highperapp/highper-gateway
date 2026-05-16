@@ -1,13 +1,16 @@
 # Highper Gateway Architecture
 
-> **Reconciliation banner — 2026-05-02.** This document predates the 2026-05-02
-> interface-first audit. It does **not** mention the 8 weak/non-trait architecture
-> boundaries identified in `docs/planning/ROADMAP.md` §4.4 (LoadBalancerStrategy,
-> RateLimiter, AuthProvider, GeoProvider, ConnectionPool unification, CircuitBreaker
-> unification, MetricsBackend/LogBackend, ConfigSource). The roadmap tracks the
-> refactor work folded into Phases 0–4; this document will be superseded by an
-> `ARCHITECTURE_v2.md` once those refactors land. Treat the diagrams below as the
-> *current* topology, not the target topology.
+> **Reconciliation banner — refreshed 2026-05-16.** This document predates the
+> interface-first refactor work. Trait extractions (`LoadBalancerStrategy`,
+> `RateLimiter`, `AuthProvider`, `GeoProvider`, `ConnectionPool` unification,
+> `CircuitBreaker` unification, `MetricsBackend` / `LogBackend`,
+> `PeerDiscovery`, `SecretRef` resolver) are tracked in
+> [`docs/planning/ROADMAP.md`](../planning/ROADMAP.md) §3.6 (Phase 1.4
+> v1.0-GA-scope traits). UC16-specific traits (`AiProvider`, `AiStateStore`,
+> `VectorIndex`) are deferred to v1.x per §0.5 core-first convention. This
+> document will be superseded by an `ARCHITECTURE_v2.md` once those refactors
+> land. Treat the diagrams below as the *current* topology, not the target
+> topology.
 
 This document provides a high-level overview of the Highper Gateway architecture, its components, and data flow.
 
