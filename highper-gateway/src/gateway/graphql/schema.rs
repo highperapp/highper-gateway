@@ -173,8 +173,8 @@ impl SchemaRegistry {
         });
 
         // Serialize request body to JSON bytes
-        let body_json = serde_json::to_vec(&request_body)
-            .context("Failed to serialize introspection query")?;
+        let body_json =
+            serde_json::to_vec(&request_body).context("Failed to serialize introspection query")?;
         let body_bytes = bytes::Bytes::from(body_json);
 
         // Make request to backend
@@ -185,7 +185,13 @@ impl SchemaRegistry {
         );
 
         let response = client
-            .forward(url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
+            .forward(
+                url,
+                hyper::Method::POST,
+                "/graphql",
+                headers,
+                Some(body_bytes),
+            )
             .await
             .context("Failed to fetch schema")?;
 
@@ -194,8 +200,8 @@ impl SchemaRegistry {
             .context("Failed to read response body")?
             .to_bytes();
 
-        let introspection_result: Value = serde_json::from_slice(&body_bytes)
-            .context("Failed to parse introspection result")?;
+        let introspection_result: Value =
+            serde_json::from_slice(&body_bytes).context("Failed to parse introspection result")?;
 
         // Parse schema types
         let types = self.parse_types(&introspection_result)?;
@@ -223,7 +229,10 @@ impl SchemaRegistry {
 
     /// Get all schemas
     pub fn get_all_schemas(&self) -> Vec<Schema> {
-        self.schemas.iter().map(|entry| entry.value().clone()).collect()
+        self.schemas
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Find type across all schemas
@@ -338,10 +347,17 @@ impl SchemaRegistry {
                             match kind {
                                 "OBJECT" => {
                                     sdl.push_str(&format!("type {} {{\n", name));
-                                    if let Some(fields) = type_value.get("fields").and_then(|f| f.as_array()) {
+                                    if let Some(fields) =
+                                        type_value.get("fields").and_then(|f| f.as_array())
+                                    {
                                         for field in fields {
-                                            if let Some(field_name) = field.get("name").and_then(|n| n.as_str()) {
-                                                sdl.push_str(&format!("  {}: String\n", field_name));
+                                            if let Some(field_name) =
+                                                field.get("name").and_then(|n| n.as_str())
+                                            {
+                                                sdl.push_str(&format!(
+                                                    "  {}: String\n",
+                                                    field_name
+                                                ));
                                             }
                                         }
                                     }

@@ -71,9 +71,7 @@ async fn test_ws_01_cswsh() {
     let addr = harness.tcp_addr();
 
     // Test with untrusted origin
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let request = websocket_upgrade_request("https://evil.com", "dGhlIHNhbXBsZSBub25jZQ==");
     stream.write_all(&request).await.expect("Failed to write");
@@ -88,14 +86,14 @@ async fn test_ws_01_cswsh() {
 
     // Should reject connection from untrusted origin
     assert!(
-        response_str.contains("403") || response_str.contains("401") || !response_str.contains("101"),
+        response_str.contains("403")
+            || response_str.contains("401")
+            || !response_str.contains("101"),
         "WebSocket from untrusted origin should be rejected"
     );
 
     // Test with trusted origin
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let request = websocket_upgrade_request("https://trusted.com", "dGhlIHNhbXBsZSBub25jZQ==");
     stream.write_all(&request).await.expect("Failed to write");
@@ -127,9 +125,7 @@ async fn test_ws_02_malformed_frames() {
     let addr = harness.tcp_addr();
 
     // First establish WebSocket connection
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let request = websocket_upgrade_request("https://trusted.com", "dGhlIHNhbXBsZSBub25jZQ==");
     stream.write_all(&request).await.expect("Failed to write");
@@ -164,9 +160,7 @@ async fn test_ws_03_large_message_dos() {
 
     let addr = harness.tcp_addr();
 
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // Establish WebSocket connection
     let request = websocket_upgrade_request("https://trusted.com", "dGhlIHNhbXBsZSBub25jZQ==");
@@ -183,7 +177,7 @@ async fn test_ws_03_large_message_dos() {
     let mut frame = vec![0x82, 0xFF]; // Binary frame, masked, 8-byte length
     frame.extend_from_slice(&(oversized_payload.len() as u64).to_be_bytes());
     frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Mask key
-    // Note: Would need to XOR payload with mask in real implementation
+                                                        // Note: Would need to XOR payload with mask in real implementation
 
     // Just send the header - connection should be closed or message rejected
     let result = stream.write_all(&frame).await;
@@ -192,11 +186,8 @@ async fn test_ws_03_large_message_dos() {
         Ok(_) => {
             // Check if connection is still alive
             let mut buf = [0u8; 100];
-            let read_result = tokio::time::timeout(
-                Duration::from_secs(1),
-                stream.read(&mut buf),
-            )
-            .await;
+            let read_result =
+                tokio::time::timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
 
             match read_result {
                 Ok(Ok(0)) => println!("Connection closed (expected for oversized message)"),
@@ -241,9 +232,7 @@ async fn test_ws_05_ping_pong_abuse() {
 
     let addr = harness.tcp_addr();
 
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // Establish WebSocket connection
     let request = websocket_upgrade_request("https://trusted.com", "dGhlIHNhbXBsZSBub25jZQ==");
@@ -281,9 +270,7 @@ async fn test_ws_06_protocol_downgrade() {
     let addr = harness.tcp_addr();
 
     // Try to upgrade with old WebSocket version
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let request = format!(
         "GET /ws HTTP/1.1\r\n\

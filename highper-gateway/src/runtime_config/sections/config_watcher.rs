@@ -5,9 +5,9 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone)]
 pub struct ConfigWatcherRuntimeConfig {
-    pub poll_interval_secs: Reloadable<u64>,         // HIGHPER_CONFIG_WATCHER_POLL_INTERVAL (default 2)
-    pub debounce_secs: Reloadable<u64>,              // HIGHPER_CONFIG_WATCHER_DEBOUNCE (default 1)
-    pub max_reload_attempts: Reloadable<u32>,        // HIGHPER_CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS (default 3)
+    pub poll_interval_secs: Reloadable<u64>, // HIGHPER_CONFIG_WATCHER_POLL_INTERVAL (default 2)
+    pub debounce_secs: Reloadable<u64>,      // HIGHPER_CONFIG_WATCHER_DEBOUNCE (default 1)
+    pub max_reload_attempts: Reloadable<u32>, // HIGHPER_CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS (default 3)
     /// `HIGHPER_CONFIG_WATCHER_RELOAD_TRIGGER_CAPACITY` — bounded channel
     /// capacity for the config-reload trigger queue. Default 16; multiple
     /// concurrent reload triggers fold to one (duplicates from rapid
@@ -73,22 +73,28 @@ pub(crate) fn load() -> Result<ConfigWatcherRuntimeConfig, RuntimeConfigError> {
 fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 
 fn parse_u32(env_var: &str, raw: Option<&str>, default: u32) -> Result<u32, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u32>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u32",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u32",
+            }),
     }
 }
 
@@ -100,7 +106,11 @@ mod tests {
     #[test]
     #[serial]
     fn defaults() {
-        for k in ["HIGHPER_CONFIG_WATCHER_POLL_INTERVAL", "HIGHPER_CONFIG_WATCHER_DEBOUNCE", "HIGHPER_CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS"] {
+        for k in [
+            "HIGHPER_CONFIG_WATCHER_POLL_INTERVAL",
+            "HIGHPER_CONFIG_WATCHER_DEBOUNCE",
+            "HIGHPER_CONFIG_WATCHER_MAX_RELOAD_ATTEMPTS",
+        ] {
             std::env::remove_var(k);
         }
         let cfg = load().unwrap();

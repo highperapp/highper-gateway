@@ -49,11 +49,14 @@ pub(crate) fn load() -> Result<SecretsRuntimeConfig, RuntimeConfigError> {
 
     let cache_ttl_secs = match env_string("SECRETS_CACHE_TTL") {
         None => 300,
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: "HIGHPER_SECRETS_CACHE_TTL".into(),
-            value: s,
-            expected: "u64 seconds",
-        })?,
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: "HIGHPER_SECRETS_CACHE_TTL".into(),
+                value: s,
+                expected: "u64 seconds",
+            })?,
     };
 
     let cfg = SecretsRuntimeConfig {

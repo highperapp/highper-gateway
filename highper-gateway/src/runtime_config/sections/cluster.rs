@@ -78,15 +78,19 @@ pub enum PeerDiscoveryMode {
 pub(crate) fn load() -> Result<ClusterRuntimeConfig, RuntimeConfigError> {
     let infra = parse_infra(env_string("CLUSTER_INFRA").as_deref())?;
     let typeb_backend = parse_typeb_backend(env_string("CLUSTER_TYPEB_BACKEND").as_deref())?;
-    let typeb_addrs =
-        parse_addr_list("HIGHPER_CLUSTER_TYPEB_ADDRS", env_string("CLUSTER_TYPEB_ADDRS"))?;
+    let typeb_addrs = parse_addr_list(
+        "HIGHPER_CLUSTER_TYPEB_ADDRS",
+        env_string("CLUSTER_TYPEB_ADDRS"),
+    )?;
     let typeb_auth = env_string("CLUSTER_TYPEB_AUTH")
         .map(|v| SecretRef::parse("HIGHPER_CLUSTER_TYPEB_AUTH", &v))
         .transpose()?;
     let typeb_tls = env_bool("CLUSTER_TYPEB_TLS").unwrap_or(false);
     let typec_backend = parse_typec_backend(env_string("CLUSTER_TYPEC_BACKEND").as_deref())?;
-    let typec_addrs =
-        parse_addr_list("HIGHPER_CLUSTER_TYPEC_ADDRS", env_string("CLUSTER_TYPEC_ADDRS"))?;
+    let typec_addrs = parse_addr_list(
+        "HIGHPER_CLUSTER_TYPEC_ADDRS",
+        env_string("CLUSTER_TYPEC_ADDRS"),
+    )?;
     let typec_client_cert = env_string("CLUSTER_TYPEC_CLIENT_CERT")
         .map(|v| SecretRef::parse("HIGHPER_CLUSTER_TYPEC_CLIENT_CERT", &v))
         .transpose()?;
@@ -96,8 +100,7 @@ pub(crate) fn load() -> Result<ClusterRuntimeConfig, RuntimeConfigError> {
     let typec_ca = env_string("CLUSTER_TYPEC_CA")
         .map(|v| SecretRef::parse("HIGHPER_CLUSTER_TYPEC_CA", &v))
         .transpose()?;
-    let peer_discovery =
-        parse_peer_discovery(env_string("CLUSTER_PEER_DISCOVERY").as_deref())?;
+    let peer_discovery = parse_peer_discovery(env_string("CLUSTER_PEER_DISCOVERY").as_deref())?;
     let peers = parse_addr_list("HIGHPER_CLUSTER_PEERS", env_string("CLUSTER_PEERS"))?;
     let allow_single_node = env_bool("CLUSTER_ALLOW_SINGLE_NODE").unwrap_or(false);
     let allow_insecure = env_bool("CLUSTER_ALLOW_INSECURE").unwrap_or(false);
@@ -203,7 +206,9 @@ fn parse_addr_list(
     full_env_var: &str,
     value: Option<String>,
 ) -> Result<Vec<SocketAddr>, RuntimeConfigError> {
-    let Some(value) = value else { return Ok(Vec::new()) };
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -267,10 +272,7 @@ mod tests {
     fn parses_typeb_valkey_with_addrs() {
         clear_cluster_env();
         std::env::set_var("HIGHPER_CLUSTER_TYPEB_BACKEND", "valkey");
-        std::env::set_var(
-            "HIGHPER_CLUSTER_TYPEB_ADDRS",
-            "10.0.0.1:6379,10.0.0.2:6379",
-        );
+        std::env::set_var("HIGHPER_CLUSTER_TYPEB_ADDRS", "10.0.0.1:6379,10.0.0.2:6379");
         let cfg = load().unwrap();
         assert_eq!(*cfg.typeb_backend.get(), TypeBBackend::Valkey);
         assert_eq!(cfg.typeb_addrs.get().len(), 2);
@@ -298,7 +300,10 @@ mod tests {
         std::env::set_var("HIGHPER_CLUSTER_INFRA", "vm");
         std::env::set_var("HIGHPER_CLUSTER_PEER_DISCOVERY", "k8s_headless");
         let r = load();
-        assert!(matches!(r, Err(RuntimeConfigError::InvalidCombination { .. })));
+        assert!(matches!(
+            r,
+            Err(RuntimeConfigError::InvalidCombination { .. })
+        ));
         clear_cluster_env();
     }
 

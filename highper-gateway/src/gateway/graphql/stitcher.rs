@@ -281,7 +281,6 @@ impl SchemaStitcher {
         routes
     }
 
-
     /// Build a query string for a backend fragment
     pub fn build_fragment_query(&self, fragment: &QueryFragment) -> String {
         if fragment.fields.is_empty() {
@@ -330,10 +329,17 @@ impl SchemaStitcher {
     }
 
     /// Merge a value at a specific path in the result tree
-    fn merge_value_at_path(&self, target: &mut Value, source: &Value, path: &[String]) -> Result<()> {
+    fn merge_value_at_path(
+        &self,
+        target: &mut Value,
+        source: &Value,
+        path: &[String],
+    ) -> Result<()> {
         if path.is_empty() {
             // At the root level, merge objects
-            if let (Some(target_obj), Some(source_obj)) = (target.as_object_mut(), source.as_object()) {
+            if let (Some(target_obj), Some(source_obj)) =
+                (target.as_object_mut(), source.as_object())
+            {
                 for (key, value) in source_obj {
                     target_obj.insert(key.clone(), value.clone());
                 }

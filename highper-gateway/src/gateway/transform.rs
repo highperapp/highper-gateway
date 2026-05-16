@@ -27,9 +27,10 @@ pub fn transform_response(
 ) -> TransformResult {
     // Check if content type should be transformed
     if let Some(ct) = content_type {
-        let should_transform = config.content_types.iter().any(|allowed| {
-            ct.starts_with(allowed) || ct.contains(allowed)
-        });
+        let should_transform = config
+            .content_types
+            .iter()
+            .any(|allowed| ct.starts_with(allowed) || ct.contains(allowed));
 
         if !should_transform {
             debug!("Skipping transformation for content type: {}", ct);
@@ -114,9 +115,10 @@ pub fn transform_request(
 ) -> TransformResult {
     // Check if content type should be transformed
     if let Some(ct) = content_type {
-        let should_transform = config.content_types.iter().any(|allowed| {
-            ct.starts_with(allowed) || ct.contains(allowed)
-        });
+        let should_transform = config
+            .content_types
+            .iter()
+            .any(|allowed| ct.starts_with(allowed) || ct.contains(allowed));
 
         if !should_transform {
             return TransformResult::Skipped;
@@ -382,7 +384,8 @@ mod tests {
             ..Default::default()
         };
 
-        let body = Bytes::from(r#"{"id": 1, "user": {"name": "john", "email": "john@example.com"}}"#);
+        let body =
+            Bytes::from(r#"{"id": 1, "user": {"name": "john", "email": "john@example.com"}}"#);
         let result = transform_response(&config, Some("application/json"), &body);
 
         if let TransformResult::Transformed(transformed) = result {
@@ -403,7 +406,9 @@ mod tests {
             ..Default::default()
         };
 
-        let body = Bytes::from(r#"{"id": 1, "name": "john", "email": "john@example.com", "password": "secret"}"#);
+        let body = Bytes::from(
+            r#"{"id": 1, "name": "john", "email": "john@example.com", "password": "secret"}"#,
+        );
         let result = transform_response(&config, Some("application/json"), &body);
 
         if let TransformResult::Transformed(transformed) = result {
@@ -445,7 +450,9 @@ mod tests {
             ..Default::default()
         };
 
-        let body = Bytes::from(r#"[{"name": "john", "password": "x"}, {"name": "jane", "password": "y"}]"#);
+        let body = Bytes::from(
+            r#"[{"name": "john", "password": "x"}, {"name": "jane", "password": "y"}]"#,
+        );
         let result = transform_response(&config, Some("application/json"), &body);
 
         if let TransformResult::Transformed(transformed) = result {
@@ -486,7 +493,9 @@ mod tests {
             ..Default::default()
         };
 
-        let body = Bytes::from(r#"{"user_name": "john", "internal_id": 123, "email": "john@example.com"}"#);
+        let body = Bytes::from(
+            r#"{"user_name": "john", "internal_id": 123, "email": "john@example.com"}"#,
+        );
         let result = transform_response(&config, Some("application/json"), &body);
 
         if let TransformResult::Transformed(transformed) = result {

@@ -152,7 +152,10 @@ impl DashboardBroadcaster {
 
     /// Start broadcasting metrics updates
     pub async fn start(self: Arc<Self>, metrics: Arc<super::Metrics>) {
-        info!("Starting dashboard broadcaster (interval: {:?})", self.update_interval);
+        info!(
+            "Starting dashboard broadcaster (interval: {:?})",
+            self.update_interval
+        );
 
         let mut interval = tokio::time::interval(self.update_interval);
         loop {
@@ -204,13 +207,23 @@ impl DashboardBroadcaster {
                             "http_requests_total" => snapshot.http.total_requests = val as u64,
                             "http_requests_errors_total" => snapshot.http.total_errors = val as u64,
                             "http_requests_bytes_total" => snapshot.http.request_bytes = val as u64,
-                            "http_responses_bytes_total" => snapshot.http.response_bytes = val as u64,
+                            "http_responses_bytes_total" => {
+                                snapshot.http.response_bytes = val as u64
+                            }
                             "http_connections_active" => snapshot.connections.active = val as u64,
                             "http_connections_total" => snapshot.connections.total = val as u64,
-                            "upstream_requests_total" => snapshot.upstream.total_requests = val as u64,
-                            "upstream_requests_errors_total" => snapshot.upstream.total_errors = val as u64,
-                            "tls_handshakes_total" => snapshot.connections.tls_handshakes = val as u64,
-                            "tls_handshakes_errors_total" => snapshot.connections.tls_errors = val as u64,
+                            "upstream_requests_total" => {
+                                snapshot.upstream.total_requests = val as u64
+                            }
+                            "upstream_requests_errors_total" => {
+                                snapshot.upstream.total_errors = val as u64
+                            }
+                            "tls_handshakes_total" => {
+                                snapshot.connections.tls_handshakes = val as u64
+                            }
+                            "tls_handshakes_errors_total" => {
+                                snapshot.connections.tls_errors = val as u64
+                            }
                             _ => {}
                         }
                     }
@@ -220,8 +233,10 @@ impl DashboardBroadcaster {
 
         // Calculate derived metrics
         if snapshot.http.total_requests > 0 {
-            let _error_rate = snapshot.http.total_errors as f64 / snapshot.http.total_requests as f64;
-            snapshot.http.requests_per_second = snapshot.http.total_requests as f64 / 60.0; // Rough estimate
+            let _error_rate =
+                snapshot.http.total_errors as f64 / snapshot.http.total_requests as f64;
+            snapshot.http.requests_per_second = snapshot.http.total_requests as f64 / 60.0;
+            // Rough estimate
         }
 
         snapshot

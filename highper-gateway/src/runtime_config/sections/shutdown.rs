@@ -55,9 +55,7 @@ pub(crate) fn load() -> Result<ShutdownRuntimeConfig, RuntimeConfigError> {
     if force_kill_after_secs <= drain_secs {
         return Err(RuntimeConfigError::InvalidCombination {
             rule: "HIGHPER_SHUTDOWN_FORCE_KILL must be > HIGHPER_SHUTDOWN_DRAIN",
-            details: format!(
-                "got drain={drain_secs}s force_kill={force_kill_after_secs}s"
-            ),
+            details: format!("got drain={drain_secs}s force_kill={force_kill_after_secs}s"),
         });
     }
 
@@ -75,11 +73,14 @@ fn parse_duration_seconds(
 ) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64 (seconds)",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64 (seconds)",
+            }),
     }
 }
 
@@ -115,7 +116,10 @@ mod tests {
         std::env::set_var("HIGHPER_SHUTDOWN_DRAIN", "60");
         std::env::set_var("HIGHPER_SHUTDOWN_FORCE_KILL", "60");
         let r = load();
-        assert!(matches!(r, Err(RuntimeConfigError::InvalidCombination { .. })));
+        assert!(matches!(
+            r,
+            Err(RuntimeConfigError::InvalidCombination { .. })
+        ));
         clear();
     }
 

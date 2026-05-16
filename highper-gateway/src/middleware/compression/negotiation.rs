@@ -66,7 +66,9 @@ pub fn parse_accept_encoding(header: &str) -> Vec<EncodingPreference> {
 
     // Sort by quality (descending)
     preferences.sort_by(|a, b| {
-        b.quality.partial_cmp(&a.quality).unwrap_or(std::cmp::Ordering::Equal)
+        b.quality
+            .partial_cmp(&a.quality)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     debug!("Parsed {} encoding preferences", preferences.len());
@@ -220,8 +222,12 @@ mod tests {
     fn test_parse_accept_encoding_simple() {
         let prefs = parse_accept_encoding("gzip, deflate, br");
         assert_eq!(prefs.len(), 3);
-        assert!(prefs.iter().any(|p| p.encoding == "gzip" && p.quality == 1.0));
-        assert!(prefs.iter().any(|p| p.encoding == "deflate" && p.quality == 1.0));
+        assert!(prefs
+            .iter()
+            .any(|p| p.encoding == "gzip" && p.quality == 1.0));
+        assert!(prefs
+            .iter()
+            .any(|p| p.encoding == "deflate" && p.quality == 1.0));
         assert!(prefs.iter().any(|p| p.encoding == "br" && p.quality == 1.0));
     }
 

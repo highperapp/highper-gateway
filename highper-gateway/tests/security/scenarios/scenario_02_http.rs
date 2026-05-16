@@ -124,9 +124,7 @@ async fn test_http_02_crlf_injection() {
     for payload in crlf::BASIC {
         // Test in URL path
         let path = format!("/test?param={}", payload);
-        let result = client
-            .get_with_headers(&path, HashMap::new())
-            .await;
+        let result = client.get_with_headers(&path, HashMap::new()).await;
 
         if let Ok((status, body, _)) = result {
             assert!(
@@ -140,10 +138,7 @@ async fn test_http_02_crlf_injection() {
 
         // Test in header value
         let mut headers = HashMap::new();
-        headers.insert(
-            "X-Custom".to_string(),
-            format!("value{}", payload),
-        );
+        headers.insert("X-Custom".to_string(), format!("value{}", payload));
 
         let result = client.get_with_headers("/", headers).await;
 
@@ -225,7 +220,8 @@ async fn test_http_04_http_desync() {
         b"GET / HTTP/1.1\r\nHost: test\r\nContent-Length: abc\r\n\r\n".to_vec(),
         b"GET / HTTP/1.1\r\nHost: test\r\nContent-Length: -1\r\n\r\n".to_vec(),
         b"GET / HTTP/1.1\r\nHost: test\r\nContent-Length: 1e10\r\n\r\n".to_vec(),
-        b"GET / HTTP/1.1\r\nHost: test\r\nContent-Length: 0\r\nContent-Length: 100\r\n\r\n".to_vec(),
+        b"GET / HTTP/1.1\r\nHost: test\r\nContent-Length: 0\r\nContent-Length: 100\r\n\r\n"
+            .to_vec(),
     ];
 
     for payload in payloads {
@@ -264,7 +260,10 @@ async fn test_http_05_compression_bomb() {
     let bomb = compression::gzip_bomb(1024 * 1024); // Claims 1MB uncompressed
 
     let mut headers = HashMap::new();
-    headers.insert("Content-Type".to_string(), "application/octet-stream".to_string());
+    headers.insert(
+        "Content-Type".to_string(),
+        "application/octet-stream".to_string(),
+    );
     headers.insert("Content-Encoding".to_string(), "gzip".to_string());
 
     let result = client.post_with_body("/upload", headers, bomb).await;

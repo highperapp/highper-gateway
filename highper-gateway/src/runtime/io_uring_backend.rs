@@ -85,7 +85,10 @@ mod tests {
                 assert_eq!(stats.pending_operations, 0);
             }
             Err(e) => {
-                println!("io_uring backend creation failed (expected on some systems): {}", e);
+                println!(
+                    "io_uring backend creation failed (expected on some systems): {}",
+                    e
+                );
             }
         }
     }

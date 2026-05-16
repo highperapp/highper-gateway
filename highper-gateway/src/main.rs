@@ -23,7 +23,9 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use highper_gateway::config::{load_config, validate_config, dsl_generator, dsl_parser, dsl_converter};
+use highper_gateway::config::{
+    dsl_converter, dsl_generator, dsl_parser, load_config, validate_config,
+};
 use highper_gateway::runtime::Runtime;
 use highper_gateway::runtime_config;
 use std::path::PathBuf;
@@ -233,11 +235,16 @@ async fn main() -> Result<()> {
     match cli.command {
         None | Some(Commands::Start { .. }) => {
             // Default: start the server
-            let Commands::Start { config, hot_reload, daemon } = cli.command.unwrap_or(Commands::Start {
+            let Commands::Start {
+                config,
+                hot_reload,
+                daemon,
+            } = cli.command.unwrap_or(Commands::Start {
                 config: PathBuf::from("config/config.yaml"),
                 hot_reload: true,
                 daemon: false,
-            }) else {
+            })
+            else {
                 unreachable!()
             };
 
@@ -264,49 +271,41 @@ async fn main() -> Result<()> {
             max_conns,
         }) => {
             run_zero_config(
-                backend,
-                port,
-                bind,
-                tls,
-                domain,
-                email,
-                lb,
-                admin_port,
-                http3,
-                compress,
-                timeout,
+                backend, port, bind, tls, domain, email, lb, admin_port, http3, compress, timeout,
                 max_conns,
-            ).await
+            )
+            .await
         }
 
-        Some(Commands::Validate { config, verbose }) => {
-            validate_command(config, verbose).await
-        }
+        Some(Commands::Validate { config, verbose }) => validate_command(config, verbose).await,
 
-        Some(Commands::Test { config, upstream, timeout }) => {
-            test_command(config, upstream, timeout).await
-        }
+        Some(Commands::Test {
+            config,
+            upstream,
+            timeout,
+        }) => test_command(config, upstream, timeout).await,
 
-        Some(Commands::Health { admin_url, format }) => {
-            health_command(admin_url, format).await
-        }
+        Some(Commands::Health { admin_url, format }) => health_command(admin_url, format).await,
 
-        Some(Commands::Reload { pid_file }) => {
-            reload_command(pid_file).await
-        }
+        Some(Commands::Reload { pid_file }) => reload_command(pid_file).await,
 
         Some(Commands::Version { verbose }) => {
             version_command(verbose);
             Ok(())
         }
 
-        Some(Commands::Migrate { input, output, validate, diff }) => {
-            migrate_command(input, output, validate, diff).await
-        }
+        Some(Commands::Migrate {
+            input,
+            output,
+            validate,
+            diff,
+        }) => migrate_command(input, output, validate, diff).await,
 
-        Some(Commands::PrintConfig { config, format, show_overrides }) => {
-            print_config_command(config, format, show_overrides).await
-        }
+        Some(Commands::PrintConfig {
+            config,
+            format,
+            show_overrides,
+        }) => print_config_command(config, format, show_overrides).await,
     }
 }
 
@@ -333,12 +332,10 @@ async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
     info!("Loading configuration from: {}", config_path.display());
 
     // Load configuration
-    let config = load_config(&config_path)
-        .context("Failed to load configuration")?;
+    let config = load_config(&config_path).context("Failed to load configuration")?;
 
     // Validate configuration
-    validate_config(&config)
-        .context("Configuration validation failed")?;
+    validate_config(&config).context("Configuration validation failed")?;
 
     info!("Configuration loaded and validated successfully");
 
@@ -357,8 +354,7 @@ async fn start_server(config_path: PathBuf, hot_reload: bool) -> Result<()> {
         Runtime::new(config)?
     };
 
-    runtime.run().await
-        .context("Runtime error")?;
+    runtime.run().await.context("Runtime error")?;
 
     info!("Highper Gateway shut down successfully");
     Ok(())
@@ -380,18 +376,22 @@ async fn run_zero_config(
     max_conns: u32,
 ) -> Result<()> {
     use highper_gateway::config::{
-        Config, ServerConfig, Http3Config, UpstreamConfig, ServerDef,
-        LoadBalancingConfig, LoadBalancingAlgorithm, HealthCheckConfig,
-        ConnectionConfig, RouteConfig, MatchRules, TimeoutConfig,
-        AdminConfig, ObservabilityConfig, MetricsConfig,
+        AdminConfig, Config, ConnectionConfig, HealthCheckConfig, Http3Config,
+        LoadBalancingAlgorithm, LoadBalancingConfig, MatchRules, MetricsConfig,
+        ObservabilityConfig, RouteConfig, ServerConfig, ServerDef, TimeoutConfig, UpstreamConfig,
     };
     use std::time::Duration;
 
-    info!("Starting Highper Gateway v{} (zero-config mode)", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting Highper Gateway v{} (zero-config mode)",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Validate TLS options
     if tls && domain.is_none() {
-        return Err(anyhow::anyhow!("--domain is required when --tls is enabled"));
+        return Err(anyhow::anyhow!(
+            "--domain is required when --tls is enabled"
+        ));
     }
 
     // Parse load balancing algorithm
@@ -559,15 +559,21 @@ async fn run_zero_config(
     info!("  Backends: {}", backends.len());
     info!("  Load balancing: {}", lb_algorithm);
     info!("  Timeout: {}s", timeout_secs);
-    info!("  TLS: {}", if tls { "auto (Let's Encrypt)" } else { "disabled" });
+    info!(
+        "  TLS: {}",
+        if tls {
+            "auto (Let's Encrypt)"
+        } else {
+            "disabled"
+        }
+    );
     info!("  HTTP/3: {}", if http3 { "enabled" } else { "disabled" });
     if let Some(ap) = admin_port {
         info!("  Admin API: http://127.0.0.1:{}", ap);
     }
 
     // Validate configuration
-    validate_config(&config)
-        .context("Configuration validation failed")?;
+    validate_config(&config).context("Configuration validation failed")?;
 
     // Create and run the runtime (no hot reload in zero-config mode)
     let runtime = Runtime::new(config)?;
@@ -575,8 +581,7 @@ async fn run_zero_config(
     info!("🚀 Highper Gateway is running!");
     info!("   Listening on http://{}:{}", bind, port);
 
-    runtime.run().await
-        .context("Runtime error")?;
+    runtime.run().await.context("Runtime error")?;
 
     info!("Highper Gateway shut down successfully");
     Ok(())
@@ -630,13 +635,10 @@ async fn test_command(config_path: PathBuf, upstream: Option<String>, timeout: u
     println!();
 
     // Load configuration
-    let config = load_config(&config_path)
-        .context("Failed to load configuration")?;
+    let config = load_config(&config_path).context("Failed to load configuration")?;
 
     let upstreams_to_test: Vec<_> = if let Some(name) = upstream {
-        config.upstreams.iter()
-            .filter(|u| u.name == name)
-            .collect()
+        config.upstreams.iter().filter(|u| u.name == name).collect()
     } else {
         config.upstreams.iter().collect()
     };
@@ -729,7 +731,10 @@ async fn health_command(admin_url: String, format: String) -> Result<()> {
         }
         Err(e) => {
             eprintln!("❌ Failed to connect to admin API: {}", e);
-            eprintln!("\n💡 Is the server running? Check the admin API URL: {}", admin_url);
+            eprintln!(
+                "\n💡 Is the server running? Check the admin API URL: {}",
+                admin_url
+            );
             std::process::exit(1);
         }
     }
@@ -746,8 +751,7 @@ async fn reload_command(pid_file: PathBuf) -> Result<()> {
         let pid_str = fs::read_to_string(&pid_file)
             .context(format!("Failed to read PID file: {}", pid_file.display()))?;
 
-        let pid: i32 = pid_str.trim().parse()
-            .context("Invalid PID in file")?;
+        let pid: i32 = pid_str.trim().parse().context("Invalid PID in file")?;
 
         // Send SIGHUP signal
         unsafe {
@@ -779,7 +783,10 @@ async fn migrate_command(
 ) -> Result<()> {
     use std::fs;
 
-    info!("🔄 Migrating configuration from {} to DSL format", input.display());
+    info!(
+        "🔄 Migrating configuration from {} to DSL format",
+        input.display()
+    );
 
     // Determine output path
     let output_path = output.unwrap_or_else(|| {
@@ -790,8 +797,7 @@ async fn migrate_command(
 
     // Load YAML/JSON/TOML config
     info!("📖 Loading configuration from: {}", input.display());
-    let config = load_config(&input)
-        .context("Failed to load input configuration")?;
+    let config = load_config(&input).context("Failed to load input configuration")?;
 
     info!("✅ Configuration loaded successfully");
 
@@ -802,8 +808,7 @@ async fn migrate_command(
 
     // Write to output file
     info!("💾 Writing to: {}", output_path.display());
-    fs::write(&output_path, &dsl_content)
-        .context("Failed to write DSL output file")?;
+    fs::write(&output_path, &dsl_content).context("Failed to write DSL output file")?;
 
     info!("✅ Migration complete!");
     println!();
@@ -819,12 +824,11 @@ async fn migrate_command(
 
         // Load DSL and convert back to Config
         let dsl_config = {
-            let dsl_ast = dsl_parser::parse_dsl(&dsl_content)
-                .context("Failed to parse generated DSL")?;
+            let dsl_ast =
+                dsl_parser::parse_dsl(&dsl_content).context("Failed to parse generated DSL")?;
             dsl_converter::convert_dsl_to_config(dsl_ast)
                 .context("Failed to convert DSL back to Config")?;
-            load_config(&output_path)
-                .context("Failed to load generated DSL config")?
+            load_config(&output_path).context("Failed to load generated DSL config")?
         };
 
         // Basic validation - check key properties
@@ -839,8 +843,14 @@ async fn migrate_command(
             println!("   Routes: {}", original_routes);
         } else {
             warn!("⚠️  Validation warning: Some differences detected");
-            warn!("   Original upstreams: {}, DSL upstreams: {}", original_upstreams, dsl_upstreams);
-            warn!("   Original routes: {}, DSL routes: {}", original_routes, dsl_routes);
+            warn!(
+                "   Original upstreams: {}, DSL upstreams: {}",
+                original_upstreams, dsl_upstreams
+            );
+            warn!(
+                "   Original routes: {}, DSL routes: {}",
+                original_routes, dsl_routes
+            );
             warn!("   This is expected for complex configurations");
         }
     }
@@ -858,25 +868,35 @@ async fn migrate_command(
 
         println!("   Original: {} lines", original_lines);
         println!("   DSL:      {} lines", dsl_lines);
-        println!("   Reduction: {:.1}% ({:.1}x simpler)", reduction, original_lines as f64 / dsl_lines as f64);
+        println!(
+            "   Reduction: {:.1}% ({:.1}x simpler)",
+            reduction,
+            original_lines as f64 / dsl_lines as f64
+        );
     }
 
     println!();
     println!("💡 Usage:");
-    println!("   highper-gateway start --config {}", output_path.display());
+    println!(
+        "   highper-gateway start --config {}",
+        output_path.display()
+    );
     println!();
 
     Ok(())
 }
 
 /// Print final configuration with environment variable overrides
-async fn print_config_command(config_path: PathBuf, format: String, show_overrides: bool) -> Result<()> {
+async fn print_config_command(
+    config_path: PathBuf,
+    format: String,
+    show_overrides: bool,
+) -> Result<()> {
     println!("📄 Loading configuration: {}", config_path.display());
     println!();
 
     // Load configuration
-    let config = load_config(&config_path)
-        .context("Failed to load configuration")?;
+    let config = load_config(&config_path).context("Failed to load configuration")?;
 
     // Show environment variable overrides if requested
     if show_overrides {
@@ -884,14 +904,35 @@ async fn print_config_command(config_path: PathBuf, format: String, show_overrid
         println!();
 
         let env_vars = vec![
-            ("HIGHPER_MAX_FILE_SIZE", std::env::var("HIGHPER_MAX_FILE_SIZE").ok()),
-            ("HIGHPER_MAX_REQUEST_BODY", std::env::var("HIGHPER_MAX_REQUEST_BODY").ok()),
-            ("HIGHPER_MAX_UPLOAD_SIZE", std::env::var("HIGHPER_MAX_UPLOAD_SIZE").ok()),
-            ("HIGHPER_MAX_PATH_DEPTH", std::env::var("HIGHPER_MAX_PATH_DEPTH").ok()),
-            ("HIGHPER_MAX_CONNECTIONS_PER_IP", std::env::var("HIGHPER_MAX_CONNECTIONS_PER_IP").ok()),
-            ("HIGHPER_MAX_REQUESTS_PER_SECOND", std::env::var("HIGHPER_MAX_REQUESTS_PER_SECOND").ok()),
+            (
+                "HIGHPER_MAX_FILE_SIZE",
+                std::env::var("HIGHPER_MAX_FILE_SIZE").ok(),
+            ),
+            (
+                "HIGHPER_MAX_REQUEST_BODY",
+                std::env::var("HIGHPER_MAX_REQUEST_BODY").ok(),
+            ),
+            (
+                "HIGHPER_MAX_UPLOAD_SIZE",
+                std::env::var("HIGHPER_MAX_UPLOAD_SIZE").ok(),
+            ),
+            (
+                "HIGHPER_MAX_PATH_DEPTH",
+                std::env::var("HIGHPER_MAX_PATH_DEPTH").ok(),
+            ),
+            (
+                "HIGHPER_MAX_CONNECTIONS_PER_IP",
+                std::env::var("HIGHPER_MAX_CONNECTIONS_PER_IP").ok(),
+            ),
+            (
+                "HIGHPER_MAX_REQUESTS_PER_SECOND",
+                std::env::var("HIGHPER_MAX_REQUESTS_PER_SECOND").ok(),
+            ),
             ("HIGHPER_LOG_LEVEL", std::env::var("HIGHPER_LOG_LEVEL").ok()),
-            ("HIGHPER_METRICS_PORT", std::env::var("HIGHPER_METRICS_PORT").ok()),
+            (
+                "HIGHPER_METRICS_PORT",
+                std::env::var("HIGHPER_METRICS_PORT").ok(),
+            ),
         ];
 
         let mut has_overrides = false;
@@ -916,8 +957,8 @@ async fn print_config_command(config_path: PathBuf, format: String, show_overrid
         "yaml" => {
             println!("📋 Configuration (YAML format):");
             println!();
-            let yaml = serde_yaml::to_string(&config)
-                .context("Failed to serialize config to YAML")?;
+            let yaml =
+                serde_yaml::to_string(&config).context("Failed to serialize config to YAML")?;
             println!("{}", yaml);
         }
         "json" => {
@@ -930,12 +971,15 @@ async fn print_config_command(config_path: PathBuf, format: String, show_overrid
         "toml" => {
             println!("📋 Configuration (TOML format):");
             println!();
-            let toml = toml::to_string_pretty(&config)
-                .context("Failed to serialize config to TOML")?;
+            let toml =
+                toml::to_string_pretty(&config).context("Failed to serialize config to TOML")?;
             println!("{}", toml);
         }
         _ => {
-            return Err(anyhow::anyhow!("Unknown format: {}. Use yaml, json, or toml", format));
+            return Err(anyhow::anyhow!(
+                "Unknown format: {}. Use yaml, json, or toml",
+                format
+            ));
         }
     }
 
@@ -978,8 +1022,8 @@ fn init_logging(cli: &Cli) {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cli.log_level));
 
     // Check for JSON logs from env var or CLI flag
-    let json_logs = cli.json_logs ||
-        std::env::var("HIGHPER_JSON_LOGS")
+    let json_logs = cli.json_logs
+        || std::env::var("HIGHPER_JSON_LOGS")
             .ok()
             .and_then(|v| v.parse::<bool>().ok())
             .unwrap_or(false);
@@ -997,7 +1041,7 @@ fn init_logging(cli: &Cli) {
                     .with_target(true)
                     .with_level(true)
                     .with_thread_ids(true)
-                    .with_thread_names(true)
+                    .with_thread_names(true),
             )
             .init();
 
@@ -1012,7 +1056,7 @@ fn init_logging(cli: &Cli) {
                 tracing_subscriber::fmt::layer()
                     .pretty()
                     .with_target(true)
-                    .with_level(true)
+                    .with_level(true),
             )
             .init();
     }

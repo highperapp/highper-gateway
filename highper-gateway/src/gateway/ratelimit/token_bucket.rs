@@ -2,7 +2,7 @@
 //!
 //! Classic token bucket implementation for smooth rate limiting.
 
-use super::{RateLimitResult, RateLimitKey};
+use super::{RateLimitKey, RateLimitResult};
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -106,7 +106,8 @@ impl TokenBucketLimiter {
         let tokens = tokens.unwrap_or(1.0);
 
         // Get or create bucket for this key
-        let mut bucket_ref = self.buckets
+        let mut bucket_ref = self
+            .buckets
             .entry(key_str.clone())
             .or_insert_with(|| Bucket::new(self.config.capacity));
 
@@ -165,9 +166,7 @@ impl TokenBucketLimiter {
     /// Remove entries that haven't been accessed recently
     fn cleanup_old_entries(&self) {
         let cutoff = Instant::now() - self.config.window;
-        self.buckets.retain(|_, bucket| {
-            bucket.last_refill > cutoff
-        });
+        self.buckets.retain(|_, bucket| bucket.last_refill > cutoff);
     }
 }
 

@@ -57,14 +57,7 @@ pub fn sendfile_ktls<S: AsRawFd, F: AsRawFd>(
     let file_fd = file.as_raw_fd();
 
     let mut off = offset as off_t;
-    let result = unsafe {
-        sendfile(
-            socket_fd,
-            file_fd,
-            &mut off as *mut off_t,
-            count as size_t,
-        )
-    };
+    let result = unsafe { sendfile(socket_fd, file_fd, &mut off as *mut off_t, count as size_t) };
 
     if result < 0 {
         Err(io::Error::last_os_error())
@@ -83,7 +76,7 @@ pub fn sendfile_ktls<S: AsRawFd, F: AsRawFd>(
 ) -> io::Result<usize> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "sendfile with kTLS is only supported on Linux"
+        "sendfile with kTLS is only supported on Linux",
     ))
 }
 
@@ -106,10 +99,7 @@ pub fn sendfile_ktls<S: AsRawFd, F: AsRawFd>(
 /// # Ok(())
 /// # }
 /// ```
-pub fn sendfile_entire<S: AsRawFd, F: AsRawFd>(
-    socket: &S,
-    file: &F,
-) -> io::Result<usize> {
+pub fn sendfile_entire<S: AsRawFd, F: AsRawFd>(socket: &S, file: &F) -> io::Result<usize> {
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::MetadataExt;
@@ -125,7 +115,7 @@ pub fn sendfile_entire<S: AsRawFd, F: AsRawFd>(
     {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "sendfile is only supported on Linux"
+            "sendfile is only supported on Linux",
         ))
     }
 }
@@ -208,8 +198,8 @@ mod tests {
         let mut chunks_received = Vec::new();
 
         let result = sendfile_chunked(
-            &std::io::stdout(),  // Dummy socket
-            &std::io::stdin(),   // Dummy file
+            &std::io::stdout(), // Dummy socket
+            &std::io::stdin(),  // Dummy file
             0,
             0, // Zero size, no actual sendfile calls
             1024,

@@ -1,15 +1,15 @@
 //! HTTP client for upstream connections
 
 use crate::config::ConnectionPoolConfig;
-use crate::proxy::retry::{RetryConfig, RetryExecutor, RetryPolicy, RetryStrategy};
 use crate::proxy::pool_metrics::ConnectionPoolMetrics;
+use crate::proxy::retry::{RetryConfig, RetryExecutor, RetryPolicy, RetryStrategy};
 use crate::Result;
 use bytes::Bytes;
-use http_body_util::{Empty, Full, combinators::BoxBody};
-use hyper::{Method, Request, Response, Uri};
+use http_body_util::{combinators::BoxBody, Empty, Full};
 use hyper::body::Incoming;
-use hyper_util::client::legacy::Client as HyperClient;
+use hyper::{Method, Request, Response, Uri};
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client as HyperClient;
 use hyper_util::rt::TokioExecutor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,10 +60,8 @@ impl Client {
             // Connection pool settings from configuration
             .pool_idle_timeout(pool_config.idle_timeout)
             .pool_max_idle_per_host(pool_config.max_idle_per_host)
-
             // Protocol support
             .http2_only(false) // Support both HTTP/1.1 and HTTP/2
-
             // HTTP/2 specific settings
             .http2_initial_stream_window_size(Some(65536)) // 64KB per stream
             .http2_initial_connection_window_size(Some(1048576)) // 1MB for connection
@@ -72,7 +70,6 @@ impl Client {
             .http2_keep_alive_interval(Some(Duration::from_secs(10))) // Send pings every 10s
             .http2_keep_alive_timeout(Duration::from_secs(20)) // Timeout after 20s
             .http2_keep_alive_while_idle(true) // Keep alive even when idle
-
             .build(connector);
 
         let retry_executor = retry_config.map(|config| {
@@ -143,10 +140,18 @@ impl Client {
 
         let result = if let Some(retry_executor) = &self.retry_executor {
             // Use retry logic
-            self.forward_with_retry(uri.clone(), method, headers.clone(), body.clone(), retry_executor).await
+            self.forward_with_retry(
+                uri.clone(),
+                method,
+                headers.clone(),
+                body.clone(),
+                retry_executor,
+            )
+            .await
         } else {
             // Direct forwarding without retry
-            self.forward_direct(uri.clone(), method, headers, body).await
+            self.forward_direct(uri.clone(), method, headers, body)
+                .await
         };
 
         // Track connection status
@@ -167,7 +172,13 @@ impl Client {
     }
 
     /// Forward request without retry
-    async fn forward_direct(&self, uri: String, method: Method, headers: hyper::HeaderMap, body: Option<Bytes>) -> Result<Response<Incoming>> {
+    async fn forward_direct(
+        &self,
+        uri: String,
+        method: Method,
+        headers: hyper::HeaderMap,
+        body: Option<Bytes>,
+    ) -> Result<Response<Incoming>> {
         debug!("Forwarding {} request to {}", method, uri);
 
         let uri: Uri = uri.parse()?;
@@ -175,14 +186,16 @@ impl Client {
         // Build request body
         use http_body_util::BodyExt;
         let body_boxed: BoxBody<Bytes, hyper::Error> = if let Some(body_bytes) = body {
-            Full::new(body_bytes).map_err(|never| match never {}).boxed()
+            Full::new(body_bytes)
+                .map_err(|never| match never {})
+                .boxed()
         } else {
-            Empty::<Bytes>::new().map_err(|never| match never {}).boxed()
+            Empty::<Bytes>::new()
+                .map_err(|never| match never {})
+                .boxed()
         };
 
-        let mut req = Request::builder()
-            .method(method)
-            .uri(uri);
+        let mut req = Request::builder().method(method).uri(uri);
 
         // Copy headers
         for (key, value) in headers.iter() {
@@ -221,11 +234,16 @@ impl Client {
             .execute(|| async {
                 // Build request body
                 use http_body_util::BodyExt;
-                let body_boxed: BoxBody<Bytes, hyper::Error> = if let Some(body_bytes) = body.clone() {
-                    Full::new(body_bytes).map_err(|never| match never {}).boxed()
-                } else {
-                    Empty::<Bytes>::new().map_err(|never| match never {}).boxed()
-                };
+                let body_boxed: BoxBody<Bytes, hyper::Error> =
+                    if let Some(body_bytes) = body.clone() {
+                        Full::new(body_bytes)
+                            .map_err(|never| match never {})
+                            .boxed()
+                    } else {
+                        Empty::<Bytes>::new()
+                            .map_err(|never| match never {})
+                            .boxed()
+                    };
 
                 let mut req_builder = Request::builder()
                     .method(method.clone())
@@ -240,13 +258,10 @@ impl Client {
                     .body(body_boxed)
                     .map_err(|e| format!("Failed to build request: {}", e))?;
 
-                inner
-                    .request(req)
-                    .await
-                    .map_err(|e| {
-                        warn!("Request attempt failed: {}", e);
-                        format!("Request failed: {}", e)
-                    })
+                inner.request(req).await.map_err(|e| {
+                    warn!("Request attempt failed: {}", e);
+                    format!("Request failed: {}", e)
+                })
             })
             .await
             .map_err(|e| anyhow::anyhow!(e))

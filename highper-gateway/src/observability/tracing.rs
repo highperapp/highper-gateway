@@ -3,7 +3,8 @@
 //! Provides trace context propagation, span creation, and export to backends like Jaeger.
 //! Also supports OTLP (OpenTelemetry Protocol) for traces and metrics export.
 
-use crate::config::{TracingConfig, OtlpConfig};
+use crate::config::{OtlpConfig, TracingConfig};
+use hyper::{HeaderMap, StatusCode};
 use opentelemetry::{
     global,
     trace::{TraceError, TracerProvider as _},
@@ -13,9 +14,8 @@ use opentelemetry_sdk::{
     trace::{RandomIdGenerator, Sampler, TracerProvider},
     Resource,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing::{info, warn};
-use hyper::{HeaderMap, StatusCode};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize distributed tracing
 ///
@@ -62,8 +62,8 @@ pub fn init_tracing(config: &TracingConfig) -> Result<(), TraceError> {
     global::set_tracer_provider(tracer_provider.clone());
 
     // Create tracing layer for tracing-subscriber integration
-    let telemetry_layer = tracing_opentelemetry::layer()
-        .with_tracer(tracer_provider.tracer("highper-gateway"));
+    let telemetry_layer =
+        tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("highper-gateway"));
 
     // Initialize tracing subscriber with OpenTelemetry layer
     tracing_subscriber::registry()
@@ -229,7 +229,9 @@ static OTLP_METER_PROVIDER: std::sync::OnceLock<Arc<SdkMeterProvider>> = std::sy
 ///
 /// This sets up a periodic metrics export to an OTLP-compatible backend.
 /// The exporter sends metrics at the configured interval.
-pub fn init_otlp_metrics(config: &OtlpMetricsConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn init_otlp_metrics(
+    config: &OtlpMetricsConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use opentelemetry_otlp::WithExportConfig;
     use std::time::Duration;
 
@@ -272,7 +274,9 @@ pub fn init_otlp_metrics(config: &OtlpMetricsConfig) -> Result<(), Box<dyn std::
 }
 
 /// Get the global OTLP meter for creating custom metrics
-pub fn get_otlp_meter(name: impl Into<std::borrow::Cow<'static, str>>) -> opentelemetry::metrics::Meter {
+pub fn get_otlp_meter(
+    name: impl Into<std::borrow::Cow<'static, str>>,
+) -> opentelemetry::metrics::Meter {
     opentelemetry::global::meter(name)
 }
 
@@ -287,21 +291,33 @@ pub fn shutdown_otlp_metrics() {
 }
 
 /// Record a counter metric via OTLP
-pub fn record_otlp_counter(name: impl Into<std::borrow::Cow<'static, str>>, value: u64, attributes: &[KeyValue]) {
+pub fn record_otlp_counter(
+    name: impl Into<std::borrow::Cow<'static, str>>,
+    value: u64,
+    attributes: &[KeyValue],
+) {
     let meter = get_otlp_meter("highper-gateway");
     let counter = meter.u64_counter(name).init();
     counter.add(value, attributes);
 }
 
 /// Record a gauge metric via OTLP
-pub fn record_otlp_gauge(name: impl Into<std::borrow::Cow<'static, str>>, value: f64, attributes: &[KeyValue]) {
+pub fn record_otlp_gauge(
+    name: impl Into<std::borrow::Cow<'static, str>>,
+    value: f64,
+    attributes: &[KeyValue],
+) {
     let meter = get_otlp_meter("highper-gateway");
     let gauge = meter.f64_up_down_counter(name).init();
     gauge.add(value, attributes);
 }
 
 /// Record a histogram metric via OTLP
-pub fn record_otlp_histogram(name: impl Into<std::borrow::Cow<'static, str>>, value: f64, attributes: &[KeyValue]) {
+pub fn record_otlp_histogram(
+    name: impl Into<std::borrow::Cow<'static, str>>,
+    value: f64,
+    attributes: &[KeyValue],
+) {
     let meter = get_otlp_meter("highper-gateway");
     let histogram = meter.f64_histogram(name).init();
     histogram.record(value, attributes);
@@ -391,8 +407,6 @@ mod tests {
 ///
 /// Uses tracing macros which integrate with OpenTelemetry
 pub fn record_http_request(method: &str, path: &str, host: Option<&str>, client_ip: Option<&str>) {
-    
-
     // Record attributes using tracing
     tracing::info_span!(
         "http_request",
@@ -425,22 +439,22 @@ pub fn record_http_response(status: StatusCode, duration_ms: f64) {
 /// Uses W3C Trace Context propagation format.
 pub fn extract_trace_context(headers: &HeaderMap) -> opentelemetry::Context {
     use opentelemetry::propagation::{Extractor, TextMapPropagator};
-    
+
     struct HeaderExtractor<'a>(&'a HeaderMap);
-    
+
     impl<'a> Extractor for HeaderExtractor<'a> {
         fn get(&self, key: &str) -> Option<&str> {
             self.0.get(key).and_then(|v| v.to_str().ok())
         }
-        
+
         fn keys(&self) -> Vec<&str> {
             self.0.keys().map(|k| k.as_str()).collect()
         }
     }
-    
+
     let extractor = HeaderExtractor(headers);
     let propagator = opentelemetry_sdk::propagation::TraceContextPropagator::new();
-    
+
     propagator.extract(&extractor)
 }
 
@@ -449,9 +463,9 @@ pub fn extract_trace_context(headers: &HeaderMap) -> opentelemetry::Context {
 /// Uses W3C Trace Context propagation format.
 pub fn inject_trace_context(headers: &mut HeaderMap, cx: &opentelemetry::Context) {
     use opentelemetry::propagation::{Injector, TextMapPropagator};
-    
+
     struct HeaderInjector<'a>(&'a mut HeaderMap);
-    
+
     impl<'a> Injector for HeaderInjector<'a> {
         fn set(&mut self, key: &str, value: String) {
             if let Ok(header_name) = hyper::header::HeaderName::from_bytes(key.as_bytes()) {
@@ -461,10 +475,10 @@ pub fn inject_trace_context(headers: &mut HeaderMap, cx: &opentelemetry::Context
             }
         }
     }
-    
+
     let mut injector = HeaderInjector(headers);
     let propagator = opentelemetry_sdk::propagation::TraceContextPropagator::new();
-    
+
     propagator.inject_context(cx, &mut injector);
 }
 
@@ -487,7 +501,12 @@ mod span_tests {
     #[test]
     fn test_extract_trace_context() {
         let mut headers = HeaderMap::new();
-        headers.insert("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01".parse().unwrap());
+        headers.insert(
+            "traceparent",
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                .parse()
+                .unwrap(),
+        );
 
         let ctx = extract_trace_context(&headers);
         // Context should be extracted successfully

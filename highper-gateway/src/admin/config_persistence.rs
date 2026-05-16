@@ -89,8 +89,8 @@ impl ConfigPersistence {
             .await
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
-        let config: RuntimeConfig = serde_yaml::from_str(&yaml)
-            .map_err(|e| format!("Failed to parse config: {}", e))?;
+        let config: RuntimeConfig =
+            serde_yaml::from_str(&yaml).map_err(|e| format!("Failed to parse config: {}", e))?;
 
         info!("Runtime configuration loaded from {:?}", self.config_path);
         Ok(config)
@@ -298,9 +298,7 @@ pub async fn save_config_handler(
 }
 
 /// Load configuration from disk
-pub async fn load_config_handler(
-    persistence: Arc<ConfigPersistence>,
-) -> Response<Full<Bytes>> {
+pub async fn load_config_handler(persistence: Arc<ConfigPersistence>) -> Response<Full<Bytes>> {
     if !persistence.is_enabled() {
         return json_response(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -362,7 +360,7 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<B
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::admin::{RouteMatcher, LoadBalancingConfig, BackendServer};
+    use crate::admin::{BackendServer, LoadBalancingConfig, RouteMatcher};
     use std::env::temp_dir;
 
     #[tokio::test]
@@ -439,7 +437,15 @@ mod tests {
             enabled: true,
         });
         assert_eq!(config.routes.len(), 2);
-        assert_eq!(config.routes.iter().find(|r| r.name == "route1").unwrap().upstream, "upstream3");
+        assert_eq!(
+            config
+                .routes
+                .iter()
+                .find(|r| r.name == "route1")
+                .unwrap()
+                .upstream,
+            "upstream3"
+        );
 
         // Remove route
         config.remove_route("route1");

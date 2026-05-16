@@ -16,25 +16,25 @@
 //!
 //! This is a production-grade reverse proxy built with io_uring for maximum performance.
 
+pub mod admin;
+pub mod cache;
 pub mod config;
-pub mod runtime;
-pub mod proxy;
+pub mod discovery;
+pub mod gateway;
+pub mod grpc;
 pub mod http;
+pub mod middleware;
+pub mod observability;
+pub mod plugin;
+pub mod proxy;
+pub mod runtime;
+pub mod runtime_config;
+pub mod state;
 pub mod tcp;
 pub mod tls;
-pub mod observability;
-pub mod middleware;
-pub mod gateway;
-pub mod websocket;
-pub mod grpc;
-pub mod admin;
 pub mod utils;
-pub mod state;
-pub mod discovery;
-pub mod plugin;
 pub mod webserver;
-pub mod cache;
-pub mod runtime_config;
+pub mod websocket;
 
 // Re-export commonly used types
 pub use config::Config;

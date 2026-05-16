@@ -1,7 +1,6 @@
 /// DSL to Config Converter
 ///
 /// Converts parsed DSL AST (`dsl_ast::Config`) into the runtime Config (`schema::Config`)
-
 use anyhow::{Context, Result};
 
 use crate::config::dsl_ast::{self, Directive, LoadBalancingAlgorithm, Scheme, SiteAddress};
@@ -21,8 +20,8 @@ pub fn convert_dsl_to_config(dsl_config: dsl_ast::Config) -> Result<crate::confi
     std::fs::write(&temp_file, yaml_str.as_bytes())
         .context("Failed to write temporary YAML file")?;
 
-    let config = load_config(temp_file.to_str().unwrap())
-        .context("Failed to load generated YAML config")?;
+    let config =
+        load_config(temp_file.to_str().unwrap()).context("Failed to load generated YAML config")?;
 
     // Don't delete temp file - keep it for hot reload monitoring
     // let _ = std::fs::remove_file(&temp_file);
@@ -49,7 +48,12 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
 
         // Extract bind addresses from site
         match &site.address {
-            SiteAddress::Http { scheme, domain, port, .. } => {
+            SiteAddress::Http {
+                scheme,
+                domain,
+                port,
+                ..
+            } => {
                 let bind_port = port.unwrap_or(match scheme {
                     Scheme::Http => 80,
                     Scheme::Https | Scheme::Grpc => 443,
@@ -295,8 +299,14 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str(&format!("        path: \"{}\"\n", hc.path));
             yaml.push_str(&format!("        interval: {}s\n", hc.interval_secs));
             yaml.push_str(&format!("        timeout: {}s\n", hc.timeout_secs));
-            yaml.push_str(&format!("        healthy_threshold: {}\n", hc.healthy_threshold));
-            yaml.push_str(&format!("        unhealthy_threshold: {}\n", hc.unhealthy_threshold));
+            yaml.push_str(&format!(
+                "        healthy_threshold: {}\n",
+                hc.healthy_threshold
+            ));
+            yaml.push_str(&format!(
+                "        unhealthy_threshold: {}\n",
+                hc.unhealthy_threshold
+            ));
         }
     }
 
@@ -334,8 +344,14 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str(&format!("      enabled: {}\n", cache.enabled));
             yaml.push_str(&format!("      default_ttl: {}s\n", cache.ttl_secs));
             yaml.push_str(&format!("      max_size: {}\n", cache.max_size));
-            yaml.push_str(&format!("      cleanup_interval: {}s\n", cache.cleanup_interval_secs));
-            yaml.push_str(&format!("      cache_only_success: {}\n", cache.only_success));
+            yaml.push_str(&format!(
+                "      cleanup_interval: {}s\n",
+                cache.cleanup_interval_secs
+            ));
+            yaml.push_str(&format!(
+                "      cache_only_success: {}\n",
+                cache.only_success
+            ));
             if !cache.methods.is_empty() {
                 yaml.push_str("      methods:\n");
                 for method in &cache.methods {
@@ -402,11 +418,23 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str("    graphql:\n");
             yaml.push_str(&format!("      enabled: {}\n", graphql.enabled));
             yaml.push_str(&format!("      endpoint: \"{}\"\n", graphql.endpoint));
-            yaml.push_str(&format!("      introspection_enabled: {}\n", graphql.introspection_enabled));
+            yaml.push_str(&format!(
+                "      introspection_enabled: {}\n",
+                graphql.introspection_enabled
+            ));
             yaml.push_str(&format!("      enable_cache: {}\n", graphql.enable_cache));
-            yaml.push_str(&format!("      cache_ttl_secs: {}\n", graphql.cache_ttl_secs));
-            yaml.push_str(&format!("      enable_batching: {}\n", graphql.enable_batching));
-            yaml.push_str(&format!("      max_batch_size: {}\n", graphql.max_batch_size));
+            yaml.push_str(&format!(
+                "      cache_ttl_secs: {}\n",
+                graphql.cache_ttl_secs
+            ));
+            yaml.push_str(&format!(
+                "      enable_batching: {}\n",
+                graphql.enable_batching
+            ));
+            yaml.push_str(&format!(
+                "      max_batch_size: {}\n",
+                graphql.max_batch_size
+            ));
 
             if !graphql.backends.is_empty() {
                 yaml.push_str("      backends:\n");
@@ -425,10 +453,22 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
             yaml.push_str(&format!("      enabled: {}\n", php_fpm.enabled));
             yaml.push_str(&format!("      socket: \"{}\"\n", php_fpm.socket));
             yaml.push_str(&format!("      pool_size: {}\n", php_fpm.pool_size));
-            yaml.push_str(&format!("      connect_timeout_secs: {}\n", php_fpm.connect_timeout_secs));
-            yaml.push_str(&format!("      read_timeout_secs: {}\n", php_fpm.read_timeout_secs));
-            yaml.push_str(&format!("      write_timeout_secs: {}\n", php_fpm.write_timeout_secs));
-            yaml.push_str(&format!("      keepalive_timeout_secs: {}\n", php_fpm.keepalive_timeout_secs));
+            yaml.push_str(&format!(
+                "      connect_timeout_secs: {}\n",
+                php_fpm.connect_timeout_secs
+            ));
+            yaml.push_str(&format!(
+                "      read_timeout_secs: {}\n",
+                php_fpm.read_timeout_secs
+            ));
+            yaml.push_str(&format!(
+                "      write_timeout_secs: {}\n",
+                php_fpm.write_timeout_secs
+            ));
+            yaml.push_str(&format!(
+                "      keepalive_timeout_secs: {}\n",
+                php_fpm.keepalive_timeout_secs
+            ));
             if !php_fpm.script_extensions.is_empty() {
                 yaml.push_str("      script_extensions:\n");
                 for ext in &php_fpm.script_extensions {
@@ -485,10 +525,16 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
                 yaml.push_str(&format!("      max_path_depth: {}\n", max_path_depth));
             }
             if let Some(max_connections_per_ip) = limits.max_connections_per_ip {
-                yaml.push_str(&format!("      max_connections_per_ip: {}\n", max_connections_per_ip));
+                yaml.push_str(&format!(
+                    "      max_connections_per_ip: {}\n",
+                    max_connections_per_ip
+                ));
             }
             if let Some(max_requests_per_second) = limits.max_requests_per_second {
-                yaml.push_str(&format!("      max_requests_per_second: {}\n", max_requests_per_second));
+                yaml.push_str(&format!(
+                    "      max_requests_per_second: {}\n",
+                    max_requests_per_second
+                ));
             }
         }
     }
@@ -579,7 +625,10 @@ fn generate_yaml_from_dsl(dsl_config: &dsl_ast::Config) -> Result<String> {
     }
 
     yaml.push_str("  metrics:\n");
-    yaml.push_str(&format!("    enabled: {}\n", dsl_config.global.metrics_enabled));
+    yaml.push_str(&format!(
+        "    enabled: {}\n",
+        dsl_config.global.metrics_enabled
+    ));
 
     // Admin section
     if let Some(ref admin_addr) = dsl_config.global.admin_address {
@@ -604,7 +653,9 @@ fn process_directive(
     match directive {
         Directive::Proxy(backends) => {
             for backend in backends {
-                let url = if backend.address.starts_with("http://") || backend.address.starts_with("https://") {
+                let url = if backend.address.starts_with("http://")
+                    || backend.address.starts_with("https://")
+                {
                     backend.full_address()
                 } else {
                     format!("http://{}", backend.full_address())
@@ -626,7 +677,8 @@ fn process_directive(
                 LoadBalancingAlgorithm::Random => "random",
                 LoadBalancingAlgorithm::Weighted => "round_robin", // Use round_robin with weights
                 LoadBalancingAlgorithm::ConsistentHash => "consistent_hash",
-            }.to_string();
+            }
+            .to_string();
         }
 
         Directive::HealthCheck(hc) => {
@@ -642,9 +694,14 @@ fn process_directive(
         Directive::Tls(tls_config) => {
             match tls_config {
                 dsl_ast::TlsConfig::Auto { email } => {
-                    *acme_email = email.clone().or_else(|| Some("admin@example.com".to_string()));
+                    *acme_email = email
+                        .clone()
+                        .or_else(|| Some("admin@example.com".to_string()));
                 }
-                dsl_ast::TlsConfig::Manual { cert_file, key_file } => {
+                dsl_ast::TlsConfig::Manual {
+                    cert_file,
+                    key_file,
+                } => {
                     tls_certificates.push(CertYaml {
                         domain: domain.to_string(),
                         cert_file: cert_file.clone(),
@@ -657,7 +714,12 @@ fn process_directive(
             }
         }
 
-        Directive::RateLimit { rate, burst, per, per_ip } => {
+        Directive::RateLimit {
+            rate,
+            burst,
+            per,
+            per_ip,
+        } => {
             let window_secs = per.map(|d| d.as_secs()).unwrap_or(60);
             let rl = RateLimitYaml {
                 rate: *rate as u32,
@@ -743,7 +805,10 @@ fn process_directive(
                 enabled: cache_config.enabled,
                 ttl_secs: cache_config.ttl.map(|d| d.as_secs()).unwrap_or(300),
                 max_size: cache_config.max_size.unwrap_or(10000),
-                cleanup_interval_secs: cache_config.cleanup_interval.map(|d| d.as_secs()).unwrap_or(60),
+                cleanup_interval_secs: cache_config
+                    .cleanup_interval
+                    .map(|d| d.as_secs())
+                    .unwrap_or(60),
                 only_success: cache_config.only_success,
                 methods: if cache_config.methods.is_empty() {
                     vec!["GET".to_string(), "HEAD".to_string()]
@@ -780,10 +845,14 @@ fn process_directive(
                     rules_dir: cor.rules_dir.clone(),
                     audit_log: cor.audit_log.clone(),
                 }),
-                custom_rules: waf_config.custom_rules.iter().map(|rule| WafRuleYaml {
-                    rule_type: format!("{:?}", rule.rule_type).to_lowercase(),
-                    action: format!("{:?}", rule.action).to_lowercase(),
-                }).collect(),
+                custom_rules: waf_config
+                    .custom_rules
+                    .iter()
+                    .map(|rule| WafRuleYaml {
+                        rule_type: format!("{:?}", rule.rule_type).to_lowercase(),
+                        action: format!("{:?}", rule.action).to_lowercase(),
+                    })
+                    .collect(),
             });
         }
 
@@ -791,17 +860,24 @@ fn process_directive(
             // Convert DSL GraphQLConfig to GraphQLYaml
             route.graphql = Some(GraphQLYaml {
                 enabled: graphql_config.enabled,
-                endpoint: graphql_config.endpoint.clone().unwrap_or_else(|| "/graphql".to_string()),
+                endpoint: graphql_config
+                    .endpoint
+                    .clone()
+                    .unwrap_or_else(|| "/graphql".to_string()),
                 introspection_enabled: graphql_config.introspection_enabled,
                 enable_cache: graphql_config.enable_cache,
                 cache_ttl_secs: graphql_config.cache_ttl.map(|d| d.as_secs()).unwrap_or(300),
                 enable_batching: graphql_config.enable_batching,
                 max_batch_size: graphql_config.max_batch_size.unwrap_or(10),
-                backends: graphql_config.backends.iter().map(|backend| GraphQLBackendYaml {
-                    name: backend.name.clone(),
-                    url: backend.url.clone(),
-                    namespace: backend.namespace.clone(),
-                }).collect(),
+                backends: graphql_config
+                    .backends
+                    .iter()
+                    .map(|backend| GraphQLBackendYaml {
+                        name: backend.name.clone(),
+                        url: backend.url.clone(),
+                        namespace: backend.namespace.clone(),
+                    })
+                    .collect(),
             });
         }
 
@@ -809,12 +885,18 @@ fn process_directive(
             // Convert DSL PhpFpmConfig to PhpFpmYaml
             route.php_fpm = Some(PhpFpmYaml {
                 enabled: php_config.enabled,
-                socket: php_config.socket.clone().unwrap_or_else(|| "/var/run/php/php-fpm.sock".to_string()),
+                socket: php_config
+                    .socket
+                    .clone()
+                    .unwrap_or_else(|| "/var/run/php/php-fpm.sock".to_string()),
                 pool_size: php_config.pool_size.unwrap_or(50),
                 connect_timeout_secs: php_config.connect_timeout.map(|d| d.as_secs()).unwrap_or(5),
                 read_timeout_secs: php_config.read_timeout.map(|d| d.as_secs()).unwrap_or(60),
                 write_timeout_secs: php_config.write_timeout.map(|d| d.as_secs()).unwrap_or(60),
-                keepalive_timeout_secs: php_config.keepalive_timeout.map(|d| d.as_secs()).unwrap_or(90),
+                keepalive_timeout_secs: php_config
+                    .keepalive_timeout
+                    .map(|d| d.as_secs())
+                    .unwrap_or(90),
                 script_extensions: if php_config.script_extensions.is_empty() {
                     vec![".php".to_string()]
                 } else {
@@ -1309,8 +1391,12 @@ mod tests {
             };
 
             let yaml = generate_yaml_from_dsl(&dsl_config).unwrap();
-            assert!(yaml.contains(&format!("algorithm: {}", expected)),
-                "Expected {} for {:?}", expected, algo);
+            assert!(
+                yaml.contains(&format!("algorithm: {}", expected)),
+                "Expected {} for {:?}",
+                expected,
+                algo
+            );
         }
     }
 
@@ -1328,24 +1414,22 @@ mod tests {
                     port: Some(8080),
                     base_path: None,
                 },
-                routes: vec![
-                    Route {
-                        path: "/*.php".to_string(),
-                        directives: vec![
-                            Directive::PhpFpm(PhpFpmConfig {
-                                enabled: true,
-                                socket: Some("/var/run/php/php8.2-fpm.sock".to_string()),
-                                pool_size: Some(50),
-                                connect_timeout: Some(Duration::from_secs(5)),
-                                read_timeout: Some(Duration::from_secs(60)),
-                                write_timeout: Some(Duration::from_secs(60)),
-                                keepalive_timeout: Some(Duration::from_secs(90)),
-                                script_extensions: vec![".php".to_string(), ".phtml".to_string()],
-                            }),
-                            Directive::Proxy(vec![Backend::new("localhost").with_port(9000)]),
-                        ],
-                    },
-                ],
+                routes: vec![Route {
+                    path: "/*.php".to_string(),
+                    directives: vec![
+                        Directive::PhpFpm(PhpFpmConfig {
+                            enabled: true,
+                            socket: Some("/var/run/php/php8.2-fpm.sock".to_string()),
+                            pool_size: Some(50),
+                            connect_timeout: Some(Duration::from_secs(5)),
+                            read_timeout: Some(Duration::from_secs(60)),
+                            write_timeout: Some(Duration::from_secs(60)),
+                            keepalive_timeout: Some(Duration::from_secs(90)),
+                            script_extensions: vec![".php".to_string(), ".phtml".to_string()],
+                        }),
+                        Directive::Proxy(vec![Backend::new("localhost").with_port(9000)]),
+                    ],
+                }],
                 directives: vec![
                     Directive::Root("/var/www/html".to_string()),
                     Directive::Index(vec!["index.php".to_string(), "index.html".to_string()]),
@@ -1359,21 +1443,42 @@ mod tests {
         // Verify PHP-FPM configuration
         assert!(yaml.contains("php_fpm:"), "Missing php_fpm section");
         assert!(yaml.contains("enabled: true"), "Missing enabled flag");
-        assert!(yaml.contains("socket: \"/var/run/php/php8.2-fpm.sock\""), "Missing socket path");
+        assert!(
+            yaml.contains("socket: \"/var/run/php/php8.2-fpm.sock\""),
+            "Missing socket path"
+        );
         assert!(yaml.contains("pool_size: 50"), "Missing pool_size");
-        assert!(yaml.contains("connect_timeout_secs: 5"), "Missing connect_timeout");
-        assert!(yaml.contains("read_timeout_secs: 60"), "Missing read_timeout");
-        assert!(yaml.contains("write_timeout_secs: 60"), "Missing write_timeout");
-        assert!(yaml.contains("keepalive_timeout_secs: 90"), "Missing keepalive_timeout");
+        assert!(
+            yaml.contains("connect_timeout_secs: 5"),
+            "Missing connect_timeout"
+        );
+        assert!(
+            yaml.contains("read_timeout_secs: 60"),
+            "Missing read_timeout"
+        );
+        assert!(
+            yaml.contains("write_timeout_secs: 60"),
+            "Missing write_timeout"
+        );
+        assert!(
+            yaml.contains("keepalive_timeout_secs: 90"),
+            "Missing keepalive_timeout"
+        );
         assert!(yaml.contains("\".php\""), "Missing .php extension");
         assert!(yaml.contains("\".phtml\""), "Missing .phtml extension");
 
         // Verify static file configuration
-        assert!(yaml.contains("root: \"/var/www/html\""), "Missing root directive");
+        assert!(
+            yaml.contains("root: \"/var/www/html\""),
+            "Missing root directive"
+        );
         assert!(yaml.contains("index:"), "Missing index section");
         assert!(yaml.contains("\"index.php\""), "Missing index.php");
         assert!(yaml.contains("\"index.html\""), "Missing index.html");
-        assert!(yaml.contains("static_files: true"), "Missing static_files flag");
+        assert!(
+            yaml.contains("static_files: true"),
+            "Missing static_files flag"
+        );
 
         // Verify route path
         assert!(yaml.contains("/*.php"), "Missing PHP route path");
@@ -1392,18 +1497,14 @@ mod tests {
                     port: Some(80),
                     base_path: None,
                 },
-                routes: vec![
-                    Route {
-                        path: "/*".to_string(),
-                        directives: vec![
-                            Directive::TryFiles(vec![
-                                "$uri".to_string(),
-                                "$uri/".to_string(),
-                                "/index.html".to_string(),
-                            ]),
-                        ],
-                    },
-                ],
+                routes: vec![Route {
+                    path: "/*".to_string(),
+                    directives: vec![Directive::TryFiles(vec![
+                        "$uri".to_string(),
+                        "$uri/".to_string(),
+                        "/index.html".to_string(),
+                    ])],
+                }],
                 directives: vec![
                     Directive::Root("/var/www/static".to_string()),
                     Directive::StaticFiles,
@@ -1417,7 +1518,13 @@ mod tests {
         assert!(yaml.contains("\"$uri\""), "Missing $uri pattern");
         assert!(yaml.contains("\"$uri/\""), "Missing $uri/ pattern");
         assert!(yaml.contains("\"/index.html\""), "Missing fallback file");
-        assert!(yaml.contains("root: \"/var/www/static\""), "Missing root directive");
-        assert!(yaml.contains("static_files: true"), "Missing static_files flag");
+        assert!(
+            yaml.contains("root: \"/var/www/static\""),
+            "Missing root directive"
+        );
+        assert!(
+            yaml.contains("static_files: true"),
+            "Missing static_files flag"
+        );
     }
 }

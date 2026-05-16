@@ -169,10 +169,7 @@ impl TcpProxy {
             .flat_map(|u| u.backends.clone())
             .collect();
 
-        let backend_selector = Arc::new(BackendSelector::new(
-            backends,
-            config.load_balancing,
-        ));
+        let backend_selector = Arc::new(BackendSelector::new(backends, config.load_balancing));
 
         Self {
             config: Arc::new(config),
@@ -195,12 +192,18 @@ impl TcpProxy {
     }
 
     /// Handle a client connection
-    pub async fn handle_connection(&self, mut client: TcpStream, client_addr: SocketAddr) -> Result<()> {
+    pub async fn handle_connection(
+        &self,
+        mut client: TcpStream,
+        client_addr: SocketAddr,
+    ) -> Result<()> {
         let start = Instant::now();
 
         // Update stats
         self.stats.total_connections.fetch_add(1, Ordering::Relaxed);
-        self.stats.active_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .active_connections
+            .fetch_add(1, Ordering::Relaxed);
 
         debug!("Accepted TCP connection from {}", client_addr);
 
@@ -231,7 +234,10 @@ impl TcpProxy {
             }
         };
 
-        debug!("Connected to backend {} for client {}", backend.addr, client_addr);
+        debug!(
+            "Connected to backend {} for client {}",
+            backend.addr, client_addr
+        );
 
         // Configure TCP options for both streams
         self.configure_stream(&client)?;
@@ -243,7 +249,9 @@ impl TcpProxy {
             .await;
 
         // Update stats
-        self.stats.active_connections.fetch_sub(1, Ordering::Relaxed);
+        self.stats
+            .active_connections
+            .fetch_sub(1, Ordering::Relaxed);
         self.stats.requests_proxied.fetch_add(1, Ordering::Relaxed);
 
         let duration = start.elapsed();
@@ -322,11 +330,7 @@ impl TcpProxy {
 
     /// MySQL-aware forwarding with query logging (future enhancement)
     #[allow(dead_code)]
-    async fn forward_mysql(
-        &self,
-        client: &mut TcpStream,
-        backend: &mut TcpStream,
-    ) -> Result<()> {
+    async fn forward_mysql(&self, client: &mut TcpStream, backend: &mut TcpStream) -> Result<()> {
         // For now, just do bidirectional forwarding
         // Future: Parse MySQL protocol, log queries, handle connection pooling
         self.forward_bidirectional(client, backend).await
@@ -346,11 +350,7 @@ impl TcpProxy {
 
     /// Redis-aware forwarding (future enhancement)
     #[allow(dead_code)]
-    async fn forward_redis(
-        &self,
-        client: &mut TcpStream,
-        backend: &mut TcpStream,
-    ) -> Result<()> {
+    async fn forward_redis(&self, client: &mut TcpStream, backend: &mut TcpStream) -> Result<()> {
         // For now, just do bidirectional forwarding
         // Future: Parse RESP protocol, handle pipelining
         self.forward_bidirectional(client, backend).await

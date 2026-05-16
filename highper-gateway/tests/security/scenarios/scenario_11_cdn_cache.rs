@@ -107,10 +107,7 @@ async fn test_cache_02_web_cache_deception() {
     for path in deception_paths {
         // Request with auth (simulating logged-in user)
         let mut auth_headers = HashMap::new();
-        auth_headers.insert(
-            "Authorization".to_string(),
-            "Bearer user_token".to_string(),
-        );
+        auth_headers.insert("Authorization".to_string(), "Bearer user_token".to_string());
 
         let _ = client.get_with_headers(path, auth_headers).await;
 
@@ -125,7 +122,10 @@ async fn test_cache_02_web_cache_deception() {
                 || body.contains("session");
 
             if status == StatusCode::OK && has_sensitive {
-                println!("  [WARN] Potential cache deception: {} - sensitive data in response", path);
+                println!(
+                    "  [WARN] Potential cache deception: {} - sensitive data in response",
+                    path
+                );
             } else {
                 println!("  [PASS] {}: No sensitive data cached", path);
             }
@@ -164,9 +164,7 @@ async fn test_cache_03_cache_key_collision() {
         let _ = client.get_with_headers(poison_url, headers).await;
 
         // Check victim URL
-        let result = client
-            .get_with_headers(victim_url, HashMap::new())
-            .await;
+        let result = client.get_with_headers(victim_url, HashMap::new()).await;
 
         if let Ok((_, body, _)) = result {
             println!(
@@ -267,10 +265,7 @@ async fn test_cache_05_cache_control_bypass() {
         .await;
 
     if let Ok((status, _, response_time)) = result {
-        println!(
-            "  no-store response: {} ({} ms)",
-            status, response_time
-        );
+        println!("  no-store response: {} ({} ms)", status, response_time);
     }
 
     // Test no-cache handling
@@ -281,7 +276,9 @@ async fn test_cache_05_cache_control_bypass() {
     // Test private handling
     let mut headers_private = HashMap::new();
     headers_private.insert("Cache-Control".to_string(), "private".to_string());
-    let _ = client.get_with_headers("/user/profile", headers_private).await;
+    let _ = client
+        .get_with_headers("/user/profile", headers_private)
+        .await;
 
     println!("  Verify Cache-Control directives are respected");
 }

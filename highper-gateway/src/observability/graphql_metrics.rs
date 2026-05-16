@@ -24,14 +24,8 @@ pub fn describe_graphql_metrics() {
     );
 
     // Query complexity metrics
-    describe_histogram!(
-        "graphql_query_complexity",
-        "GraphQL query complexity score"
-    );
-    describe_histogram!(
-        "graphql_query_depth",
-        "GraphQL query depth (nested levels)"
-    );
+    describe_histogram!("graphql_query_complexity", "GraphQL query complexity score");
+    describe_histogram!("graphql_query_depth", "GraphQL query depth (nested levels)");
     describe_counter!(
         "graphql_complexity_exceeded_total",
         "Times query complexity limit was exceeded"
@@ -60,20 +54,14 @@ pub fn describe_graphql_metrics() {
         "graphql_batched_queries_total",
         "Total batched GraphQL queries"
     );
-    describe_histogram!(
-        "graphql_batch_size",
-        "Number of queries in a batch"
-    );
+    describe_histogram!("graphql_batch_size", "Number of queries in a batch");
     describe_histogram!(
         "graphql_batch_duration_seconds",
         "Total duration of batched queries"
     );
 
     // Error metrics
-    describe_counter!(
-        "graphql_errors_total",
-        "Total GraphQL errors by type"
-    );
+    describe_counter!("graphql_errors_total", "Total GraphQL errors by type");
     describe_counter!(
         "graphql_validation_errors_total",
         "Total query validation errors"
@@ -84,14 +72,8 @@ pub fn describe_graphql_metrics() {
     );
 
     // Cache metrics
-    describe_counter!(
-        "graphql_cache_hits_total",
-        "Total GraphQL cache hits"
-    );
-    describe_counter!(
-        "graphql_cache_misses_total",
-        "Total GraphQL cache misses"
-    );
+    describe_counter!("graphql_cache_hits_total", "Total GraphQL cache hits");
+    describe_counter!("graphql_cache_misses_total", "Total GraphQL cache misses");
 
     // Field selection metrics
     describe_counter!(
@@ -131,24 +113,27 @@ pub fn record_query(
         "graphql_queries_total",
         "operation" => operation.to_string(),
         "type" => operation_type.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "graphql_query_duration_seconds",
         "operation" => operation.to_string(),
         "type" => operation_type.to_string(),
-    ).record(duration_secs);
+    )
+    .record(duration_secs);
 
     histogram!(
         "graphql_query_complexity",
         "operation" => operation.to_string(),
-    ).record(complexity as f64);
+    )
+    .record(complexity as f64);
 
     histogram!(
         "graphql_query_depth",
         "operation" => operation.to_string(),
-    ).record(depth as f64);
-
+    )
+    .record(depth as f64);
 }
 
 /// Record query complexity exceeded
@@ -158,7 +143,8 @@ pub fn record_complexity_exceeded(operation_name: Option<&str>, _complexity: u32
     counter!(
         "graphql_complexity_exceeded_total",
         "operation" => operation.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 }
 
 /// Record query depth exceeded
@@ -168,34 +154,33 @@ pub fn record_depth_exceeded(operation_name: Option<&str>, _depth: u32, _limit: 
     counter!(
         "graphql_depth_exceeded_total",
         "operation" => operation.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 }
 
 /// Record resolver execution
-pub fn record_resolver(
-    parent_type: &str,
-    field_name: &str,
-    duration: Duration,
-    error: bool,
-) {
+pub fn record_resolver(parent_type: &str, field_name: &str, duration: Duration, error: bool) {
     let duration_secs = duration.as_secs_f64();
     let field = format!("{}.{}", parent_type, field_name);
 
     counter!(
         "graphql_resolver_calls_total",
         "field" => field.clone(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "graphql_resolver_duration_seconds",
         "field" => field.clone(),
-    ).record(duration_secs);
+    )
+    .record(duration_secs);
 
     if error {
         counter!(
             "graphql_resolver_errors_total",
             "field" => field.clone(),
-        ).increment(1);
+        )
+        .increment(1);
     }
 }
 
@@ -204,7 +189,6 @@ pub fn record_batch(batch_size: usize, duration: Duration) {
     counter!("graphql_batched_queries_total").increment(1);
     histogram!("graphql_batch_size").record(batch_size as f64);
     histogram!("graphql_batch_duration_seconds").record(duration.as_secs_f64());
-
 }
 
 /// Record GraphQL error
@@ -215,24 +199,22 @@ pub fn record_error(error_type: &str, operation_name: Option<&str>) {
         "graphql_errors_total",
         "type" => error_type.to_string(),
         "operation" => operation.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     match error_type {
-        "validation" => {
-            counter!(
-                "graphql_validation_errors_total",
-                "operation" => operation.to_string(),
-            ).increment(1)
-        }
-        "execution" => {
-            counter!(
-                "graphql_execution_errors_total",
-                "operation" => operation.to_string(),
-            ).increment(1)
-        }
+        "validation" => counter!(
+            "graphql_validation_errors_total",
+            "operation" => operation.to_string(),
+        )
+        .increment(1),
+        "execution" => counter!(
+            "graphql_execution_errors_total",
+            "operation" => operation.to_string(),
+        )
+        .increment(1),
         _ => {}
     }
-
 }
 
 /// Record cache hit/miss
@@ -243,14 +225,14 @@ pub fn record_cache_result(operation_name: Option<&str>, hit: bool) {
         counter!(
             "graphql_cache_hits_total",
             "operation" => operation.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     } else {
         counter!(
             "graphql_cache_misses_total",
             "operation" => operation.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     }
 }
 
@@ -261,14 +243,13 @@ pub fn record_fields_selected(operation_name: Option<&str>, count: usize) {
     counter!(
         "graphql_fields_selected_total",
         "operation" => operation.to_string(),
-    ).increment(count as u64);
-
+    )
+    .increment(count as u64);
 }
 
 /// Record introspection query
 pub fn record_introspection() {
     counter!("graphql_introspection_queries_total").increment(1);
-
 }
 
 /// Record subscription lifecycle
@@ -279,8 +260,8 @@ pub fn record_subscription_open(operation_name: Option<&str>) {
     counter!(
         "graphql_subscriptions_total",
         "operation" => operation.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record subscription close
@@ -300,13 +281,7 @@ mod tests {
         describe_graphql_metrics();
 
         // Test query recording
-        record_query(
-            Some("GetUser"),
-            "query",
-            Duration::from_millis(50),
-            100,
-            5,
-        );
+        record_query(Some("GetUser"), "query", Duration::from_millis(50), 100, 5);
 
         // Test complexity/depth exceeded
         record_complexity_exceeded(Some("ComplexQuery"), 5000, 1000);

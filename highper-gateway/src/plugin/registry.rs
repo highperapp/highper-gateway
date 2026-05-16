@@ -173,7 +173,10 @@ impl PluginRegistry {
 
     /// List all plugin names
     pub fn list_plugins(&self) -> Vec<String> {
-        self.plugins.iter().map(|entry| entry.key().clone()).collect()
+        self.plugins
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Get plugin metadata

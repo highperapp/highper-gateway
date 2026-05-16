@@ -3,41 +3,43 @@
 //! Detects WebSocket upgrade requests and establishes bidirectional proxying
 //! Supports sticky sessions via cookies for load balancing
 
-use hyper::{Request, Response, StatusCode, header::{self, HeaderValue}};
+use crate::websocket::SessionId;
+use anyhow::{anyhow, Result};
+use hyper::{
+    header::{self, HeaderValue},
+    Request, Response, StatusCode,
+};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, error, info, warn};
-use anyhow::{Result, anyhow};
-use crate::websocket::SessionId;
 
 /// Check if a request is a WebSocket upgrade request
 pub fn is_websocket_upgrade<B>(req: &Request<B>) -> bool {
     // Check for required WebSocket upgrade headers
-    let has_upgrade = req.headers()
+    let has_upgrade = req
+        .headers()
         .get(header::UPGRADE)
         .and_then(|v| v.to_str().ok())
         .map(|v| v.eq_ignore_ascii_case("websocket"))
         .unwrap_or(false);
 
-    let has_connection_upgrade = req.headers()
+    let has_connection_upgrade = req
+        .headers()
         .get(header::CONNECTION)
         .and_then(|v| v.to_str().ok())
         .map(|v| v.to_lowercase().contains("upgrade"))
         .unwrap_or(false);
 
-    let has_websocket_key = req.headers()
-        .contains_key(header::SEC_WEBSOCKET_KEY);
+    let has_websocket_key = req.headers().contains_key(header::SEC_WEBSOCKET_KEY);
 
-    let has_websocket_version = req.headers()
-        .get(header::SEC_WEBSOCKET_VERSION)
-        .is_some();
+    let has_websocket_version = req.headers().get(header::SEC_WEBSOCKET_VERSION).is_some();
 
     has_upgrade && has_connection_upgrade && has_websocket_key && has_websocket_version
 }
 
 /// Get the WebSocket accept key from the client key
 pub fn get_websocket_accept_key(client_key: &str) -> String {
-    use sha1::{Sha1, Digest};
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use sha1::{Digest, Sha1};
 
     const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -73,12 +75,14 @@ pub fn extract_session_id_from_cookie<B>(req: &Request<B>, cookie_name: &str) ->
 }
 
 /// Create Set-Cookie header value for session ID
-pub fn create_session_cookie(session_id: &SessionId, cookie_name: &str, max_age_secs: u64) -> String {
+pub fn create_session_cookie(
+    session_id: &SessionId,
+    cookie_name: &str,
+    max_age_secs: u64,
+) -> String {
     format!(
         "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-        cookie_name,
-        session_id,
-        max_age_secs
+        cookie_name, session_id, max_age_secs
     )
 }
 
@@ -94,7 +98,8 @@ pub fn create_upgrade_response_with_session<B>(
     cookie_name: Option<&str>,
     max_age_secs: u64,
 ) -> Result<Response<crate::http::ResponseBody>> {
-    let client_key = req.headers()
+    let client_key = req
+        .headers()
         .get(header::SEC_WEBSOCKET_KEY)
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| anyhow!("Missing Sec-WebSocket-Key header"))?;
@@ -109,7 +114,7 @@ pub fn create_upgrade_response_with_session<B>(
     headers.insert(header::CONNECTION, HeaderValue::from_static("Upgrade"));
     headers.insert(
         header::SEC_WEBSOCKET_ACCEPT,
-        HeaderValue::from_str(&accept_key)?
+        HeaderValue::from_str(&accept_key)?,
     );
 
     // Copy Sec-WebSocket-Protocol if present
@@ -120,10 +125,7 @@ pub fn create_upgrade_response_with_session<B>(
     // Inject session cookie if provided
     if let (Some(sid), Some(cookie_name)) = (session_id, cookie_name) {
         let cookie_value = create_session_cookie(sid, cookie_name, max_age_secs);
-        headers.insert(
-            header::SET_COOKIE,
-            HeaderValue::from_str(&cookie_value)?
-        );
+        headers.insert(header::SET_COOKIE, HeaderValue::from_str(&cookie_value)?);
         debug!("Injected session cookie: {} = {}", cookie_name, sid);
     }
 
@@ -161,8 +163,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http_body_util::Empty;
     use bytes::Bytes;
+    use http_body_util::Empty;
 
     #[test]
     fn test_is_websocket_upgrade() {
@@ -215,7 +217,10 @@ mod tests {
             "Upgrade"
         );
         assert_eq!(
-            response.headers().get(header::SEC_WEBSOCKET_ACCEPT).unwrap(),
+            response
+                .headers()
+                .get(header::SEC_WEBSOCKET_ACCEPT)
+                .unwrap(),
             "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
         );
     }
@@ -228,7 +233,7 @@ mod tests {
         let req = Request::builder()
             .header(
                 header::COOKIE,
-                format!("other=value; HPGW_WS_SESSION={}; another=data", session_id)
+                format!("other=value; HPGW_WS_SESSION={}; another=data", session_id),
             )
             .body(Empty::<Bytes>::new())
             .unwrap();
@@ -240,9 +245,7 @@ mod tests {
 
     #[test]
     fn test_extract_session_id_no_cookie() {
-        let req = Request::builder()
-            .body(Empty::<Bytes>::new())
-            .unwrap();
+        let req = Request::builder().body(Empty::<Bytes>::new()).unwrap();
 
         let extracted = extract_session_id_from_cookie(&req, "HPGW_WS_SESSION");
         assert!(extracted.is_none());
@@ -287,8 +290,9 @@ mod tests {
             &req,
             Some(&session_id),
             Some("HPGW_WS_SESSION"),
-            3600
-        ).unwrap();
+            3600,
+        )
+        .unwrap();
 
         assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
 

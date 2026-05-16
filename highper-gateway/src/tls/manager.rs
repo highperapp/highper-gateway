@@ -25,7 +25,10 @@ impl TlsManager {
         // Initialize storage
         let storage: Arc<dyn CertificateStorage> = match config.acme.as_ref() {
             Some(acme_config) => {
-                info!("Using certificate storage: {}", acme_config.storage.storage_type);
+                info!(
+                    "Using certificate storage: {}",
+                    acme_config.storage.storage_type
+                );
                 Arc::new(FileStorage::new(&acme_config.storage.path)?)
             }
             None => {
@@ -44,13 +47,18 @@ impl TlsManager {
     /// Load manual certificates from configuration
     pub fn load_manual_certificates(&mut self) -> Result<()> {
         for cert_config in &self.config.certificates {
-            info!("Loading manual certificate for domain: {}", cert_config.domain);
+            info!(
+                "Loading manual certificate for domain: {}",
+                cert_config.domain
+            );
 
-            let cert_pem = std::fs::read(&cert_config.cert_file)
-                .map_err(|e| anyhow::anyhow!("Failed to read cert file {}: {}", cert_config.cert_file, e))?;
+            let cert_pem = std::fs::read(&cert_config.cert_file).map_err(|e| {
+                anyhow::anyhow!("Failed to read cert file {}: {}", cert_config.cert_file, e)
+            })?;
 
-            let key_pem = std::fs::read(&cert_config.key_file)
-                .map_err(|e| anyhow::anyhow!("Failed to read key file {}: {}", cert_config.key_file, e))?;
+            let key_pem = std::fs::read(&cert_config.key_file).map_err(|e| {
+                anyhow::anyhow!("Failed to read key file {}: {}", cert_config.key_file, e)
+            })?;
 
             let cert = Certificate {
                 domain: cert_config.domain.clone(),
@@ -78,20 +86,14 @@ impl TlsManager {
     /// * `domain` - Domain name for the certificate
     /// * `cert_path` - Path to certificate file
     /// * `key_path` - Path to private key file
-    pub fn reload_certificate(
-        &self,
-        domain: &str,
-        cert_path: &str,
-        key_path: &str,
-    ) -> Result<()> {
+    pub fn reload_certificate(&self, domain: &str, cert_path: &str, key_path: &str) -> Result<()> {
         info!("Reloading certificate for domain: {}", domain);
 
         // Validate new certificate first
-        let (_certs, _key) = CertificateValidator::validate(cert_path, key_path)
-            .map_err(|e| {
-                error!("Certificate validation failed for {}: {}", domain, e);
-                e
-            })?;
+        let (_certs, _key) = CertificateValidator::validate(cert_path, key_path).map_err(|e| {
+            error!("Certificate validation failed for {}: {}", domain, e);
+            e
+        })?;
 
         info!("Certificate validation successful for {}", domain);
 
@@ -131,17 +133,17 @@ impl TlsManager {
                     info!("Reloaded certificate for {}", cert_config.domain);
                 }
                 Err(e) => {
-                    error!("Failed to reload certificate for {}: {}", cert_config.domain, e);
+                    error!(
+                        "Failed to reload certificate for {}: {}",
+                        cert_config.domain, e
+                    );
                     errors.push((cert_config.domain.clone(), e));
                 }
             }
         }
 
         if !errors.is_empty() {
-            warn!(
-                "Failed to reload {} certificate(s)",
-                errors.len()
-            );
+            warn!("Failed to reload {} certificate(s)", errors.len());
         }
 
         Ok(())
@@ -161,15 +163,19 @@ impl TlsManager {
                 info!("mTLS enabled, configuring client certificate verification");
 
                 // Load CA certificates
-                let ca_manager = CaManager::new(
-                    &mtls_config.ca_cert_path,
-                    &mtls_config.additional_cas,
-                )?;
+                let ca_manager =
+                    CaManager::new(&mtls_config.ca_cert_path, &mtls_config.additional_cas)?;
 
-                info!("Loaded {} CA certificate(s) for client verification", ca_manager.ca_count());
+                info!(
+                    "Loaded {} CA certificate(s) for client verification",
+                    ca_manager.ca_count()
+                );
 
                 // Build custom client verifier with our verification mode
-                info!("Client certificate verification mode: {:?}", mtls_config.verification_mode);
+                info!(
+                    "Client certificate verification mode: {:?}",
+                    mtls_config.verification_mode
+                );
                 let client_verifier = MtlsClientVerifier::new(
                     ca_manager.root_store_arc(),
                     mtls_config.verification_mode,
@@ -181,17 +187,18 @@ impl TlsManager {
                 });
 
                 // Wrap with OCSP stapler if enabled
-                let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> = if self.config.ocsp_stapling.enabled {
-                    info!("Enabling OCSP stapling");
-                    let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
-                        responder_url: self.config.ocsp_stapling.responder_url.clone(),
-                        refresh_interval: self.config.ocsp_stapling.refresh_interval,
-                        timeout: self.config.ocsp_stapling.timeout,
+                let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> =
+                    if self.config.ocsp_stapling.enabled {
+                        info!("Enabling OCSP stapling");
+                        let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
+                            responder_url: self.config.ocsp_stapling.responder_url.clone(),
+                            refresh_interval: self.config.ocsp_stapling.refresh_interval,
+                            timeout: self.config.ocsp_stapling.timeout,
+                        };
+                        crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
+                    } else {
+                        cert_resolver
                     };
-                    crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
-                } else {
-                    cert_resolver
-                };
 
                 // Create ServerConfig with client authentication
                 ServerConfig::builder()
@@ -204,17 +211,18 @@ impl TlsManager {
                 });
 
                 // Wrap with OCSP stapler if enabled
-                let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> = if self.config.ocsp_stapling.enabled {
-                    info!("Enabling OCSP stapling");
-                    let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
-                        responder_url: self.config.ocsp_stapling.responder_url.clone(),
-                        refresh_interval: self.config.ocsp_stapling.refresh_interval,
-                        timeout: self.config.ocsp_stapling.timeout,
+                let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> =
+                    if self.config.ocsp_stapling.enabled {
+                        info!("Enabling OCSP stapling");
+                        let ocsp_config = crate::tls::ocsp_stapler::OcspStaplerConfig {
+                            responder_url: self.config.ocsp_stapling.responder_url.clone(),
+                            refresh_interval: self.config.ocsp_stapling.refresh_interval,
+                            timeout: self.config.ocsp_stapling.timeout,
+                        };
+                        crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
+                    } else {
+                        cert_resolver
                     };
-                    crate::tls::ocsp_stapler::Stapler::new(cert_resolver, ocsp_config)
-                } else {
-                    cert_resolver
-                };
 
                 // mTLS disabled
                 ServerConfig::builder()
@@ -228,12 +236,13 @@ impl TlsManager {
             });
 
             // Wrap with OCSP stapler if enabled
-            let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> = if self.config.ocsp_stapling.enabled {
-                info!("Enabling OCSP stapling");
-                Arc::new(ocsp_stapler::Stapler::new(cert_resolver))
-            } else {
-                cert_resolver
-            };
+            let cert_resolver: Arc<dyn rustls::server::ResolvesServerCert> =
+                if self.config.ocsp_stapling.enabled {
+                    info!("Enabling OCSP stapling");
+                    Arc::new(ocsp_stapler::Stapler::new(cert_resolver))
+                } else {
+                    cert_resolver
+                };
 
             // No mTLS configuration
             ServerConfig::builder()
@@ -267,7 +276,10 @@ impl std::fmt::Debug for DynamicCertResolver {
 }
 
 impl rustls::server::ResolvesServerCert for DynamicCertResolver {
-    fn resolve(&self, client_hello: rustls::server::ClientHello) -> Option<Arc<rustls::sign::CertifiedKey>> {
+    fn resolve(
+        &self,
+        client_hello: rustls::server::ClientHello,
+    ) -> Option<Arc<rustls::sign::CertifiedKey>> {
         // Get SNI hostname
         let sni_hostname = client_hello.server_name()?;
 
@@ -288,11 +300,12 @@ impl rustls::server::ResolvesServerCert for DynamicCertResolver {
                 }
 
                 // Parse private key
-                let private_key = rustls_pemfile::private_key(&mut cert.key_pem.as_slice())
-                    .ok()??;
+                let private_key =
+                    rustls_pemfile::private_key(&mut cert.key_pem.as_slice()).ok()??;
 
                 // Create signing key
-                let signing_key = match rustls::crypto::ring::sign::any_supported_type(&private_key) {
+                let signing_key = match rustls::crypto::ring::sign::any_supported_type(&private_key)
+                {
                     Ok(key) => key,
                     Err(e) => {
                         warn!("Failed to create signing key for {}: {}", sni_hostname, e);
@@ -302,7 +315,10 @@ impl rustls::server::ResolvesServerCert for DynamicCertResolver {
 
                 // Create CertifiedKey (OCSP stapling is handled by ocsp-stapler wrapper)
                 let certified_key = rustls::sign::CertifiedKey::new(cert_chain, signing_key);
-                info!("Successfully resolved certificate for domain: {}", sni_hostname);
+                info!(
+                    "Successfully resolved certificate for domain: {}",
+                    sni_hostname
+                );
                 Some(Arc::new(certified_key))
             }
             Ok(None) => {

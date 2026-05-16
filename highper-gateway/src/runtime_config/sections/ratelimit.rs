@@ -5,12 +5,12 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone, Default)]
 pub struct RatelimitRuntimeConfig {
-    pub mode: RatelimitMode,                            // HIGHPER_RATELIMIT_MODE = local|distributed (Restart)
-    pub key_shards: u32,                                // HIGHPER_RATELIMIT_KEY_SHARDS (default 1; Restart)
-    pub redis_fail_mode: Reloadable<RedisFailMode>,     // HIGHPER_RATELIMIT_REDIS_FAIL_MODE
-    pub xff_trust_mode: Reloadable<XffTrustMode>,       // HIGHPER_RATELIMIT_XFF_TRUST = none|first|last
-    pub default_burst: Reloadable<u32>,                 // HIGHPER_RATELIMIT_DEFAULT_BURST (default 100)
-    pub default_window_secs: Reloadable<u64>,           // HIGHPER_RATELIMIT_DEFAULT_WINDOW (default 60)
+    pub mode: RatelimitMode, // HIGHPER_RATELIMIT_MODE = local|distributed (Restart)
+    pub key_shards: u32,     // HIGHPER_RATELIMIT_KEY_SHARDS (default 1; Restart)
+    pub redis_fail_mode: Reloadable<RedisFailMode>, // HIGHPER_RATELIMIT_REDIS_FAIL_MODE
+    pub xff_trust_mode: Reloadable<XffTrustMode>, // HIGHPER_RATELIMIT_XFF_TRUST = none|first|last
+    pub default_burst: Reloadable<u32>, // HIGHPER_RATELIMIT_DEFAULT_BURST (default 100)
+    pub default_window_secs: Reloadable<u64>, // HIGHPER_RATELIMIT_DEFAULT_WINDOW (default 60)
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -113,22 +113,28 @@ pub(crate) fn load() -> Result<RatelimitRuntimeConfig, RuntimeConfigError> {
 fn parse_u32(env_var: &str, raw: Option<&str>, default: u32) -> Result<u32, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u32>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u32",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u32",
+            }),
     }
 }
 
 fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 

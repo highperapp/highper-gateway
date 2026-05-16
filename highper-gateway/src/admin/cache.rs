@@ -7,12 +7,12 @@
 //! - Invalidate specific keys
 //! - List cache keys
 
+use crate::state::ProxyState;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::state::ProxyState;
 use std::sync::Arc;
 
 /// Cache statistics response
@@ -204,7 +204,8 @@ pub async fn clear_cache(
         }
     }
 
-    let pattern_msg = request.pattern
+    let pattern_msg = request
+        .pattern
         .map(|p| format!(" matching pattern '{}'", p))
         .unwrap_or_default();
 
@@ -333,8 +334,7 @@ pub async fn list_cache_keys(
         }
     }
 
-    let pattern_msg = pattern
-        .unwrap_or_else(|| "all".to_string());
+    let pattern_msg = pattern.unwrap_or_else(|| "all".to_string());
 
     json_response(
         StatusCode::OK,
@@ -392,10 +392,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalidate_cache_keys() {
         let request = InvalidateCacheRequest {
-            keys: vec![
-                "key1".to_string(),
-                "key2".to_string(),
-            ],
+            keys: vec!["key1".to_string(), "key2".to_string()],
             invalidate_local: true,
             invalidate_distributed: true,
         };

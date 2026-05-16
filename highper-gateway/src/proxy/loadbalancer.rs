@@ -3,13 +3,13 @@
 use crate::config::{LoadBalancingAlgorithm, ServerDef, SlowStartConfig};
 use crate::proxy::geographic::{GeoLoadBalancer, GeoServer};
 use crate::state::ProxyState;
+use parking_lot::RwLock;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
 
 /// Load balancer for selecting backend servers
 pub struct LoadBalancer {
@@ -131,7 +131,11 @@ impl BackendServer {
 
         // Update cached average
         let sum: u64 = times.iter().sum();
-        let avg = if times.is_empty() { 0 } else { sum / times.len() as u64 };
+        let avg = if times.is_empty() {
+            0
+        } else {
+            sum / times.len() as u64
+        };
         self.avg_response_time_us.store(avg, Ordering::Relaxed);
 
         // Increment total requests
@@ -183,7 +187,12 @@ impl BackendServer {
 impl LoadBalancer {
     /// Create a new load balancer
     pub fn new(algorithm: LoadBalancingAlgorithm, servers: Vec<ServerDef>) -> Self {
-        Self::with_geoip_config(algorithm, servers, crate::config::GeoIpProvider::MaxMind, None::<String>)
+        Self::with_geoip_config(
+            algorithm,
+            servers,
+            crate::config::GeoIpProvider::MaxMind,
+            None::<String>,
+        )
     }
 
     /// Create a new load balancer with GeoIP database path
@@ -192,7 +201,12 @@ impl LoadBalancer {
         servers: Vec<ServerDef>,
         geoip_db_path: Option<P>,
     ) -> Self {
-        Self::with_geoip_config(algorithm, servers, crate::config::GeoIpProvider::MaxMind, geoip_db_path)
+        Self::with_geoip_config(
+            algorithm,
+            servers,
+            crate::config::GeoIpProvider::MaxMind,
+            geoip_db_path,
+        )
     }
 
     /// Create a new load balancer with full GeoIP configuration
@@ -357,7 +371,11 @@ impl LoadBalancer {
     }
 
     /// Select a backend server based on the configured algorithm (async version)
-    pub async fn select_async(&self, client_ip: Option<&str>, request_key: Option<&str>) -> Option<Arc<BackendServer>> {
+    pub async fn select_async(
+        &self,
+        client_ip: Option<&str>,
+        request_key: Option<&str>,
+    ) -> Option<Arc<BackendServer>> {
         if self.servers.is_empty() {
             return None;
         }
@@ -416,7 +434,11 @@ impl LoadBalancer {
     }
 
     /// Select a backend server (synchronous version for backward compatibility)
-    pub fn select(&self, client_ip: Option<&str>, request_key: Option<&str>) -> Option<Arc<BackendServer>> {
+    pub fn select(
+        &self,
+        client_ip: Option<&str>,
+        request_key: Option<&str>,
+    ) -> Option<Arc<BackendServer>> {
         if self.servers.is_empty() {
             return None;
         }
@@ -476,7 +498,9 @@ impl LoadBalancer {
             for (index, server) in self.servers.iter().enumerate() {
                 let backend_id = format!("{}_{}", self.upstream_name, index);
                 let connections = server.connections();
-                let _ = state.set_backend_connections(&backend_id, connections).await;
+                let _ = state
+                    .set_backend_connections(&backend_id, connections)
+                    .await;
             }
         }
     }
@@ -509,7 +533,8 @@ impl LoadBalancer {
         }
 
         // Calculate total effective weight
-        let weights: Vec<u32> = self.servers
+        let weights: Vec<u32> = self
+            .servers
             .iter()
             .map(|s| s.effective_weight(self.slow_start_config.as_ref()))
             .collect();
@@ -641,7 +666,8 @@ impl LoadBalancer {
         let ring = self.consistent_hash_ring.read();
 
         // Binary search to find the first hash >= target
-        let idx = ring.binary_search_by_key(&hash, |(h, _)| *h)
+        let idx = ring
+            .binary_search_by_key(&hash, |(h, _)| *h)
             .unwrap_or_else(|i| if i == ring.len() { 0 } else { i });
 
         let server_idx = ring[idx].1;
@@ -749,9 +775,7 @@ impl LoadBalancer {
         let permutations: Vec<Vec<usize>> = servers
             .iter()
             .enumerate()
-            .map(|(i, server)| {
-                Self::generate_maglev_permutation(&server.server.url, i, TABLE_SIZE)
-            })
+            .map(|(i, server)| Self::generate_maglev_permutation(&server.server.url, i, TABLE_SIZE))
             .collect();
 
         // Populate the table
@@ -779,25 +803,29 @@ impl LoadBalancer {
         // Convert Option<usize> to usize
         // The algorithm should fill all slots, but use defensive programming to avoid panics
         let mut had_none = false;
-        let result: Vec<usize> = table.into_iter().enumerate().map(|(idx, x)| {
-            match x {
-                Some(backend_idx) => backend_idx,
-                None => {
-                    // This should never happen if the algorithm is correct
-                    // But if it does, log an error and use first backend instead of panicking
-                    if !had_none {
-                        tracing::error!(
-                            "Maglev table has unfilled slots - algorithm may have a bug. \
+        let result: Vec<usize> = table
+            .into_iter()
+            .enumerate()
+            .map(|(idx, x)| {
+                match x {
+                    Some(backend_idx) => backend_idx,
+                    None => {
+                        // This should never happen if the algorithm is correct
+                        // But if it does, log an error and use first backend instead of panicking
+                        if !had_none {
+                            tracing::error!(
+                                "Maglev table has unfilled slots - algorithm may have a bug. \
                             Using first backend (0) as fallback."
-                        );
-                        let _ = metrics::counter!("loadbalancer_maglev_errors_total");
-                        had_none = true;
+                            );
+                            let _ = metrics::counter!("loadbalancer_maglev_errors_total");
+                            had_none = true;
+                        }
+                        tracing::debug!("Maglev table slot {} was None, using backend 0", idx);
+                        0 // Use first backend as fallback
                     }
-                    tracing::debug!("Maglev table slot {} was None, using backend 0", idx);
-                    0 // Use first backend as fallback
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         if had_none {
             tracing::warn!(
@@ -810,7 +838,11 @@ impl LoadBalancer {
     }
 
     /// Generate Maglev permutation for a backend
-    fn generate_maglev_permutation(backend_key: &str, backend_idx: usize, size: usize) -> Vec<usize> {
+    fn generate_maglev_permutation(
+        backend_key: &str,
+        backend_idx: usize,
+        size: usize,
+    ) -> Vec<usize> {
         // Generate offset and skip values using double hashing
         let key1 = format!("{}:offset", backend_key);
         let key2 = format!("{}:skip:{}", backend_key, backend_idx);
@@ -998,7 +1030,7 @@ mod tests {
         let s2 = lb.select(None, None).unwrap();
         // Second select should get backend-1 (unprobed, same connections as backend-2)
         assert_eq!(s2.server.url, "http://backend-1");
-        s2.record_response_time(Duration::from_millis(50));  // 50ms (fastest)
+        s2.record_response_time(Duration::from_millis(50)); // 50ms (fastest)
 
         let s3 = lb.select(None, None).unwrap();
         // Third select should get backend-2 (only unprobed backend left)
@@ -1037,7 +1069,7 @@ mod tests {
 
         // Verify averages
         assert_eq!(s1.avg_response_time_us(), 150000); // (100+200)/2 = 150ms average
-        assert_eq!(s2.avg_response_time_us(), 75000);  // (50+100)/2 = 75ms average
+        assert_eq!(s2.avg_response_time_us(), 75000); // (50+100)/2 = 75ms average
 
         // s2 should be selected as it has lower average response time
         let selected = lb.select(None, None).unwrap();
@@ -1160,7 +1192,9 @@ mod tests {
         for i in 0..1000 {
             let key = format!("user{}", i);
             let server = lb.select(None, Some(&key)).unwrap();
-            *server_distribution.entry(server.server.url.clone()).or_insert(0) += 1;
+            *server_distribution
+                .entry(server.server.url.clone())
+                .or_insert(0) += 1;
         }
 
         // All servers should get some traffic (with 5 servers and 1000 requests, each should get ~200)
@@ -1190,11 +1224,9 @@ mod tests {
         for (key, expected_server) in key_to_server.iter() {
             let server = lb.select(None, Some(key)).unwrap();
             assert_eq!(
-                &server.server.url,
-                expected_server,
+                &server.server.url, expected_server,
                 "Key {} should consistently map to server {}",
-                key,
-                expected_server
+                key, expected_server
             );
         }
     }
@@ -1223,7 +1255,10 @@ mod tests {
         // Verify Maglev table is built correctly
         let servers = create_test_servers(7);
         let table = LoadBalancer::build_maglev_table(
-            &servers.into_iter().map(|s| Arc::new(BackendServer::new(s))).collect::<Vec<_>>()
+            &servers
+                .into_iter()
+                .map(|s| Arc::new(BackendServer::new(s)))
+                .collect::<Vec<_>>(),
         );
 
         // Table size should be 65537 (prime number)
@@ -1264,10 +1299,18 @@ mod tests {
         let servers = create_test_servers(3);
         let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
 
-        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
-        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
-        let s3 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
-        let s4 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None).unwrap();
+        let s1 = lb
+            .select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None)
+            .unwrap();
+        let s2 = lb
+            .select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None)
+            .unwrap();
+        let s3 = lb
+            .select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None)
+            .unwrap();
+        let s4 = lb
+            .select_grpc(crate::grpc::GrpcLoadBalancingPolicy::RoundRobin, None, None)
+            .unwrap();
 
         assert_eq!(s1.server.url, "http://backend-0");
         assert_eq!(s2.server.url, "http://backend-1");
@@ -1280,10 +1323,22 @@ mod tests {
         let servers = create_test_servers(3);
         let lb = LoadBalancer::new(LoadBalancingAlgorithm::LeastConn, servers);
 
-        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::LeastRequest, None, None).unwrap();
+        let s1 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::LeastRequest,
+                None,
+                None,
+            )
+            .unwrap();
         s1.acquire(); // 1 connection
 
-        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::LeastRequest, None, None).unwrap();
+        let s2 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::LeastRequest,
+                None,
+                None,
+            )
+            .unwrap();
         // Should not be s1 since it has a connection
         assert_ne!(s1.server.url, s2.server.url);
     }
@@ -1296,17 +1351,21 @@ mod tests {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("x-grpc-affinity".to_string(), "user123".to_string());
 
-        let s1 = lb.select_grpc(
-            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
-            Some(&metadata),
-            None,
-        ).unwrap();
+        let s1 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                Some(&metadata),
+                None,
+            )
+            .unwrap();
 
-        let s2 = lb.select_grpc(
-            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
-            Some(&metadata),
-            None,
-        ).unwrap();
+        let s2 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                Some(&metadata),
+                None,
+            )
+            .unwrap();
 
         // Same metadata should route to same backend
         assert_eq!(s1.server.url, s2.server.url);
@@ -1320,17 +1379,21 @@ mod tests {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("custom-key".to_string(), "session456".to_string());
 
-        let s1 = lb.select_grpc(
-            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
-            Some(&metadata),
-            Some("custom-key"),
-        ).unwrap();
+        let s1 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                Some(&metadata),
+                Some("custom-key"),
+            )
+            .unwrap();
 
-        let s2 = lb.select_grpc(
-            crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
-            Some(&metadata),
-            Some("custom-key"),
-        ).unwrap();
+        let s2 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                Some(&metadata),
+                Some("custom-key"),
+            )
+            .unwrap();
 
         // Same custom key should route to same backend
         assert_eq!(s1.server.url, s2.server.url);
@@ -1342,8 +1405,20 @@ mod tests {
         let lb = LoadBalancer::new(LoadBalancingAlgorithm::RoundRobin, servers);
 
         // No metadata provided, should fallback to round-robin
-        let s1 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash, None, None).unwrap();
-        let s2 = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash, None, None).unwrap();
+        let s1 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                None,
+                None,
+            )
+            .unwrap();
+        let s2 = lb
+            .select_grpc(
+                crate::grpc::GrpcLoadBalancingPolicy::ConsistentHash,
+                None,
+                None,
+            )
+            .unwrap();
 
         // Should use round-robin behavior
         assert_ne!(s1.server.url, s2.server.url);
@@ -1415,7 +1490,8 @@ mod tests {
 
         // Power of two should always return a valid backend
         for _ in 0..10 {
-            let server = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::PowerOfTwo, None, None);
+            let server =
+                lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::PowerOfTwo, None, None);
             assert!(server.is_some());
         }
     }
@@ -1429,12 +1505,17 @@ mod tests {
 
         // With 5 servers and 20 selections, we should see multiple servers
         for _ in 0..20 {
-            let server = lb.select_grpc(crate::grpc::GrpcLoadBalancingPolicy::Random, None, None).unwrap();
+            let server = lb
+                .select_grpc(crate::grpc::GrpcLoadBalancingPolicy::Random, None, None)
+                .unwrap();
             seen_servers.insert(server.server.url.clone());
         }
 
         // Should have seen at least 3 different servers
-        assert!(seen_servers.len() >= 3, "Random selection should distribute across servers");
+        assert!(
+            seen_servers.len() >= 3,
+            "Random selection should distribute across servers"
+        );
     }
 
     // Slow Start Tests
@@ -1494,7 +1575,11 @@ mod tests {
 
         // At start (t=0), should be close to initial weight (10% of 100 = 10)
         let weight = backend.effective_weight(Some(&config));
-        assert!(weight >= 10 && weight <= 15, "Initial weight should be ~10, got {}", weight);
+        assert!(
+            weight >= 10 && weight <= 15,
+            "Initial weight should be ~10, got {}",
+            weight
+        );
     }
 
     #[test]
@@ -1558,7 +1643,10 @@ mod tests {
         // Reset join time
         server.reset_join_time();
         let elapsed2 = server.time_since_join();
-        assert!(elapsed2.as_millis() < 5, "After reset, elapsed time should be very small");
+        assert!(
+            elapsed2.as_millis() < 5,
+            "After reset, elapsed time should be very small"
+        );
     }
 
     #[test]
@@ -1589,6 +1677,9 @@ mod tests {
         // Both have similar effective weights, s1 has 1 connection, s2 has 0
         // So s2 should be selected (lower conn/weight ratio)
         let s2 = lb.select(None, None).unwrap();
-        assert_ne!(s1.server.url, s2.server.url, "Should select server with lower conn/weight ratio");
+        assert_ne!(
+            s1.server.url, s2.server.url,
+            "Should select server with lower conn/weight ratio"
+        );
     }
 }

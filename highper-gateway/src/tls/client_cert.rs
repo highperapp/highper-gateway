@@ -99,9 +99,7 @@ impl ClientCertInfo {
         // Format is typically: CN=name,OU=unit,O=org,C=country
         self.subject_dn
             .split(',')
-            .find_map(|part| {
-                part.trim().strip_prefix("CN=").map(|cn| cn.to_string())
-            })
+            .find_map(|part| part.trim().strip_prefix("CN=").map(|cn| cn.to_string()))
     }
 
     /// Get certificate as HTTP headers (X-Client-Cert-*)
@@ -113,7 +111,10 @@ impl ClientCertInfo {
             ("X-Client-Cert-Subject".to_string(), self.subject_dn.clone()),
             ("X-Client-Cert-Issuer".to_string(), self.issuer_dn.clone()),
             ("X-Client-Cert-Serial".to_string(), self.serial.clone()),
-            ("X-Client-Cert-Fingerprint".to_string(), self.fingerprint.clone()),
+            (
+                "X-Client-Cert-Fingerprint".to_string(),
+                self.fingerprint.clone(),
+            ),
         ];
 
         if let Some(cn) = self.common_name() {
@@ -121,7 +122,10 @@ impl ClientCertInfo {
         }
 
         if let Some(not_before) = self.not_before {
-            headers.push(("X-Client-Cert-Not-Before".to_string(), not_before.to_string()));
+            headers.push((
+                "X-Client-Cert-Not-Before".to_string(),
+                not_before.to_string(),
+            ));
         }
 
         if let Some(not_after) = self.not_after {
@@ -212,11 +216,21 @@ mod tests {
 
         let headers = info.as_headers();
 
-        assert!(headers.iter().any(|(k, v)| k == "X-Client-Cert-Subject" && v == "CN=test"));
-        assert!(headers.iter().any(|(k, v)| k == "X-Client-Cert-Issuer" && v == "CN=CA"));
-        assert!(headers.iter().any(|(k, v)| k == "X-Client-Cert-Serial" && v == "123"));
-        assert!(headers.iter().any(|(k, v)| k == "X-Client-Cert-Fingerprint" && v == "abc"));
-        assert!(headers.iter().any(|(k, v)| k == "X-Client-Cert-CN" && v == "test"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Client-Cert-Subject" && v == "CN=test"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Client-Cert-Issuer" && v == "CN=CA"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Client-Cert-Serial" && v == "123"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Client-Cert-Fingerprint" && v == "abc"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Client-Cert-CN" && v == "test"));
     }
 
     #[test]

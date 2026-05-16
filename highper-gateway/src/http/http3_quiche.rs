@@ -10,21 +10,21 @@
 //! - 17% less memory per connection
 
 use anyhow::{Context, Result};
+use bytes::Bytes;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyExt;
+use hyper::{HeaderMap, Method, StatusCode};
+use quiche::h3::NameValue; // Import trait for Header name() and value() methods
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
-use quiche::h3::NameValue;  // Import trait for Header name() and value() methods
-use hyper::{Method, StatusCode, HeaderMap};
-use bytes::Bytes;
-use http_body_util::BodyExt;
-use http_body_util::combinators::UnsyncBoxBody;
 
 use crate::config::Config;
-use crate::middleware::{MiddlewareChain, compression_middleware::CompressionMiddleware};
-use crate::proxy::{Client, LoadBalancer};
+use crate::middleware::{compression_middleware::CompressionMiddleware, MiddlewareChain};
 use crate::proxy::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::proxy::{Client, LoadBalancer};
 
 /// Maximum datagram size for QUIC packets
 const MAX_DATAGRAM_SIZE: usize = 1350;
@@ -108,7 +108,8 @@ impl Http3Server {
         let mut middleware_chain = MiddlewareChain::new();
         middleware_chain.add(CompressionMiddleware::with_defaults());
 
-        info!("HTTP/3: Initialized middleware chain with {} middlewares: {:?}",
+        info!(
+            "HTTP/3: Initialized middleware chain with {} middlewares: {:?}",
             middleware_chain.len(),
             middleware_chain.middleware_names()
         );
@@ -117,7 +118,8 @@ impl Http3Server {
         let mut token_secret = [0u8; 32];
         use ring::rand::{SecureRandom, SystemRandom};
         let rng = SystemRandom::new();
-        rng.fill(&mut token_secret).expect("Failed to generate token secret");
+        rng.fill(&mut token_secret)
+            .expect("Failed to generate token secret");
 
         // Upstreams will be populated in the run() method after reading config
         Self {
@@ -147,14 +149,13 @@ impl Http3Server {
             let servers = upstream_config.servers.clone();
             let geoip_provider = upstream_config.load_balancing.geoip_provider;
             let geoip_path = upstream_config.load_balancing.geoip_db_path.as_deref();
-            let load_balancer = LoadBalancer::with_geoip_config(algorithm, servers, geoip_provider, geoip_path);
+            let load_balancer =
+                LoadBalancer::with_geoip_config(algorithm, servers, geoip_provider, geoip_path);
 
             // Create circuit breaker for this upstream
             let cb_config = CircuitBreakerConfig::default();
-            let circuit_breaker = Arc::new(CircuitBreaker::new(
-                upstream_config.name.clone(),
-                cb_config,
-            ));
+            let circuit_breaker =
+                Arc::new(CircuitBreaker::new(upstream_config.name.clone(), cb_config));
 
             self.upstreams.insert(
                 upstream_config.name.clone(),
@@ -166,7 +167,8 @@ impl Http3Server {
         }
 
         let addr = format!("{}:{}", http3_config.bind, http3_config.port);
-        let addr: SocketAddr = addr.parse()
+        let addr: SocketAddr = addr
+            .parse()
             .context("Failed to parse HTTP/3 bind address")?;
 
         info!("Starting HTTP/3 server on {} (using quiche)", addr);
@@ -175,12 +177,15 @@ impl Http3Server {
         let mut quiche_config = self.build_quic_config(&config)?;
 
         // Bind UDP socket
-        let socket = std::net::UdpSocket::bind(addr)
-            .context("Failed to bind UDP socket for HTTP/3")?;
+        let socket =
+            std::net::UdpSocket::bind(addr).context("Failed to bind UDP socket for HTTP/3")?;
         socket.set_nonblocking(true)?;
 
-        info!("HTTP/3 server listening on UDP {} (quiche, protocol v{})",
-            addr, quiche::PROTOCOL_VERSION);
+        info!(
+            "HTTP/3 server listening on UDP {} (quiche, protocol v{})",
+            addr,
+            quiche::PROTOCOL_VERSION
+        );
 
         // Create channels for async backend communication.
         // B11.4 + B11.5: bounded channels; capacities tunable via
@@ -224,7 +229,10 @@ impl Http3Server {
 
                     match backend_req {
                         Some(backend_req) => {
-                            debug!("Worker {} processing request for stream {}", worker_id, backend_req.stream_id);
+                            debug!(
+                                "Worker {} processing request for stream {}",
+                                worker_id, backend_req.stream_id
+                            );
 
                             // Extract metadata before moving backend_req
                             let (stream_id, conn_id) = backend_req.metadata_clone();
@@ -239,26 +247,42 @@ impl Http3Server {
                                 let client_clone = client_worker.clone();
                                 let middleware_clone = middleware_worker.clone();
                                 cb.execute(|| async move {
-                                    Self::forward_to_backend(&client_clone, backend_req, &middleware_clone).await
+                                    Self::forward_to_backend(
+                                        &client_clone,
+                                        backend_req,
+                                        &middleware_clone,
+                                    )
+                                    .await
                                 })
                                 .await
                             } else {
-                                Self::forward_to_backend(&client_worker, backend_req, &middleware_worker).await
-                                    .map_err(|e| crate::proxy::circuit_breaker::CircuitBreakerError::Failure(e))
+                                Self::forward_to_backend(
+                                    &client_worker,
+                                    backend_req,
+                                    &middleware_worker,
+                                )
+                                .await
+                                .map_err(|e| {
+                                    crate::proxy::circuit_breaker::CircuitBreakerError::Failure(e)
+                                })
                             };
 
                             // Send response back
                             let response = match result {
                                 Ok(resp) => resp,
                                 Err(e) => {
-                                    error!("Backend request failed for stream {}: {:?}", stream_id, e);
+                                    error!(
+                                        "Backend request failed for stream {}: {:?}",
+                                        stream_id, e
+                                    );
                                     BackendResponse {
                                         stream_id,
                                         conn_id,
                                         status: StatusCode::BAD_GATEWAY,
-                                        headers: vec![
-                                            (b"content-type".to_vec(), b"text/plain".to_vec()),
-                                        ],
+                                        headers: vec![(
+                                            b"content-type".to_vec(),
+                                            b"text/plain".to_vec(),
+                                        )],
                                         body: Bytes::from("Bad Gateway: Backend request failed"),
                                     }
                                 }
@@ -271,7 +295,10 @@ impl Http3Server {
                             }
                         }
                         None => {
-                            info!("HTTP/3 backend worker {} channel closed, stopping", worker_id);
+                            info!(
+                                "HTTP/3 backend worker {} channel closed, stopping",
+                                worker_id
+                            );
                             break;
                         }
                     }
@@ -299,10 +326,7 @@ impl Http3Server {
                     let pkt_buf = &mut recv_buf[..len];
 
                     // Parse QUIC packet header
-                    let hdr = match quiche::Header::from_slice(
-                        pkt_buf,
-                        quiche::MAX_CONN_ID_LEN,
-                    ) {
+                    let hdr = match quiche::Header::from_slice(pkt_buf, quiche::MAX_CONN_ID_LEN) {
                         Ok(v) => v,
                         Err(e) => {
                             error!("Failed to parse QUIC header: {}", e);
@@ -310,8 +334,10 @@ impl Http3Server {
                         }
                     };
 
-                    debug!("QUIC packet: type={:?}, dcid={:?}, scid={:?}",
-                        hdr.ty, hdr.dcid, hdr.scid);
+                    debug!(
+                        "QUIC packet: type={:?}, dcid={:?}, scid={:?}",
+                        hdr.ty, hdr.dcid, hdr.scid
+                    );
 
                     // Check if this is for an existing connection
                     let conn_id = hdr.dcid.to_vec();
@@ -389,10 +415,13 @@ impl Http3Server {
                         };
 
                         // Process initial packet
-                        match conn.recv(pkt_buf, quiche::RecvInfo {
-                            from,
-                            to: local_addr,
-                        }) {
+                        match conn.recv(
+                            pkt_buf,
+                            quiche::RecvInfo {
+                                from,
+                                to: local_addr,
+                            },
+                        ) {
                             Ok(v) => debug!("Processed {} bytes", v),
                             Err(e) => {
                                 error!("Failed to process packet: {:?}", e);
@@ -403,11 +432,14 @@ impl Http3Server {
                         info!("New HTTP/3 connection from {} (DCID: {:?})", from, hdr.dcid);
 
                         // Store connection
-                        connections.insert(conn_id.clone(), Connection {
-                            conn,
-                            h3_conn: None,
-                            partial_requests: HashMap::new(),
-                        });
+                        connections.insert(
+                            conn_id.clone(),
+                            Connection {
+                                conn,
+                                h3_conn: None,
+                                partial_requests: HashMap::new(),
+                            },
+                        );
                     }
 
                     // Get connection
@@ -417,10 +449,13 @@ impl Http3Server {
                     let mut should_remove = false;
 
                     // Process packet
-                    match conn_entry.conn.recv(pkt_buf, quiche::RecvInfo {
-                        from,
-                        to: socket.local_addr()?,
-                    }) {
+                    match conn_entry.conn.recv(
+                        pkt_buf,
+                        quiche::RecvInfo {
+                            from,
+                            to: socket.local_addr()?,
+                        },
+                    ) {
                         Ok(v) => debug!("Processed {} bytes for existing connection", v),
                         Err(quiche::Error::Done) => {
                             debug!("No more data to process");
@@ -465,9 +500,16 @@ impl Http3Server {
                     if let Some(h3_conn) = &mut conn_entry.h3_conn {
                         loop {
                             match h3_conn.poll(&mut conn_entry.conn) {
-                                Ok((stream_id, quiche::h3::Event::Headers { list, more_frames })) => {
-                                    info!("HTTP/3 request on stream {}: {} headers, more_frames={}",
-                                        stream_id, list.len(), more_frames);
+                                Ok((
+                                    stream_id,
+                                    quiche::h3::Event::Headers { list, more_frames },
+                                )) => {
+                                    info!(
+                                        "HTTP/3 request on stream {}: {} headers, more_frames={}",
+                                        stream_id,
+                                        list.len(),
+                                        more_frames
+                                    );
 
                                     // Create channel for body streaming if more frames expected
                                     let (body_tx, body_rx) = if more_frames {
@@ -492,17 +534,22 @@ impl Http3Server {
 
                                     // Store partial request if we're expecting body data
                                     if more_frames {
-                                        conn_entry.partial_requests.insert(stream_id, PartialRequest {
-                                            headers: list,
-                                            body_tx,
-                                            sent_to_backend: true,
-                                        });
+                                        conn_entry.partial_requests.insert(
+                                            stream_id,
+                                            PartialRequest {
+                                                headers: list,
+                                                body_tx,
+                                                sent_to_backend: true,
+                                            },
+                                        );
                                     }
                                 }
 
                                 Ok((stream_id, quiche::h3::Event::Data)) => {
                                     // Read and stream request body chunk
-                                    if let Some(partial_req) = conn_entry.partial_requests.get_mut(&stream_id) {
+                                    if let Some(partial_req) =
+                                        conn_entry.partial_requests.get_mut(&stream_id)
+                                    {
                                         let mut buf = vec![0; 65536]; // 64KB chunks for better streaming performance
                                         match h3_conn.recv_body(
                                             &mut conn_entry.conn,
@@ -510,7 +557,10 @@ impl Http3Server {
                                             &mut buf,
                                         ) {
                                             Ok(len) => {
-                                                debug!("Streaming {} bytes of body on stream {}", len, stream_id);
+                                                debug!(
+                                                    "Streaming {} bytes of body on stream {}",
+                                                    len, stream_id
+                                                );
 
                                                 // Stream chunk to backend
                                                 if let Some(body_tx) = &partial_req.body_tx {
@@ -523,9 +573,15 @@ impl Http3Server {
                                                 }
                                             }
                                             Err(e) => {
-                                                error!("Failed to read body on stream {}: {:?}", stream_id, e);
+                                                error!(
+                                                    "Failed to read body on stream {}: {:?}",
+                                                    stream_id, e
+                                                );
                                                 if let Some(body_tx) = &partial_req.body_tx {
-                                                    let _ = body_tx.try_send(Err(format!("Read error: {:?}", e)));
+                                                    let _ = body_tx.try_send(Err(format!(
+                                                        "Read error: {:?}",
+                                                        e
+                                                    )));
                                                 }
                                             }
                                         }
@@ -601,7 +657,10 @@ impl Http3Server {
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No data available, check for backend responses
                     while let Ok(backend_response) = resp_rx.try_recv() {
-                        debug!("Received backend response for stream {}", backend_response.stream_id);
+                        debug!(
+                            "Received backend response for stream {}",
+                            backend_response.stream_id
+                        );
 
                         // Find the connection for this response
                         if let Some(conn_entry) = connections.get_mut(&backend_response.conn_id) {
@@ -615,7 +674,10 @@ impl Http3Server {
                                 );
                             }
                         } else {
-                            warn!("Connection not found for backend response, stream {}", backend_response.stream_id);
+                            warn!(
+                                "Connection not found for backend response, stream {}",
+                                backend_response.stream_id
+                            );
                         }
                     }
 
@@ -674,7 +736,13 @@ impl Http3Server {
             Some(m) => m,
             None => {
                 warn!("Missing :method header");
-                Self::send_error_response(h3_conn, quic_conn, stream_id, 400, "Bad Request: Missing :method");
+                Self::send_error_response(
+                    h3_conn,
+                    quic_conn,
+                    stream_id,
+                    400,
+                    "Bad Request: Missing :method",
+                );
                 return;
             }
         };
@@ -683,7 +751,13 @@ impl Http3Server {
             Some(p) => p,
             None => {
                 warn!("Missing :path header");
-                Self::send_error_response(h3_conn, quic_conn, stream_id, 400, "Bad Request: Missing :path");
+                Self::send_error_response(
+                    h3_conn,
+                    quic_conn,
+                    stream_id,
+                    400,
+                    "Bad Request: Missing :path",
+                );
                 return;
             }
         };
@@ -695,7 +769,13 @@ impl Http3Server {
             Ok(m) => m,
             Err(_) => {
                 warn!("Invalid method: {}", method_str);
-                Self::send_error_response(h3_conn, quic_conn, stream_id, 400, "Bad Request: Invalid method");
+                Self::send_error_response(
+                    h3_conn,
+                    quic_conn,
+                    stream_id,
+                    400,
+                    "Bad Request: Invalid method",
+                );
                 return;
             }
         };
@@ -714,7 +794,13 @@ impl Http3Server {
                     // Check circuit breaker
                     if !upstream.circuit_breaker.allow_request() {
                         warn!("Circuit breaker OPEN for upstream: {}", route.upstream);
-                        Self::send_error_response(h3_conn, quic_conn, stream_id, 503, "Service Unavailable: Circuit breaker is open");
+                        Self::send_error_response(
+                            h3_conn,
+                            quic_conn,
+                            stream_id,
+                            503,
+                            "Service Unavailable: Circuit breaker is open",
+                        );
                         return;
                     }
 
@@ -730,7 +816,7 @@ impl Http3Server {
                             method: method.clone(),
                             path: path.clone(),
                             headers: other_headers,
-                            body_rx,  // Stream body from channel
+                            body_rx, // Stream body from channel
                             backend_url,
                             upstream_name: route.upstream.clone(),
                         };
@@ -748,31 +834,68 @@ impl Http3Server {
                                 return;
                             }
                             Err(mpsc::error::TrySendError::Closed(_)) => {
-                                error!("HTTP/3 backend worker pool channel closed (request dropped)");
-                                Self::send_error_response(h3_conn, quic_conn, stream_id, 500, "Internal Server Error: Worker pool unavailable");
+                                error!(
+                                    "HTTP/3 backend worker pool channel closed (request dropped)"
+                                );
+                                Self::send_error_response(
+                                    h3_conn,
+                                    quic_conn,
+                                    stream_id,
+                                    500,
+                                    "Internal Server Error: Worker pool unavailable",
+                                );
                                 return;
                             }
                         }
 
-                        info!("Forwarded HTTP/3 request to backend worker pool: {} {}", method, path);
+                        info!(
+                            "Forwarded HTTP/3 request to backend worker pool: {} {}",
+                            method, path
+                        );
                     } else {
-                        warn!("No healthy backends available for upstream: {}", route.upstream);
-                        Self::send_error_response(h3_conn, quic_conn, stream_id, 503, "Service Unavailable: No healthy backends");
+                        warn!(
+                            "No healthy backends available for upstream: {}",
+                            route.upstream
+                        );
+                        Self::send_error_response(
+                            h3_conn,
+                            quic_conn,
+                            stream_id,
+                            503,
+                            "Service Unavailable: No healthy backends",
+                        );
                     }
                 } else {
                     warn!("Upstream not found: {}", route.upstream);
-                    Self::send_error_response(h3_conn, quic_conn, stream_id, 502, "Bad Gateway: Upstream not found");
+                    Self::send_error_response(
+                        h3_conn,
+                        quic_conn,
+                        stream_id,
+                        502,
+                        "Bad Gateway: Upstream not found",
+                    );
                 }
             }
             None => {
                 warn!("No route matched for {} {}", method, path);
-                Self::send_error_response(h3_conn, quic_conn, stream_id, 404, "Not Found: No matching route");
+                Self::send_error_response(
+                    h3_conn,
+                    quic_conn,
+                    stream_id,
+                    404,
+                    "Not Found: No matching route",
+                );
             }
         }
     }
 
     /// Find a matching route for the request
-    fn find_route<'a>(config: &'a Config, method: &Method, host: &str, path: &str) -> Option<&'a crate::config::RouteConfig> {
+    fn find_route<'a>(
+        config: &'a Config,
+        method: &Method,
+        host: &str,
+        path: &str,
+    ) -> Option<&'a crate::config::RouteConfig> {
         for route in &config.routes {
             // Check host match (if specified)
             if !route.match_rules.hosts.is_empty() {
@@ -870,7 +993,10 @@ impl Http3Server {
         backend_req: BackendRequest,
         middleware_chain: &Arc<MiddlewareChain>,
     ) -> Result<BackendResponse> {
-        debug!("Forwarding to backend: {} {}", backend_req.method, backend_req.path);
+        debug!(
+            "Forwarding to backend: {} {}",
+            backend_req.method, backend_req.path
+        );
 
         // Build header map
         let mut headers = HeaderMap::new();
@@ -887,15 +1013,17 @@ impl Http3Server {
         let body = if let Some(body_rx) = backend_req.body_rx {
             // Stream body chunks from channel
             use futures_util::stream;
-            use http_body_util::StreamBody;
             use http_body_util::combinators::UnsyncBoxBody;
-            
+            use http_body_util::StreamBody;
+
             use http_body::Frame;
 
             let body_stream = stream::unfold(body_rx, |mut rx| async move {
                 match rx.recv().await {
                     Some(Ok(chunk)) => Some((Ok(Frame::data(chunk)), rx)),
-                    Some(Err(e)) => Some((Err(std::io::Error::new(std::io::ErrorKind::Other, e)), rx)),
+                    Some(Err(e)) => {
+                        Some((Err(std::io::Error::new(std::io::ErrorKind::Other, e)), rx))
+                    }
                     None => None, // End of stream
                 }
             });
@@ -904,14 +1032,15 @@ impl Http3Server {
             UnsyncBoxBody::new(stream_body)
         } else {
             // No body (GET/HEAD requests)
-            let empty_body = http_body_util::Empty::new()
-                .map_err(|e: std::convert::Infallible| match e {});
+            let empty_body =
+                http_body_util::Empty::new().map_err(|e: std::convert::Infallible| match e {});
             UnsyncBoxBody::new(empty_body)
         };
 
         // Build and send request directly using hyper
         let url = format!("{}{}", backend_req.backend_url, backend_req.path);
-        let uri = url.parse::<hyper::Uri>()
+        let uri = url
+            .parse::<hyper::Uri>()
             .context("Failed to parse backend URL")?;
 
         let mut req = hyper::Request::builder()
@@ -925,15 +1054,17 @@ impl Http3Server {
         let request = req.body(body)?;
 
         // Create a hyper client for streaming requests (Client doesn't support custom bodies)
-        use hyper_util::client::legacy::Client as HyperClient;
         use hyper_util::client::legacy::connect::HttpConnector;
+        use hyper_util::client::legacy::Client as HyperClient;
         use hyper_util::rt::TokioExecutor;
 
         let connector = HttpConnector::new();
         let hyper_client = HyperClient::builder(TokioExecutor::new()).build(connector);
 
         // Send request using hyper client directly
-        let response = hyper_client.request(request).await
+        let response = hyper_client
+            .request(request)
+            .await
             .context("Failed to send request to backend")?;
 
         let status = response.status();
@@ -947,24 +1078,31 @@ impl Http3Server {
             .context("Failed to read backend response body")?
             .to_bytes();
 
-        debug!("Backend response: status={}, body_len={}", status, body_bytes.len());
+        debug!(
+            "Backend response: status={}, body_len={}",
+            status,
+            body_bytes.len()
+        );
 
         // Build Response<Full<Bytes>> for middleware processing
-        
+
         let mut response_builder = hyper::Response::builder().status(status);
 
         for (key, value) in resp_headers.iter() {
             response_builder = response_builder.header(key, value);
         }
 
-        let hyper_response = response_builder.body(crate::http::ResponseBody::buffered(body_bytes))?;
+        let hyper_response =
+            response_builder.body(crate::http::ResponseBody::buffered(body_bytes))?;
 
         // Apply middleware chain (compression, etc.)
         let processed_response = middleware_chain.process_response(hyper_response).await?;
 
         // Extract processed data
         let (parts, body) = processed_response.into_parts();
-        let processed_body = body.collect().await
+        let processed_body = body
+            .collect()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to collect processed body: {}", e))?
             .to_bytes();
 
@@ -990,7 +1128,10 @@ impl Http3Server {
         stream_id: u64,
         backend_response: &BackendResponse,
     ) {
-        debug!("Sending backend response to stream {}: status={}", stream_id, backend_response.status);
+        debug!(
+            "Sending backend response to stream {}: status={}",
+            stream_id, backend_response.status
+        );
 
         // Build response headers
         let status_bytes = backend_response.status.as_u16().to_string();
@@ -1016,7 +1157,11 @@ impl Http3Server {
         // Send body
         if !backend_response.body.is_empty() {
             match h3_conn.send_body(quic_conn, stream_id, &backend_response.body, true) {
-                Ok(_) => debug!("Sent backend response body ({} bytes) on stream {}", backend_response.body.len(), stream_id),
+                Ok(_) => debug!(
+                    "Sent backend response body ({} bytes) on stream {}",
+                    backend_response.body.len(),
+                    stream_id
+                ),
                 Err(e) => {
                     error!("Failed to send backend response body: {:?}", e);
                 }
@@ -1035,10 +1180,14 @@ impl Http3Server {
         let mut quiche_config = quiche::Config::new(quiche::PROTOCOL_VERSION)?;
 
         // Load TLS certificates
-        let tls_config = config.tls.as_ref()
+        let tls_config = config
+            .tls
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("TLS config required for HTTP/3"))?;
 
-        let cert_config = tls_config.certificates.first()
+        let cert_config = tls_config
+            .certificates
+            .first()
             .ok_or_else(|| anyhow::anyhow!("At least one certificate required for HTTP/3"))?;
 
         quiche_config.load_cert_chain_from_pem_file(&cert_config.cert_file)?;
@@ -1046,9 +1195,9 @@ impl Http3Server {
 
         // Set application protocols (HTTP/3)
         quiche_config.set_application_protos(&[
-            b"h3",      // HTTP/3
-            b"h3-29",   // HTTP/3 draft 29
-            b"h3-28",   // HTTP/3 draft 28
+            b"h3",    // HTTP/3
+            b"h3-29", // HTTP/3 draft 29
+            b"h3-28", // HTTP/3 draft 28
         ])?;
 
         // Connection timeouts
@@ -1223,8 +1372,8 @@ mod tests {
 
     // Helper to create a test server without full config
     fn create_test_server() -> Http3Server {
-        use tokio::sync::RwLock;
         use std::sync::Arc;
+        use tokio::sync::RwLock;
 
         // Create minimal config manually (Config doesn't implement Default)
         let config = Config {

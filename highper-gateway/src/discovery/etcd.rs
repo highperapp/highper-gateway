@@ -140,8 +140,8 @@ impl ServiceDiscovery for EtcdDiscovery {
         info!("Registering service with etcd: {}", instance.id);
 
         let key = format!("{}/{}/{}", self.key_prefix, instance.name, instance.id);
-        let value = serde_json::to_string(&instance)
-            .context("Failed to serialize service instance")?;
+        let value =
+            serde_json::to_string(&instance).context("Failed to serialize service instance")?;
 
         let mut client = self.client.clone();
         client
@@ -226,14 +226,14 @@ impl ServiceDiscovery for EtcdDiscovery {
 
         for kv in response.kvs() {
             let value = kv.value_str().context("Invalid UTF-8 in etcd value")?;
-            let mut instance: ServiceInstance = serde_json::from_str(value)
-                .context("Failed to parse service instance")?;
+            let mut instance: ServiceInstance =
+                serde_json::from_str(value).context("Failed to parse service instance")?;
 
             instance.health = status;
 
             let key = kv.key_str().context("Invalid UTF-8 in etcd key")?;
-            let updated_value = serde_json::to_string(&instance)
-                .context("Failed to serialize updated instance")?;
+            let updated_value =
+                serde_json::to_string(&instance).context("Failed to serialize updated instance")?;
 
             client
                 .put(key, updated_value, None)

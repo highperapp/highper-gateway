@@ -43,51 +43,89 @@ impl MimeCache {
     /// Pre-populate cache with common MIME types
     fn populate_defaults(&self) {
         // HTML
-        self.cache.insert("html".to_string(), "text/html; charset=utf-8".to_string());
-        self.cache.insert("htm".to_string(), "text/html; charset=utf-8".to_string());
+        self.cache
+            .insert("html".to_string(), "text/html; charset=utf-8".to_string());
+        self.cache
+            .insert("htm".to_string(), "text/html; charset=utf-8".to_string());
 
         // CSS
-        self.cache.insert("css".to_string(), "text/css; charset=utf-8".to_string());
+        self.cache
+            .insert("css".to_string(), "text/css; charset=utf-8".to_string());
 
         // JavaScript
-        self.cache.insert("js".to_string(), "application/javascript; charset=utf-8".to_string());
-        self.cache.insert("mjs".to_string(), "application/javascript; charset=utf-8".to_string());
-        self.cache.insert("json".to_string(), "application/json; charset=utf-8".to_string());
+        self.cache.insert(
+            "js".to_string(),
+            "application/javascript; charset=utf-8".to_string(),
+        );
+        self.cache.insert(
+            "mjs".to_string(),
+            "application/javascript; charset=utf-8".to_string(),
+        );
+        self.cache.insert(
+            "json".to_string(),
+            "application/json; charset=utf-8".to_string(),
+        );
 
         // Images
-        self.cache.insert("png".to_string(), "image/png".to_string());
-        self.cache.insert("jpg".to_string(), "image/jpeg".to_string());
-        self.cache.insert("jpeg".to_string(), "image/jpeg".to_string());
-        self.cache.insert("gif".to_string(), "image/gif".to_string());
-        self.cache.insert("svg".to_string(), "image/svg+xml".to_string());
-        self.cache.insert("webp".to_string(), "image/webp".to_string());
-        self.cache.insert("ico".to_string(), "image/x-icon".to_string());
+        self.cache
+            .insert("png".to_string(), "image/png".to_string());
+        self.cache
+            .insert("jpg".to_string(), "image/jpeg".to_string());
+        self.cache
+            .insert("jpeg".to_string(), "image/jpeg".to_string());
+        self.cache
+            .insert("gif".to_string(), "image/gif".to_string());
+        self.cache
+            .insert("svg".to_string(), "image/svg+xml".to_string());
+        self.cache
+            .insert("webp".to_string(), "image/webp".to_string());
+        self.cache
+            .insert("ico".to_string(), "image/x-icon".to_string());
 
         // Fonts
-        self.cache.insert("woff".to_string(), "font/woff".to_string());
-        self.cache.insert("woff2".to_string(), "font/woff2".to_string());
+        self.cache
+            .insert("woff".to_string(), "font/woff".to_string());
+        self.cache
+            .insert("woff2".to_string(), "font/woff2".to_string());
         self.cache.insert("ttf".to_string(), "font/ttf".to_string());
-        self.cache.insert("eot".to_string(), "application/vnd.ms-fontobject".to_string());
+        self.cache.insert(
+            "eot".to_string(),
+            "application/vnd.ms-fontobject".to_string(),
+        );
 
         // Documents
-        self.cache.insert("pdf".to_string(), "application/pdf".to_string());
-        self.cache.insert("txt".to_string(), "text/plain; charset=utf-8".to_string());
-        self.cache.insert("xml".to_string(), "application/xml; charset=utf-8".to_string());
+        self.cache
+            .insert("pdf".to_string(), "application/pdf".to_string());
+        self.cache
+            .insert("txt".to_string(), "text/plain; charset=utf-8".to_string());
+        self.cache.insert(
+            "xml".to_string(),
+            "application/xml; charset=utf-8".to_string(),
+        );
 
         // Video
-        self.cache.insert("mp4".to_string(), "video/mp4".to_string());
-        self.cache.insert("webm".to_string(), "video/webm".to_string());
-        self.cache.insert("ogv".to_string(), "video/ogg".to_string());
+        self.cache
+            .insert("mp4".to_string(), "video/mp4".to_string());
+        self.cache
+            .insert("webm".to_string(), "video/webm".to_string());
+        self.cache
+            .insert("ogv".to_string(), "video/ogg".to_string());
 
         // Audio
-        self.cache.insert("mp3".to_string(), "audio/mpeg".to_string());
-        self.cache.insert("ogg".to_string(), "audio/ogg".to_string());
-        self.cache.insert("wav".to_string(), "audio/wav".to_string());
+        self.cache
+            .insert("mp3".to_string(), "audio/mpeg".to_string());
+        self.cache
+            .insert("ogg".to_string(), "audio/ogg".to_string());
+        self.cache
+            .insert("wav".to_string(), "audio/wav".to_string());
 
         // Archives
-        self.cache.insert("zip".to_string(), "application/zip".to_string());
-        self.cache.insert("gz".to_string(), "application/gzip".to_string());
-        self.cache.insert("tar".to_string(), "application/x-tar".to_string());
+        self.cache
+            .insert("zip".to_string(), "application/zip".to_string());
+        self.cache
+            .insert("gz".to_string(), "application/gzip".to_string());
+        self.cache
+            .insert("tar".to_string(), "application/x-tar".to_string());
     }
 
     /// Clear cache
@@ -210,7 +248,10 @@ mod tests {
         assert_eq!(cache.get_mime_type(path), "image/png");
 
         let path = Path::new("script.js");
-        assert_eq!(cache.get_mime_type(path), "application/javascript; charset=utf-8");
+        assert_eq!(
+            cache.get_mime_type(path),
+            "application/javascript; charset=utf-8"
+        );
     }
 
     #[test]

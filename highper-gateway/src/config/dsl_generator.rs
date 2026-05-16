@@ -43,11 +43,17 @@ fn group_routes_into_sites(config: &Config) -> Result<Vec<Site>> {
 
     // Determine primary bind address
     let bind_addr = if !config.server.tls_bind.is_empty() {
-        config.server.tls_bind.first()
+        config
+            .server
+            .tls_bind
+            .first()
             .context("No TLS bind address")?
             .clone()
     } else {
-        config.server.bind.first()
+        config
+            .server
+            .bind
+            .first()
             .context("No bind address")?
             .clone()
     };
@@ -57,7 +63,9 @@ fn group_routes_into_sites(config: &Config) -> Result<Vec<Site>> {
     // Group routes by upstream
     for route in &config.routes {
         // Find matching upstream
-        let upstream = config.upstreams.iter()
+        let upstream = config
+            .upstreams
+            .iter()
             .find(|u| u.name == route.upstream)
             .cloned();
 
@@ -86,14 +94,13 @@ fn generate_site(site: &Site) -> Result<String> {
         // Simple format: address proxy backends
         if let Some(upstream) = &site.upstream {
             if !upstream.servers.is_empty() {
-                let backends: Vec<String> = upstream.servers.iter()
+                let backends: Vec<String> = upstream
+                    .servers
+                    .iter()
                     .map(|s| extract_backend_address(&s.url))
                     .collect();
 
-                output.push_str(&format!("{} proxy {}",
-                    site.address,
-                    backends.join(" ")
-                ));
+                output.push_str(&format!("{} proxy {}", site.address, backends.join(" ")));
 
                 // Add load balancing if not default
                 let lb = &upstream.load_balancing;
@@ -113,12 +120,17 @@ fn generate_site(site: &Site) -> Result<String> {
                 if !upstream.servers.is_empty() {
                     output.push('\n'); // Newline before each route block
 
-                    let backends: Vec<String> = upstream.servers.iter()
+                    let backends: Vec<String> = upstream
+                        .servers
+                        .iter()
                         .map(|s| extract_backend_address(&s.url))
                         .collect();
 
                     // Use first path from match_rules
-                    let mut path = route.match_rules.paths.first()
+                    let mut path = route
+                        .match_rules
+                        .paths
+                        .first()
                         .map(|s| s.as_str())
                         .unwrap_or("/*")
                         .to_string();
@@ -145,8 +157,7 @@ fn generate_site(site: &Site) -> Result<String> {
 /// Extract backend address from URL
 fn extract_backend_address(url: &str) -> String {
     // Remove scheme if present
-    url.replace("http://", "")
-        .replace("https://", "")
+    url.replace("http://", "").replace("https://", "")
 }
 
 /// Generate global directives
@@ -178,7 +189,8 @@ fn generate_global_directives(config: &Config) -> Result<String> {
     // Rate limiting
     if let Some(rate_limit) = &config.rate_limit {
         if rate_limit.enabled {
-            output.push_str(&format!("rate_limit {} per {}s\n",
+            output.push_str(&format!(
+                "rate_limit {} per {}s\n",
                 rate_limit.capacity,
                 rate_limit.window.as_secs()
             ));
@@ -234,8 +246,14 @@ mod tests {
 
     #[test]
     fn test_extract_backend_address() {
-        assert_eq!(extract_backend_address("http://backend:3000"), "backend:3000");
-        assert_eq!(extract_backend_address("https://backend:3000"), "backend:3000");
+        assert_eq!(
+            extract_backend_address("http://backend:3000"),
+            "backend:3000"
+        );
+        assert_eq!(
+            extract_backend_address("https://backend:3000"),
+            "backend:3000"
+        );
         assert_eq!(extract_backend_address("backend:3000"), "backend:3000");
     }
 

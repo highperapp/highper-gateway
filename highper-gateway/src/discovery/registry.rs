@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-use super::{DiscoveryConfig, ServiceDiscovery, ServiceInstance, create_discovery};
+use super::{create_discovery, DiscoveryConfig, ServiceDiscovery, ServiceInstance};
 
 /// Service registry that integrates discovery with proxy upstreams
 pub struct ServiceRegistry {
@@ -113,7 +113,8 @@ impl ServiceRegistry {
         let service = service_name.to_string();
 
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(registry.config.refresh_interval));
+            let mut ticker =
+                tokio::time::interval(Duration::from_secs(registry.config.refresh_interval));
             loop {
                 ticker.tick().await;
                 if let Err(e) = registry.refresh_service(&service).await {
@@ -177,5 +178,4 @@ mod tests {
         let _result = ServiceRegistry::new(config).await;
         // We don't assert since discovery backend may not be available
     }
-
 }

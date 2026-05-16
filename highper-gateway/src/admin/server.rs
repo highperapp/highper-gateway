@@ -70,7 +70,10 @@ impl AdminServer {
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
-            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(proxy_config, proxy_state)),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(
+                proxy_config,
+                proxy_state,
+            )),
             config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
@@ -109,13 +112,19 @@ impl AdminServer {
             hostname_router: None,
             auth_db: None,
             route_manager: Arc::new(crate::admin::RouteManager::new()),
-            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(proxy_config, proxy_state)),
+            upstream_manager: Arc::new(crate::admin::UpstreamManager::with_state(
+                proxy_config,
+                proxy_state,
+            )),
             config_persistence: Arc::new(crate::admin::ConfigPersistence::disabled()),
         }
     }
 
     /// Set the hostname router (builder pattern)
-    pub fn with_hostname_router(mut self, router: Arc<crate::gateway::routing::HostnameRouter>) -> Self {
+    pub fn with_hostname_router(
+        mut self,
+        router: Arc<crate::gateway::routing::HostnameRouter>,
+    ) -> Self {
         self.hostname_router = Some(router);
         self
     }
@@ -127,7 +136,10 @@ impl AdminServer {
     }
 
     /// Set the configuration persistence (builder pattern)
-    pub fn with_config_persistence(mut self, persistence: Arc<crate::admin::ConfigPersistence>) -> Self {
+    pub fn with_config_persistence(
+        mut self,
+        persistence: Arc<crate::admin::ConfigPersistence>,
+    ) -> Self {
         self.config_persistence = persistence;
         self
     }
@@ -236,7 +248,10 @@ impl AdminServer {
             // Routes management
             (&Method::GET, "/api/routes") => self.list_routes().await,
             (&Method::POST, "/api/routes") => self.create_route(req).await,
-            _ if method == Method::GET && path.starts_with("/api/routes/") && !path.contains("/metrics") => {
+            _ if method == Method::GET
+                && path.starts_with("/api/routes/")
+                && !path.contains("/metrics") =>
+            {
                 let route_name = path.strip_prefix("/api/routes/").unwrap_or_default();
                 self.get_route(route_name).await
             }
@@ -254,29 +269,51 @@ impl AdminServer {
             (&Method::POST, "/api/upstreams") => self.create_upstream(req).await,
 
             // Upstream operations (GET, PUT, DELETE specific upstream)
-            _ if method == Method::GET && path.starts_with("/api/upstreams/") && path.ends_with("/health") => {
+            _ if method == Method::GET
+                && path.starts_with("/api/upstreams/")
+                && path.ends_with("/health") =>
+            {
                 self.handle_upstream_health(&path).await
             }
-            _ if method == Method::GET && path.starts_with("/api/upstreams/") && !path.contains("/servers") && !path.contains("/load-balancing") => {
+            _ if method == Method::GET
+                && path.starts_with("/api/upstreams/")
+                && !path.contains("/servers")
+                && !path.contains("/load-balancing") =>
+            {
                 self.handle_upstream_get(&path).await
             }
-            _ if method == Method::PUT && path.starts_with("/api/upstreams/") && !path.contains("/load-balancing") => {
+            _ if method == Method::PUT
+                && path.starts_with("/api/upstreams/")
+                && !path.contains("/load-balancing") =>
+            {
                 self.handle_upstream_update(&path, req).await
             }
-            _ if method == Method::DELETE && path.starts_with("/api/upstreams/") && !path.contains("/servers") => {
+            _ if method == Method::DELETE
+                && path.starts_with("/api/upstreams/")
+                && !path.contains("/servers") =>
+            {
                 self.handle_upstream_delete(&path).await
             }
 
             // Upstream server management
-            _ if method == Method::POST && path.starts_with("/api/upstreams/") && path.ends_with("/servers") => {
+            _ if method == Method::POST
+                && path.starts_with("/api/upstreams/")
+                && path.ends_with("/servers") =>
+            {
                 self.handle_add_server(&path, req).await
             }
-            _ if method == Method::DELETE && path.starts_with("/api/upstreams/") && path.contains("/servers") => {
+            _ if method == Method::DELETE
+                && path.starts_with("/api/upstreams/")
+                && path.contains("/servers") =>
+            {
                 self.handle_remove_server(&path, req).await
             }
 
             // Upstream load balancing update
-            _ if method == Method::PUT && path.starts_with("/api/upstreams/") && path.ends_with("/load-balancing") => {
+            _ if method == Method::PUT
+                && path.starts_with("/api/upstreams/")
+                && path.ends_with("/load-balancing") =>
+            {
                 self.handle_update_load_balancing(&path, req).await
             }
 
@@ -380,7 +417,10 @@ impl AdminServer {
 
                         match decode::<JwtClaims>(token, &decoding_key, &validation) {
                             Ok(token_data) => {
-                                debug!("JWT authentication successful for user: {}", token_data.claims.sub);
+                                debug!(
+                                    "JWT authentication successful for user: {}",
+                                    token_data.claims.sub
+                                );
                                 return Ok(());
                             }
                             Err(e) => {
@@ -584,7 +624,7 @@ impl AdminServer {
                 json!({
                     "routes": routes_data,
                     "source": "hostname_router"
-                })
+                }),
             );
         }
 
@@ -607,7 +647,7 @@ impl AdminServer {
             json!({
                 "routes": routes,
                 "source": "config"
-            })
+            }),
         )
     }
 
@@ -683,7 +723,11 @@ impl AdminServer {
     }
 
     /// Update an existing route
-    async fn update_route(&self, route_name: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+    async fn update_route(
+        &self,
+        route_name: &str,
+        req: Request<Incoming>,
+    ) -> Response<Full<Bytes>> {
         use http_body_util::BodyExt;
 
         // Check read-only mode
@@ -722,7 +766,11 @@ impl AdminServer {
         };
 
         // Update route in manager
-        match self.route_manager.update_route(route_name, route.clone()).await {
+        match self
+            .route_manager
+            .update_route(route_name, route.clone())
+            .await
+        {
             Ok(()) => json_response(
                 StatusCode::OK,
                 json!({
@@ -779,7 +827,7 @@ impl AdminServer {
                 json!({
                     "upstreams": upstreams_data,
                     "source": "hostname_router"
-                })
+                }),
             );
         }
 
@@ -803,17 +851,14 @@ impl AdminServer {
             json!({
                 "upstreams": upstreams,
                 "source": "config"
-            })
+            }),
         )
     }
 
     /// List all backends
     async fn list_backends(&self) -> Response<Full<Bytes>> {
-        crate::admin::backends::list_backends(
-            self.proxy_config.clone(),
-            self.proxy_state.clone(),
-        )
-        .await
+        crate::admin::backends::list_backends(self.proxy_config.clone(), self.proxy_state.clone())
+            .await
     }
 
     /// Handle backend GET requests (get specific backend)
@@ -878,7 +923,9 @@ impl AdminServer {
                 drain_timeout_seconds: None,
             }
         } else {
-            match serde_json::from_slice::<crate::admin::backends::BackendControlRequest>(&body_bytes) {
+            match serde_json::from_slice::<crate::admin::backends::BackendControlRequest>(
+                &body_bytes,
+            ) {
                 Ok(req) => req,
                 Err(e) => {
                     return json_response(
@@ -926,12 +973,10 @@ impl AdminServer {
                     .await
             }
             "drain-status" => {
-                crate::admin::backends::get_drain_status(self.proxy_state.clone(), backend_id)
-                    .await
+                crate::admin::backends::get_drain_status(self.proxy_state.clone(), backend_id).await
             }
             "cancel-drain" => {
-                crate::admin::backends::cancel_drain(self.proxy_state.clone(), backend_id)
-                    .await
+                crate::admin::backends::cancel_drain(self.proxy_state.clone(), backend_id).await
             }
             _ => json_response(
                 StatusCode::BAD_REQUEST,
@@ -1011,7 +1056,10 @@ impl AdminServer {
         };
 
         // Parse request body
-        let invalidate_request = match serde_json::from_slice::<crate::admin::cache::InvalidateCacheRequest>(&body_bytes) {
+        let invalidate_request = match serde_json::from_slice::<
+            crate::admin::cache::InvalidateCacheRequest,
+        >(&body_bytes)
+        {
             Ok(req) => req,
             Err(e) => {
                 return json_response(
@@ -1024,7 +1072,8 @@ impl AdminServer {
             }
         };
 
-        crate::admin::cache::invalidate_cache_keys(self.proxy_state.clone(), invalidate_request).await
+        crate::admin::cache::invalidate_cache_keys(self.proxy_state.clone(), invalidate_request)
+            .await
     }
 
     /// Get route metrics
@@ -1078,24 +1127,28 @@ impl AdminServer {
         };
 
         // Parse login request
-        let login_request = match serde_json::from_slice::<crate::admin::auth::LoginRequest>(&body_bytes) {
-            Ok(req) => req,
-            Err(e) => {
-                return json_response(
-                    StatusCode::BAD_REQUEST,
-                    json!({
-                        "error": "Invalid request body",
-                        "message": e.to_string()
-                    }),
-                );
-            }
-        };
+        let login_request =
+            match serde_json::from_slice::<crate::admin::auth::LoginRequest>(&body_bytes) {
+                Ok(req) => req,
+                Err(e) => {
+                    return json_response(
+                        StatusCode::BAD_REQUEST,
+                        json!({
+                            "error": "Invalid request body",
+                            "message": e.to_string()
+                        }),
+                    );
+                }
+            };
 
         // Attempt login
         match auth_db.login(login_request).await {
             Ok(response) => match serde_json::to_value(response) {
                 Ok(value) => json_response(StatusCode::OK, value),
-                Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"error": e.to_string()})),
+                Err(e) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    serde_json::json!({"error": e.to_string()}),
+                ),
             },
             Err(e) => e.into(),
         }
@@ -1156,23 +1209,27 @@ impl AdminServer {
         };
 
         // Parse create user request
-        let create_request = match serde_json::from_slice::<crate::admin::auth::CreateUserRequest>(&body_bytes) {
-            Ok(req) => req,
-            Err(e) => {
-                return json_response(
-                    StatusCode::BAD_REQUEST,
-                    json!({
-                        "error": "Invalid request body",
-                        "message": e.to_string()
-                    }),
-                );
-            }
-        };
+        let create_request =
+            match serde_json::from_slice::<crate::admin::auth::CreateUserRequest>(&body_bytes) {
+                Ok(req) => req,
+                Err(e) => {
+                    return json_response(
+                        StatusCode::BAD_REQUEST,
+                        json!({
+                            "error": "Invalid request body",
+                            "message": e.to_string()
+                        }),
+                    );
+                }
+            };
 
         match auth_db.create_user(create_request).await {
             Ok(user) => match serde_json::to_value(user) {
                 Ok(value) => json_response(StatusCode::CREATED, value),
-                Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, serde_json::json!({"error": e.to_string()})),
+                Err(e) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    serde_json::json!({"error": e.to_string()}),
+                ),
             },
             Err(e) => e.into(),
         }
@@ -1240,24 +1297,26 @@ impl AdminServer {
             let headers = response.headers_mut();
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_METHODS,
-                "GET, POST, PUT, DELETE, OPTIONS"
-                    .parse()
-                    .unwrap(),
+                "GET, POST, PUT, DELETE, OPTIONS".parse().unwrap(),
             );
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_HEADERS,
-                "Content-Type, Authorization, X-API-Key"
-                    .parse()
-                    .unwrap(),
+                "Content-Type, Authorization, X-API-Key".parse().unwrap(),
             );
-            headers.insert(header::ACCESS_CONTROL_MAX_AGE, "86400".parse().expect("static header value"));
+            headers.insert(
+                header::ACCESS_CONTROL_MAX_AGE,
+                "86400".parse().expect("static header value"),
+            );
 
             if !self.config.cors_origins.is_empty() {
                 if let Ok(val) = self.config.cors_origins[0].parse() {
                     headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
                 }
             } else {
-                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().expect("static header value"));
+                headers.insert(
+                    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                    "*".parse().expect("static header value"),
+                );
             }
         }
 
@@ -1662,25 +1721,21 @@ impl AdminServer {
         // Check if hostname router is available
         if let Some(router) = &self.hostname_router {
             match router.get_upstream_health_status(upstream_name) {
-                Some(health_data) => {
-                    json_response(
-                        StatusCode::OK,
-                        json!({
-                            "upstream": upstream_name,
-                            "health": health_data,
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        })
-                    )
-                }
-                None => {
-                    json_response(
-                        StatusCode::NOT_FOUND,
-                        json!({
-                            "error": "Upstream not found",
-                            "upstream": upstream_name
-                        })
-                    )
-                }
+                Some(health_data) => json_response(
+                    StatusCode::OK,
+                    json!({
+                        "upstream": upstream_name,
+                        "health": health_data,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    }),
+                ),
+                None => json_response(
+                    StatusCode::NOT_FOUND,
+                    json!({
+                        "error": "Upstream not found",
+                        "upstream": upstream_name
+                    }),
+                ),
             }
         } else {
             json_response(
@@ -1688,7 +1743,7 @@ impl AdminServer {
                 json!({
                     "error": "Hostname router not available",
                     "message": "Health status tracking requires hostname router to be enabled"
-                })
+                }),
             )
         }
     }
@@ -1732,10 +1787,8 @@ impl AdminServer {
             }
         };
 
-        crate::admin::upstreams::create_upstream_handler(
-            self.upstream_manager.clone(),
-            upstream,
-        ).await
+        crate::admin::upstreams::create_upstream_handler(self.upstream_manager.clone(), upstream)
+            .await
     }
 
     /// Get upstream details
@@ -1747,14 +1800,16 @@ impl AdminServer {
         }
 
         let upstream_name = parts[3];
-        crate::admin::upstreams::get_upstream_handler(
-            self.upstream_manager.clone(),
-            upstream_name,
-        ).await
+        crate::admin::upstreams::get_upstream_handler(self.upstream_manager.clone(), upstream_name)
+            .await
     }
 
     /// Update an upstream
-    async fn handle_upstream_update(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+    async fn handle_upstream_update(
+        &self,
+        path: &str,
+        req: Request<Incoming>,
+    ) -> Response<Full<Bytes>> {
         use http_body_util::BodyExt;
 
         // Check read-only mode
@@ -1804,7 +1859,8 @@ impl AdminServer {
             self.upstream_manager.clone(),
             upstream_name,
             upstream,
-        ).await
+        )
+        .await
     }
 
     /// Delete an upstream
@@ -1829,7 +1885,8 @@ impl AdminServer {
         crate::admin::upstreams::delete_upstream_handler(
             self.upstream_manager.clone(),
             upstream_name,
-        ).await
+        )
+        .await
     }
 
     /// Add a server to an upstream
@@ -1867,27 +1924,33 @@ impl AdminServer {
             }
         };
 
-        let request: crate::admin::upstreams::AddServerRequest = match serde_json::from_slice(&body_bytes) {
-            Ok(request) => request,
-            Err(e) => {
-                return json_response(
-                    StatusCode::BAD_REQUEST,
-                    json!({
-                        "error": format!("Invalid request: {}", e)
-                    }),
-                );
-            }
-        };
+        let request: crate::admin::upstreams::AddServerRequest =
+            match serde_json::from_slice(&body_bytes) {
+                Ok(request) => request,
+                Err(e) => {
+                    return json_response(
+                        StatusCode::BAD_REQUEST,
+                        json!({
+                            "error": format!("Invalid request: {}", e)
+                        }),
+                    );
+                }
+            };
 
         crate::admin::upstreams::add_server_handler(
             self.upstream_manager.clone(),
             upstream_name,
             request,
-        ).await
+        )
+        .await
     }
 
     /// Remove a server from an upstream
-    async fn handle_remove_server(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+    async fn handle_remove_server(
+        &self,
+        path: &str,
+        req: Request<Incoming>,
+    ) -> Response<Full<Bytes>> {
         use http_body_util::BodyExt;
 
         // Check read-only mode
@@ -1921,27 +1984,33 @@ impl AdminServer {
             }
         };
 
-        let request: crate::admin::upstreams::RemoveServerRequest = match serde_json::from_slice(&body_bytes) {
-            Ok(request) => request,
-            Err(e) => {
-                return json_response(
-                    StatusCode::BAD_REQUEST,
-                    json!({
-                        "error": format!("Invalid request: {}", e)
-                    }),
-                );
-            }
-        };
+        let request: crate::admin::upstreams::RemoveServerRequest =
+            match serde_json::from_slice(&body_bytes) {
+                Ok(request) => request,
+                Err(e) => {
+                    return json_response(
+                        StatusCode::BAD_REQUEST,
+                        json!({
+                            "error": format!("Invalid request: {}", e)
+                        }),
+                    );
+                }
+            };
 
         crate::admin::upstreams::remove_server_handler(
             self.upstream_manager.clone(),
             upstream_name,
             request,
-        ).await
+        )
+        .await
     }
 
     /// Update load balancing configuration
-    async fn handle_update_load_balancing(&self, path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+    async fn handle_update_load_balancing(
+        &self,
+        path: &str,
+        req: Request<Incoming>,
+    ) -> Response<Full<Bytes>> {
         use http_body_util::BodyExt;
 
         // Check read-only mode
@@ -1975,23 +2044,25 @@ impl AdminServer {
             }
         };
 
-        let request: crate::admin::upstreams::UpdateLoadBalancingRequest = match serde_json::from_slice(&body_bytes) {
-            Ok(request) => request,
-            Err(e) => {
-                return json_response(
-                    StatusCode::BAD_REQUEST,
-                    json!({
-                        "error": format!("Invalid request: {}", e)
-                    }),
-                );
-            }
-        };
+        let request: crate::admin::upstreams::UpdateLoadBalancingRequest =
+            match serde_json::from_slice(&body_bytes) {
+                Ok(request) => request,
+                Err(e) => {
+                    return json_response(
+                        StatusCode::BAD_REQUEST,
+                        json!({
+                            "error": format!("Invalid request: {}", e)
+                        }),
+                    );
+                }
+            };
 
         crate::admin::upstreams::update_load_balancing_handler(
             self.upstream_manager.clone(),
             upstream_name,
             request,
-        ).await
+        )
+        .await
     }
 
     /// Save configuration to disk
@@ -2010,7 +2081,8 @@ impl AdminServer {
             self.config_persistence.clone(),
             self.route_manager.clone(),
             self.upstream_manager.clone(),
-        ).await
+        )
+        .await
     }
 
     /// Export current configuration
@@ -2019,7 +2091,8 @@ impl AdminServer {
             self.route_manager.clone(),
             self.upstream_manager.clone(),
             self.config_persistence.clone(),
-        ).await
+        )
+        .await
     }
 
     /// Add CORS headers to response
@@ -2031,7 +2104,10 @@ impl AdminServer {
                 headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
             }
         } else {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().expect("static header value"));
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                "*".parse().expect("static header value"),
+            );
         }
 
         headers.insert(

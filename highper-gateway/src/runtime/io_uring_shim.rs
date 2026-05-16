@@ -43,17 +43,17 @@
 #![cfg(target_os = "linux")]
 
 use io_uring::{opcode, types, IoUring};
+use std::alloc::{alloc, dealloc, Layout};
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tracing::{debug, warn, error};
-use std::alloc::{alloc, dealloc, Layout};
-use std::ptr::NonNull;
+use tracing::{debug, error, warn};
 
 /// Macro for safely locking a mutex with poisoning recovery
 ///
@@ -73,9 +73,8 @@ macro_rules! safe_lock {
 ///
 /// Lazy-initialized on first use to avoid startup overhead
 use once_cell::sync::Lazy;
-pub static GLOBAL_IO_URING: Lazy<IoUringRuntime> = Lazy::new(|| {
-    IoUringRuntime::new(4096).expect("Failed to initialize io_uring runtime")
-});
+pub static GLOBAL_IO_URING: Lazy<IoUringRuntime> =
+    Lazy::new(|| IoUringRuntime::new(4096).expect("Failed to initialize io_uring runtime"));
 
 /// Result type for io_uring operations
 type IoUringResult<T> = io::Result<T>;
@@ -129,19 +128,20 @@ impl IoUringRuntime {
     /// - Insufficient permissions (io_uring may be disabled via sysctl)
     /// - Resource limits exceeded (check ulimit -l)
     pub fn new(entries: u32) -> IoUringResult<Self> {
-        debug!("Initializing io_uring runtime with {} queue entries", entries);
+        debug!(
+            "Initializing io_uring runtime with {} queue entries",
+            entries
+        );
 
         // Build io_uring with optimized parameters
         let ring = IoUring::builder()
-            .dontfork()           // Don't inherit ring in fork() - improves security
-            .setup_iopoll()       // Use polling mode for lower latency (requires elevated privileges)
+            .dontfork() // Don't inherit ring in fork() - improves security
+            .setup_iopoll() // Use polling mode for lower latency (requires elevated privileges)
             .build(entries)
             .or_else(|_| {
                 // Fallback: build without IOPOLL if it fails (may not have CAP_SYS_ADMIN)
                 warn!("Failed to enable io_uring IOPOLL, falling back to interrupt mode");
-                IoUring::builder()
-                    .dontfork()
-                    .build(entries)
+                IoUring::builder().dontfork().build(entries)
             })?;
 
         let ring = Arc::new(Mutex::new(ring));
@@ -149,11 +149,8 @@ impl IoUringRuntime {
         let pending_accepts = Arc::new(Mutex::new(HashMap::new()));
 
         // Spawn background task to process completion queue
-        let cq_task = Self::spawn_cq_processor(
-            ring.clone(),
-            pending_ops.clone(),
-            pending_accepts.clone(),
-        );
+        let cq_task =
+            Self::spawn_cq_processor(ring.clone(), pending_ops.clone(), pending_accepts.clone());
 
         debug!("io_uring runtime initialized successfully");
 
@@ -207,7 +204,10 @@ impl IoUringRuntime {
                         };
 
                         if sender.send(io_result).is_err() {
-                            debug!("Failed to send completion for op_id={} (receiver dropped)", op_id);
+                            debug!(
+                                "Failed to send completion for op_id={} (receiver dropped)",
+                                op_id
+                            );
                         }
                     }
                     // Try accept operations
@@ -219,7 +219,10 @@ impl IoUringRuntime {
                         };
 
                         if sender.send(io_result).is_err() {
-                            debug!("Failed to send accept completion for op_id={} (receiver dropped)", op_id);
+                            debug!(
+                                "Failed to send accept completion for op_id={} (receiver dropped)",
+                                op_id
+                            );
                         }
                     }
                 }
@@ -423,9 +426,7 @@ impl IoUringRuntime {
             let mut ring_guard = safe_lock!(self.ring);
 
             // Build close operation
-            let close_op = opcode::Close::new(types::Fd(fd))
-                .build()
-                .user_data(op_id);
+            let close_op = opcode::Close::new(types::Fd(fd)).build().user_data(op_id);
 
             // Submit to io_uring
             unsafe {
@@ -485,14 +486,10 @@ impl IoUringRuntime {
             let mut ring_guard = safe_lock!(self.ring);
 
             // Build read_fixed operation (zero-copy with registered buffers)
-            let read_op = opcode::ReadFixed::new(
-                types::Fd(fd),
-                buf.as_mut_ptr(),
-                buf.len() as u32,
-                buf_id,
-            )
-            .build()
-            .user_data(op_id);
+            let read_op =
+                opcode::ReadFixed::new(types::Fd(fd), buf.as_mut_ptr(), buf.len() as u32, buf_id)
+                    .build()
+                    .user_data(op_id);
 
             // Submit to io_uring
             unsafe {
@@ -538,14 +535,10 @@ impl IoUringRuntime {
             let mut ring_guard = safe_lock!(self.ring);
 
             // Build write_fixed operation (zero-copy with registered buffers)
-            let write_op = opcode::WriteFixed::new(
-                types::Fd(fd),
-                buf.as_ptr(),
-                buf.len() as u32,
-                buf_id,
-            )
-            .build()
-            .user_data(op_id);
+            let write_op =
+                opcode::WriteFixed::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32, buf_id)
+                    .build()
+                    .user_data(op_id);
 
             // Submit to io_uring
             unsafe {
@@ -591,7 +584,11 @@ mod tests {
     #[tokio::test]
     async fn test_io_uring_init() {
         let runtime = IoUringRuntime::new(256);
-        assert!(runtime.is_ok(), "Failed to initialize io_uring: {:?}", runtime.err());
+        assert!(
+            runtime.is_ok(),
+            "Failed to initialize io_uring: {:?}",
+            runtime.err()
+        );
     }
 
     #[tokio::test]

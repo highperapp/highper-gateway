@@ -174,7 +174,10 @@ async fn test_ms_03_cascading_failures() {
         // Send burst of requests
         for i in 0..10 {
             let mut headers = HashMap::new();
-            headers.insert("X-Request-ID".to_string(), format!("cascade-{}-{}", service, i));
+            headers.insert(
+                "X-Request-ID".to_string(),
+                format!("cascade-{}-{}", service, i),
+            );
 
             let result = client.get_with_headers(service, headers).await;
 
@@ -296,8 +299,8 @@ async fn test_ms_05_header_propagation() {
 
         if let Ok((status, body, _)) = result {
             // Check if header gave elevated access
-            let elevated = status == StatusCode::OK
-                && (body.contains("admin") || body.contains("granted"));
+            let elevated =
+                status == StatusCode::OK && (body.contains("admin") || body.contains("granted"));
 
             println!(
                 "  {}: {} = {} ({})",

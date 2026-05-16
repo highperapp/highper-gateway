@@ -256,9 +256,7 @@ pub fn generate_token(
 ) -> Result<String, Box<dyn std::error::Error>> {
     use jsonwebtoken::{encode, EncodingKey, Header};
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)?
-        .as_secs();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
     let claims = Claims {
         sub: user_id.to_string(),
@@ -318,7 +316,7 @@ mod tests {
 
         let claims = Claims {
             sub: "user456".to_string(),
-            exp: now - 10, // Expired 10 seconds ago
+            exp: now - 10,         // Expired 10 seconds ago
             iat: Some(now - 3610), // Issued 1 hour + 10 seconds ago
             nbf: None,
             iss: None,
@@ -332,7 +330,10 @@ mod tests {
 
         // Should fail validation (token is already expired)
         let result = auth.validate(&token);
-        assert!(!result.is_authenticated(), "Expired token should be rejected");
+        assert!(
+            !result.is_authenticated(),
+            "Expired token should be rejected"
+        );
     }
 
     #[test]

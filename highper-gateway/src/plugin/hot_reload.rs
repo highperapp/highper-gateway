@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(feature = "plugin-hot-reload")]
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher, EventKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 #[cfg(feature = "plugin-hot-reload")]
 use tokio::sync::mpsc;
 
@@ -47,10 +47,12 @@ impl HotReloadMonitor {
                     // Send event through channel
                     let _ = event_tx.blocking_send(event);
                 }
-            }).map_err(|e| PluginError::Config(format!("Failed to create watcher: {}", e)))?;
+            })
+            .map_err(|e| PluginError::Config(format!("Failed to create watcher: {}", e)))?;
 
             // Watch plugin directory
-            watcher.watch(&self.plugin_dir, RecursiveMode::NonRecursive)
+            watcher
+                .watch(&self.plugin_dir, RecursiveMode::NonRecursive)
                 .map_err(|e| PluginError::Config(format!("Failed to watch directory: {}", e)))?;
 
             let plugin_dir = self.plugin_dir.clone();
@@ -83,7 +85,9 @@ impl HotReloadMonitor {
 
         #[cfg(not(feature = "plugin-hot-reload"))]
         {
-            Err(PluginError::Config("Hot reload not compiled in".to_string()))
+            Err(PluginError::Config(
+                "Hot reload not compiled in".to_string(),
+            ))
         }
     }
 
@@ -111,15 +115,16 @@ impl HotReloadMonitor {
         registry: &PluginRegistry,
         event: Event,
     ) -> Result<()> {
-        use notify::event::{ModifyKind, CreateKind, RemoveKind};
+        use notify::event::{CreateKind, ModifyKind, RemoveKind};
 
         // Only handle modification and creation events
         match event.kind {
-            EventKind::Modify(ModifyKind::Data(_)) |
-            EventKind::Create(CreateKind::File) => {
+            EventKind::Modify(ModifyKind::Data(_)) | EventKind::Create(CreateKind::File) => {
                 // File was modified or created
                 for path in event.paths {
-                    if let Err(e) = Self::handle_file_change_static(plugin_dir, registry, &path).await {
+                    if let Err(e) =
+                        Self::handle_file_change_static(plugin_dir, registry, &path).await
+                    {
                         tracing::warn!("Failed to reload plugin at {:?}: {}", path, e);
                     }
                 }
@@ -156,7 +161,10 @@ impl HotReloadMonitor {
 
         // Check if this is a plugin file
         let extension = path.extension().and_then(|e| e.to_str());
-        let is_plugin = matches!(extension, Some("wasm") | Some("so") | Some("dylib") | Some("dll"));
+        let is_plugin = matches!(
+            extension,
+            Some("wasm") | Some("so") | Some("dylib") | Some("dll")
+        );
 
         if !is_plugin {
             return Ok(());
@@ -170,7 +178,10 @@ impl HotReloadMonitor {
 
         // Check if plugin is already loaded
         if !registry.contains(&plugin_name) {
-            tracing::debug!("New plugin file detected but not auto-loading: {}", plugin_name);
+            tracing::debug!(
+                "New plugin file detected but not auto-loading: {}",
+                plugin_name
+            );
             return Ok(());
         }
 
@@ -179,24 +190,28 @@ impl HotReloadMonitor {
         // Add a small delay to ensure file write is complete. Stage 2
         // migrated this from a hardcoded 100ms literal to
         // PluginRuntimeConfig::hot_reload_settle (HIGHPER_PLUGIN_HOT_RELOAD_SETTLE).
-        let settle = *crate::runtime_config::current().plugin.hot_reload_settle.get();
+        let settle = *crate::runtime_config::current()
+            .plugin
+            .hot_reload_settle
+            .get();
         tokio::time::sleep(settle).await;
 
         // TODO: Actual reload would need to be coordinated through PluginManager
         // For now, just log that we detected the change
-        tracing::info!("Hot reload detected for plugin: {} (reload would happen here)", plugin_name);
+        tracing::info!(
+            "Hot reload detected for plugin: {} (reload would happen here)",
+            plugin_name
+        );
 
         Ok(())
     }
 
     /// Extract plugin name from file path
     fn extract_plugin_name(path: &Path) -> Option<String> {
-        path.file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| {
-                // Remove "lib" prefix if present (for .so files)
-                s.strip_prefix("lib").unwrap_or(s).to_string()
-            })
+        path.file_stem().and_then(|s| s.to_str()).map(|s| {
+            // Remove "lib" prefix if present (for .so files)
+            s.strip_prefix("lib").unwrap_or(s).to_string()
+        })
     }
 }
 

@@ -48,15 +48,15 @@ impl Histogram {
 
         // Determine bucket
         let bucket_index = match ms {
-            0..=1 => 0,           // <1ms
-            2..=5 => 1,           // <5ms
-            6..=10 => 2,          // <10ms
-            11..=50 => 3,         // <50ms
-            51..=100 => 4,        // <100ms
-            101..=500 => 5,       // <500ms
-            501..=1000 => 6,      // <1s
-            1001..=5000 => 7,     // <5s
-            _ => 8,               // >=5s
+            0..=1 => 0,       // <1ms
+            2..=5 => 1,       // <5ms
+            6..=10 => 2,      // <10ms
+            11..=50 => 3,     // <50ms
+            51..=100 => 4,    // <100ms
+            101..=500 => 5,   // <500ms
+            501..=1000 => 6,  // <1s
+            1001..=5000 => 7, // <5s
+            _ => 8,           // >=5s
         };
 
         self.buckets[bucket_index].fetch_add(1, Ordering::Relaxed);
@@ -66,7 +66,8 @@ impl Histogram {
 
     /// Get snapshot of histogram
     pub fn snapshot(&self) -> HistogramSnapshot {
-        let buckets: Vec<u64> = self.buckets
+        let buckets: Vec<u64> = self
+            .buckets
             .iter()
             .map(|b| b.load(Ordering::Relaxed))
             .collect();
@@ -81,7 +82,11 @@ impl Histogram {
         HistogramSnapshot {
             buckets,
             total_samples: total,
-            avg_ms: if total > 0 { sum as f64 / total as f64 } else { 0.0 },
+            avg_ms: if total > 0 {
+                sum as f64 / total as f64
+            } else {
+                0.0
+            },
             p50,
             p95,
             p99,
@@ -98,7 +103,17 @@ impl Histogram {
         let mut count = 0u64;
 
         // Bucket boundaries in milliseconds
-        let boundaries = [1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0, f64::INFINITY];
+        let boundaries = [
+            1.0,
+            5.0,
+            10.0,
+            50.0,
+            100.0,
+            500.0,
+            1000.0,
+            5000.0,
+            f64::INFINITY,
+        ];
 
         for (i, &bucket_count) in buckets.iter().enumerate() {
             count += bucket_count;
@@ -217,7 +232,8 @@ impl RouteMetrics {
 
         // Record bytes
         self.bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
-        self.bytes_received.fetch_add(bytes_received, Ordering::Relaxed);
+        self.bytes_received
+            .fetch_add(bytes_received, Ordering::Relaxed);
     }
 
     /// Get snapshot of metrics
@@ -313,7 +329,8 @@ impl BackendMetrics {
 
         self.response_time.record(response_time);
         self.bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
-        self.bytes_received.fetch_add(bytes_received, Ordering::Relaxed);
+        self.bytes_received
+            .fetch_add(bytes_received, Ordering::Relaxed);
     }
 
     /// Get snapshot of metrics
@@ -394,9 +411,7 @@ impl RequestMetrics {
         bytes_received: u64,
     ) {
         // Get or create route metrics
-        let metrics = self.route_metrics
-            .entry(route.to_string())
-            .or_default();
+        let metrics = self.route_metrics.entry(route.to_string()).or_default();
 
         metrics.record_request(status_code, response_time, bytes_sent, bytes_received);
 
@@ -414,7 +429,8 @@ impl RequestMetrics {
         bytes_received: u64,
     ) {
         // Get or create backend metrics
-        let metrics = self.backend_metrics
+        let metrics = self
+            .backend_metrics
             .entry(backend_id.to_string())
             .or_default();
 
@@ -512,12 +528,7 @@ mod tests {
         let metrics = RouteMetrics::new();
 
         // Record a request
-        metrics.record_request(
-            200,
-            Duration::from_millis(10),
-            1024,
-            512,
-        );
+        metrics.record_request(200, Duration::from_millis(10), 1024, 512);
 
         let snapshot = metrics.snapshot();
         assert_eq!(snapshot.request_count, 1);
@@ -531,20 +542,10 @@ mod tests {
         let metrics = BackendMetrics::new();
 
         // Record successful request
-        metrics.record_request(
-            false,
-            Duration::from_millis(5),
-            100,
-            200,
-        );
+        metrics.record_request(false, Duration::from_millis(5), 100, 200);
 
         // Record failed request
-        metrics.record_request(
-            true,
-            Duration::from_millis(10),
-            100,
-            0,
-        );
+        metrics.record_request(true, Duration::from_millis(10), 100, 0);
 
         let snapshot = metrics.snapshot();
         assert_eq!(snapshot.request_count, 2);
@@ -557,22 +558,10 @@ mod tests {
         let tracker = RequestMetrics::new();
 
         // Record route request
-        tracker.record_route_request(
-            "/api/users",
-            200,
-            Duration::from_millis(10),
-            1024,
-            512,
-        );
+        tracker.record_route_request("/api/users", 200, Duration::from_millis(10), 1024, 512);
 
         // Record backend request
-        tracker.record_backend_request(
-            "api_0",
-            false,
-            Duration::from_millis(5),
-            512,
-            1024,
-        );
+        tracker.record_backend_request("api_0", false, Duration::from_millis(5), 512, 1024);
 
         // Verify route metrics
         let route_metrics = tracker.get_route_metrics("/api/users");
@@ -611,13 +600,7 @@ mod tests {
     fn test_reset_metrics() {
         let tracker = RequestMetrics::new();
 
-        tracker.record_route_request(
-            "/test",
-            200,
-            Duration::from_millis(10),
-            100,
-            100,
-        );
+        tracker.record_route_request("/test", 200, Duration::from_millis(10), 100, 100);
 
         tracker.reset_route("/test");
 

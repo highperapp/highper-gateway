@@ -7,10 +7,10 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone, Default)]
 pub struct GeoRuntimeConfig {
-    pub provider: Reloadable<GeoProvider>,                  // HIGHPER_GEO_PROVIDER = maxmind|ip2location|none
-    pub maxmind_db_path: Reloadable<Option<PathBuf>>,       // HIGHPER_GEO_MAXMIND_DB_PATH
-    pub ip2location_db_path: Reloadable<Option<PathBuf>>,   // HIGHPER_GEO_IP2LOCATION_DB_PATH
-    pub fallback_country: Reloadable<Option<String>>,       // HIGHPER_GEO_FALLBACK_COUNTRY (e.g., "US")
+    pub provider: Reloadable<GeoProvider>, // HIGHPER_GEO_PROVIDER = maxmind|ip2location|none
+    pub maxmind_db_path: Reloadable<Option<PathBuf>>, // HIGHPER_GEO_MAXMIND_DB_PATH
+    pub ip2location_db_path: Reloadable<Option<PathBuf>>, // HIGHPER_GEO_IP2LOCATION_DB_PATH
+    pub fallback_country: Reloadable<Option<String>>, // HIGHPER_GEO_FALLBACK_COUNTRY (e.g., "US")
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -38,7 +38,9 @@ pub(crate) fn load() -> Result<GeoRuntimeConfig, RuntimeConfigError> {
     let cfg = GeoRuntimeConfig {
         provider: Reloadable::new(provider),
         maxmind_db_path: Reloadable::new(env_string("GEO_MAXMIND_DB_PATH").map(PathBuf::from)),
-        ip2location_db_path: Reloadable::new(env_string("GEO_IP2LOCATION_DB_PATH").map(PathBuf::from)),
+        ip2location_db_path: Reloadable::new(
+            env_string("GEO_IP2LOCATION_DB_PATH").map(PathBuf::from),
+        ),
         fallback_country: Reloadable::new(env_string("GEO_FALLBACK_COUNTRY")),
     };
     validate(&cfg)?;
@@ -92,7 +94,10 @@ mod tests {
     fn maxmind_requires_db_path() {
         clear();
         std::env::set_var("HIGHPER_GEO_PROVIDER", "maxmind");
-        assert!(matches!(load(), Err(RuntimeConfigError::MissingRequired { .. })));
+        assert!(matches!(
+            load(),
+            Err(RuntimeConfigError::MissingRequired { .. })
+        ));
         clear();
     }
 
@@ -101,7 +106,10 @@ mod tests {
     fn ip2location_requires_db_path() {
         clear();
         std::env::set_var("HIGHPER_GEO_PROVIDER", "ip2location");
-        assert!(matches!(load(), Err(RuntimeConfigError::MissingRequired { .. })));
+        assert!(matches!(
+            load(),
+            Err(RuntimeConfigError::MissingRequired { .. })
+        ));
         clear();
     }
 }

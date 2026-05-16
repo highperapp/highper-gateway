@@ -60,8 +60,8 @@ impl Default for CompressorConfig {
     fn default() -> Self {
         Self {
             level: 6,
-            min_size: 1024,      // 1 KB
-            buffer_size: 8192,   // 8 KB
+            min_size: 1024,    // 1 KB
+            buffer_size: 8192, // 8 KB
             streaming: false,
         }
     }
@@ -90,14 +90,19 @@ pub trait Compressor: Send + Sync {
     }
 
     /// Compress data (blocking, for small payloads)
-    fn compress(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>;
+    fn compress(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError>;
 
     /// Compress async (for large payloads)
     /// Default implementation uses spawn_blocking
-    async fn compress_async(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>
-    {
+    async fn compress_async(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError> {
         let data = data.to_vec();
         let config = config.clone();
         let name = self.name();
@@ -106,7 +111,8 @@ pub trait Compressor: Send + Sync {
         // In actual implementation, this would clone self or use Arc
         tokio::task::spawn_blocking(move || {
             Err(CompressionError::Unsupported(format!(
-                "{} async compression not implemented", name
+                "{} async compression not implemented",
+                name
             )))
         })
         .await
@@ -138,7 +144,9 @@ pub trait CompressorStream: Send {
 
     /// Reset the stream for reuse
     fn reset(&mut self) -> Result<(), CompressionError> {
-        Err(CompressionError::Unsupported("Stream reset not supported".to_string()))
+        Err(CompressionError::Unsupported(
+            "Stream reset not supported".to_string(),
+        ))
     }
 }
 

@@ -1,6 +1,6 @@
+use anyhow::{anyhow, Result};
 /// Security validation and hardening for webserver requests
 use std::path::{Path, PathBuf};
-use anyhow::{Result, anyhow};
 
 /// Maximum file size for static files (100 MB default)
 pub const MAX_STATIC_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -13,22 +13,35 @@ pub const MAX_PATH_DEPTH: usize = 32;
 
 /// Dangerous file extensions that should never be served as static files
 const DANGEROUS_EXTENSIONS: &[&str] = &[
-    ".sh", ".bash", ".zsh", ".fish",  // Shell scripts
-    ".exe", ".dll", ".so", ".dylib",   // Executables
-    ".bat", ".cmd", ".ps1",            // Windows scripts
-    ".py", ".rb", ".pl", ".lua",       // Script languages (unless explicitly PHP)
+    ".sh", ".bash", ".zsh", ".fish", // Shell scripts
+    ".exe", ".dll", ".so", ".dylib", // Executables
+    ".bat", ".cmd", ".ps1", // Windows scripts
+    ".py", ".rb", ".pl", ".lua", // Script languages (unless explicitly PHP)
 ];
 
 /// Sensitive filenames that should be blocked
 const SENSITIVE_FILES: &[&str] = &[
-    ".env", ".env.local", ".env.production",
-    ".git", ".gitignore", ".gitconfig",
-    ".htaccess", ".htpasswd",
-    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
-    ".ssh", "authorized_keys", "known_hosts",
-    "web.config", "app.config",
-    ".npmrc", ".yarnrc",
-    "composer.json", "composer.lock",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".git",
+    ".gitignore",
+    ".gitconfig",
+    ".htaccess",
+    ".htpasswd",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    ".ssh",
+    "authorized_keys",
+    "known_hosts",
+    "web.config",
+    "app.config",
+    ".npmrc",
+    ".yarnrc",
+    "composer.json",
+    "composer.lock",
 ];
 
 /// Path security validator
@@ -74,11 +87,15 @@ impl PathValidator {
         };
 
         // Ensure the canonical path is still within document root
-        let canonical_root = self.document_root.canonicalize()
+        let canonical_root = self
+            .document_root
+            .canonicalize()
             .map_err(|e| anyhow!("Document root canonicalization failed: {}", e))?;
 
         if !canonical_path.starts_with(&canonical_root) {
-            return Err(anyhow!("Path traversal attempt detected: path outside document root"));
+            return Err(anyhow!(
+                "Path traversal attempt detected: path outside document root"
+            ));
         }
 
         // Check path depth
@@ -112,14 +129,18 @@ impl PathValidator {
 
     /// Check if a file should be blocked from being served
     pub fn is_file_allowed(&self, file_path: &Path) -> Result<()> {
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow!("Invalid file name"))?;
 
         // Check for sensitive files
         for sensitive in SENSITIVE_FILES {
             if file_name.eq_ignore_ascii_case(sensitive) {
-                return Err(anyhow!("Access to sensitive file '{}' is forbidden", file_name));
+                return Err(anyhow!(
+                    "Access to sensitive file '{}' is forbidden",
+                    file_name
+                ));
             }
         }
 
@@ -128,7 +149,10 @@ impl PathValidator {
             let ext_with_dot = format!(".{}", ext);
             for dangerous in DANGEROUS_EXTENSIONS {
                 if ext_with_dot.eq_ignore_ascii_case(dangerous) {
-                    return Err(anyhow!("Files with extension '{}' cannot be served directly", ext_with_dot));
+                    return Err(anyhow!(
+                        "Files with extension '{}' cannot be served directly",
+                        ext_with_dot
+                    ));
                 }
             }
         }
@@ -144,8 +168,11 @@ impl PathValidator {
     /// Validate file size before serving
     pub fn validate_file_size(&self, size: u64) -> Result<()> {
         if size > MAX_STATIC_FILE_SIZE {
-            return Err(anyhow!("File size ({} bytes) exceeds maximum allowed ({} bytes)",
-                size, MAX_STATIC_FILE_SIZE));
+            return Err(anyhow!(
+                "File size ({} bytes) exceeds maximum allowed ({} bytes)",
+                size,
+                MAX_STATIC_FILE_SIZE
+            ));
         }
         Ok(())
     }
@@ -153,8 +180,11 @@ impl PathValidator {
     /// Validate PHP request body size
     pub fn validate_request_body_size(&self, size: usize) -> Result<()> {
         if size > MAX_PHP_REQUEST_BODY {
-            return Err(anyhow!("Request body size ({} bytes) exceeds maximum allowed ({} bytes)",
-                size, MAX_PHP_REQUEST_BODY));
+            return Err(anyhow!(
+                "Request body size ({} bytes) exceeds maximum allowed ({} bytes)",
+                size,
+                MAX_PHP_REQUEST_BODY
+            ));
         }
         Ok(())
     }
@@ -192,15 +222,22 @@ pub fn validate_php_script(script_path: &Path) -> Result<()> {
     }
 
     // Check if it has a PHP extension
-    let has_php_ext = script_path.extension()
+    let has_php_ext = script_path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|ext| {
-            matches!(ext.to_lowercase().as_str(), "php" | "phtml" | "php5" | "php7" | "php8")
+            matches!(
+                ext.to_lowercase().as_str(),
+                "php" | "phtml" | "php5" | "php7" | "php8"
+            )
         })
         .unwrap_or(false);
 
     if !has_php_ext {
-        return Err(anyhow!("File does not have a valid PHP extension: {:?}", script_path));
+        return Err(anyhow!(
+            "File does not have a valid PHP extension: {:?}",
+            script_path
+        ));
     }
 
     Ok(())
@@ -209,7 +246,8 @@ pub fn validate_php_script(script_path: &Path) -> Result<()> {
 /// Sanitize FastCGI parameters to prevent injection
 pub fn sanitize_fastcgi_param(value: &str) -> String {
     // Remove null bytes and control characters
-    value.chars()
+    value
+        .chars()
         .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
         .collect()
 }
@@ -307,10 +345,14 @@ mod tests {
 
         // Test valid size
         assert!(validator.validate_request_body_size(1024).is_ok());
-        assert!(validator.validate_request_body_size(1 * 1024 * 1024).is_ok());
+        assert!(validator
+            .validate_request_body_size(1 * 1024 * 1024)
+            .is_ok());
 
         // Test oversized body
-        assert!(validator.validate_request_body_size(20 * 1024 * 1024).is_err());
+        assert!(validator
+            .validate_request_body_size(20 * 1024 * 1024)
+            .is_err());
     }
 
     #[test]
@@ -319,7 +361,10 @@ mod tests {
         let validator = PathValidator::new(temp_dir.path());
 
         // Create a very deep path
-        let deep_path = (0..40).map(|i| format!("dir{}", i)).collect::<Vec<_>>().join("/");
+        let deep_path = (0..40)
+            .map(|i| format!("dir{}", i))
+            .collect::<Vec<_>>()
+            .join("/");
         assert!(validator.validate_path(&deep_path).is_err());
 
         // Normal depth should be ok

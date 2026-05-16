@@ -13,28 +13,16 @@ use std::time::Duration;
 /// Initialize enhanced cache metrics descriptions
 pub fn describe_cache_metrics() {
     // Size metrics
-    describe_gauge!(
-        "cache_size_bytes",
-        "Current cache size in bytes"
-    );
-    describe_gauge!(
-        "cache_entries",
-        "Number of entries in cache"
-    );
+    describe_gauge!("cache_size_bytes", "Current cache size in bytes");
+    describe_gauge!("cache_entries", "Number of entries in cache");
     describe_gauge!(
         "cache_size_max_bytes",
         "Maximum cache size in bytes (configured limit)"
     );
 
     // Hit/miss metrics (enhanced with routes)
-    describe_counter!(
-        "cache_hits_total",
-        "Total cache hits by route"
-    );
-    describe_counter!(
-        "cache_misses_total",
-        "Total cache misses by route"
-    );
+    describe_counter!("cache_hits_total", "Total cache hits by route");
+    describe_counter!("cache_misses_total", "Total cache misses by route");
     describe_gauge!(
         "cache_hit_ratio",
         "Current cache hit ratio (hits / total requests)"
@@ -63,10 +51,7 @@ pub fn describe_cache_metrics() {
         "cache_ttl_distribution_seconds",
         "TTL distribution of cached items"
     );
-    describe_gauge!(
-        "cache_ttl_average_seconds",
-        "Average TTL of cached items"
-    );
+    describe_gauge!("cache_ttl_average_seconds", "Average TTL of cached items");
 
     // Key/value size distribution
     describe_histogram!(
@@ -79,24 +64,12 @@ pub fn describe_cache_metrics() {
     );
 
     // Cache operations
-    describe_counter!(
-        "cache_sets_total",
-        "Total cache set operations"
-    );
-    describe_counter!(
-        "cache_gets_total",
-        "Total cache get operations"
-    );
-    describe_counter!(
-        "cache_deletes_total",
-        "Total cache delete operations"
-    );
+    describe_counter!("cache_sets_total", "Total cache set operations");
+    describe_counter!("cache_gets_total", "Total cache get operations");
+    describe_counter!("cache_deletes_total", "Total cache delete operations");
 
     // Cleanup/maintenance
-    describe_counter!(
-        "cache_cleanups_total",
-        "Total cache cleanup operations"
-    );
+    describe_counter!("cache_cleanups_total", "Total cache cleanup operations");
     describe_histogram!(
         "cache_cleanup_duration_seconds",
         "Cache cleanup operation duration"
@@ -119,9 +92,7 @@ pub fn update_cache_size(size_bytes: usize, entry_count: usize, max_size_bytes: 
     let pressure = (size_bytes as f64) / (max_size_bytes as f64);
     gauge!("cache_memory_pressure").set(pressure);
 
-    if pressure > 0.9 {
-    }
-
+    if pressure > 0.9 {}
 }
 
 /// Record cache hit
@@ -129,7 +100,8 @@ pub fn record_hit(route: &str) {
     counter!(
         "cache_hits_total",
         "route" => route.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     counter!("cache_gets_total").increment(1);
 
@@ -142,10 +114,10 @@ pub fn record_miss(route: &str) {
     counter!(
         "cache_misses_total",
         "route" => route.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     counter!("cache_gets_total").increment(1);
-
 }
 
 /// Record cache set operation
@@ -153,12 +125,12 @@ pub fn record_set(route: &str, key_size: usize, value_size: usize, ttl: Duration
     counter!(
         "cache_sets_total",
         "route" => route.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!("cache_key_size_bytes").record(key_size as f64);
     histogram!("cache_value_size_bytes").record(value_size as f64);
     histogram!("cache_ttl_distribution_seconds").record(ttl.as_secs_f64());
-
 }
 
 /// Record cache eviction
@@ -167,7 +139,8 @@ pub fn record_eviction(route: &str, reason: &str) {
         "cache_evictions_total",
         "route" => route.to_string(),
         "reason" => reason.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     match reason {
         "ttl" => counter!("cache_evictions_ttl_total").increment(1),
@@ -175,7 +148,6 @@ pub fn record_eviction(route: &str, reason: &str) {
         "size" => counter!("cache_evictions_size_total").increment(1),
         _ => {}
     }
-
 }
 
 /// Record cache delete operation
@@ -183,8 +155,8 @@ pub fn record_delete(route: &str) {
     counter!(
         "cache_deletes_total",
         "route" => route.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record cache cleanup operation
@@ -198,14 +170,12 @@ pub fn update_hit_ratio(hits: u64, total_requests: u64) {
     if total_requests > 0 {
         let ratio = (hits as f64) / (total_requests as f64);
         gauge!("cache_hit_ratio").set(ratio);
-
     }
 }
 
 /// Update average TTL
 pub fn update_average_ttl(average_ttl: Duration) {
     gauge!("cache_ttl_average_seconds").set(average_ttl.as_secs_f64());
-
 }
 
 #[cfg(test)]
@@ -227,8 +197,8 @@ mod tests {
         // Test set operation
         record_set(
             "/api/users",
-            64,    // key size
-            1024,  // value size
+            64,                       // key size
+            1024,                     // value size
             Duration::from_secs(300), // TTL
         );
 

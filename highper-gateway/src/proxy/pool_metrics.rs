@@ -158,8 +158,12 @@ impl ConnectionPoolMetrics {
         stats.total_created.fetch_add(1, Ordering::Relaxed);
         *stats.last_created.lock() = Some(Instant::now());
 
-        self.global_stats.total_active.fetch_add(1, Ordering::Relaxed);
-        self.global_stats.total_created.fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_active
+            .fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_created
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a connection reused from the pool
@@ -167,7 +171,9 @@ impl ConnectionPoolMetrics {
         let stats = self.per_host_stats.entry(host.to_string()).or_default();
         stats.total_reused.fetch_add(1, Ordering::Relaxed);
 
-        self.global_stats.total_reused.fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_reused
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a connection returned to the pool (becomes idle)
@@ -176,7 +182,9 @@ impl ConnectionPoolMetrics {
         stats.active_connections.fetch_sub(1, Ordering::Relaxed);
         stats.idle_connections.fetch_add(1, Ordering::Relaxed);
 
-        self.global_stats.total_active.fetch_sub(1, Ordering::Relaxed);
+        self.global_stats
+            .total_active
+            .fetch_sub(1, Ordering::Relaxed);
         self.global_stats.total_idle.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -187,7 +195,9 @@ impl ConnectionPoolMetrics {
         stats.active_connections.fetch_add(1, Ordering::Relaxed);
 
         self.global_stats.total_idle.fetch_sub(1, Ordering::Relaxed);
-        self.global_stats.total_active.fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_active
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a connection closed
@@ -198,7 +208,9 @@ impl ConnectionPoolMetrics {
         let active = stats.active_connections.load(Ordering::Relaxed);
         if active > 0 {
             stats.active_connections.fetch_sub(1, Ordering::Relaxed);
-            self.global_stats.total_active.fetch_sub(1, Ordering::Relaxed);
+            self.global_stats
+                .total_active
+                .fetch_sub(1, Ordering::Relaxed);
         } else {
             // Connection was idle
             let idle = stats.idle_connections.load(Ordering::Relaxed);
@@ -209,7 +221,9 @@ impl ConnectionPoolMetrics {
         }
 
         // Track lifetime for averaging
-        stats.total_lifetime_ms.fetch_add(lifetime.as_millis() as u64, Ordering::Relaxed);
+        stats
+            .total_lifetime_ms
+            .fetch_add(lifetime.as_millis() as u64, Ordering::Relaxed);
         stats.closed_count.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -218,7 +232,9 @@ impl ConnectionPoolMetrics {
         let stats = self.per_host_stats.entry(host.to_string()).or_default();
         stats.connection_errors.fetch_add(1, Ordering::Relaxed);
 
-        self.global_stats.total_errors.fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_errors
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record a pool exhaustion event (no idle connections available)
@@ -226,7 +242,9 @@ impl ConnectionPoolMetrics {
         let stats = self.per_host_stats.entry(host.to_string()).or_default();
         stats.pool_exhausted_count.fetch_add(1, Ordering::Relaxed);
 
-        self.global_stats.total_exhausted.fetch_add(1, Ordering::Relaxed);
+        self.global_stats
+            .total_exhausted
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Get metrics for a specific host
@@ -291,7 +309,8 @@ impl ConnectionPoolMetrics {
         };
 
         // Collect per-host metrics
-        let per_host = self.per_host_stats
+        let per_host = self
+            .per_host_stats
             .iter()
             .filter_map(|entry| {
                 let host = entry.key().clone();
@@ -320,7 +339,9 @@ impl ConnectionPoolMetrics {
         self.global_stats.total_created.store(0, Ordering::Relaxed);
         self.global_stats.total_reused.store(0, Ordering::Relaxed);
         self.global_stats.total_errors.store(0, Ordering::Relaxed);
-        self.global_stats.total_exhausted.store(0, Ordering::Relaxed);
+        self.global_stats
+            .total_exhausted
+            .store(0, Ordering::Relaxed);
     }
 }
 
@@ -351,20 +372,26 @@ mod tests {
 
         // Create connection
         metrics.record_connection_created(host);
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 1);
         assert_eq!(host_metrics.total_created, 1);
 
         // Return to pool (idle)
         metrics.record_connection_idle(host);
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 0);
         assert_eq!(host_metrics.idle_connections, 1);
 
         // Reuse from pool
         metrics.record_connection_activated(host);
         metrics.record_connection_reused(host);
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.active_connections, 1);
         assert_eq!(host_metrics.idle_connections, 0);
         assert_eq!(host_metrics.total_reused, 1);
@@ -388,7 +415,9 @@ mod tests {
             metrics.record_connection_reused(host);
         }
 
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         // 40 reuses out of 50 total uses = 0.8 ratio
         assert!((host_metrics.reuse_ratio - 0.8).abs() < 0.01);
     }
@@ -416,7 +445,9 @@ mod tests {
         metrics.record_connection_error(host);
         metrics.record_connection_error(host);
 
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.connection_errors, 2);
 
         let global = metrics.get_global_metrics();
@@ -430,7 +461,9 @@ mod tests {
 
         metrics.record_pool_exhausted(host);
 
-        let host_metrics = metrics.get_host_metrics(host).expect("Host metrics should exist after recording");
+        let host_metrics = metrics
+            .get_host_metrics(host)
+            .expect("Host metrics should exist after recording");
         assert_eq!(host_metrics.pool_exhausted_count, 1);
 
         let global = metrics.get_global_metrics();

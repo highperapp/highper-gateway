@@ -107,7 +107,10 @@ impl OAuth2Handler {
     /// If issuer_url is provided, performs OIDC discovery.
     /// Otherwise, uses manually configured URLs.
     pub async fn new(config: OAuth2Config) -> Result<Self> {
-        info!("Initializing OAuth2 handler for provider: {}", config.provider);
+        info!(
+            "Initializing OAuth2 handler for provider: {}",
+            config.provider
+        );
 
         // Create basic OAuth2 client
         let client_id = ClientId::new(config.client_id.clone());
@@ -142,12 +145,9 @@ impl OAuth2Handler {
             // Manual configuration
             info!("Using manual OAuth2 configuration");
 
-            let auth_url = AuthUrl::new(
-                config
-                    .auth_url
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("auth_url required when issuer_url not provided"))?,
-            )
+            let auth_url = AuthUrl::new(config.auth_url.clone().ok_or_else(|| {
+                anyhow::anyhow!("auth_url required when issuer_url not provided")
+            })?)
             .context("Invalid auth URL")?;
 
             let token_url = config
@@ -221,9 +221,7 @@ impl OAuth2Handler {
         debug!("Token exchange successful");
 
         let access_token = token_response.access_token().secret().clone();
-        let refresh_token = token_response
-            .refresh_token()
-            .map(|t| t.secret().clone());
+        let refresh_token = token_response.refresh_token().map(|t| t.secret().clone());
         let expires_in = token_response.expires_in().map(|d| d.as_secs());
 
         // ID token extraction varies by OAuth2 crate version
@@ -257,9 +255,7 @@ impl OAuth2Handler {
         debug!("Token refresh successful");
 
         let access_token = token_response.access_token().secret().clone();
-        let refresh_token = token_response
-            .refresh_token()
-            .map(|t| t.secret().clone());
+        let refresh_token = token_response.refresh_token().map(|t| t.secret().clone());
         let expires_in = token_response.expires_in().map(|d| d.as_secs());
 
         Ok(TokenResult {
@@ -292,8 +288,11 @@ impl OAuth2Handler {
         info!("Revoking token");
 
         // Check if provider supports revocation
-        let revocation_url = self.config.revocation_url.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Token revocation not supported by this provider (no revocation_url configured)"))?;
+        let revocation_url = self.config.revocation_url.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Token revocation not supported by this provider (no revocation_url configured)"
+            )
+        })?;
 
         // Make HTTP POST request to revocation endpoint
         let client = reqwest::Client::new();
@@ -450,7 +449,10 @@ mod tests {
         };
 
         assert_eq!(token_result.access_token, "test_access_token");
-        assert_eq!(token_result.refresh_token, Some("test_refresh_token".to_string()));
+        assert_eq!(
+            token_result.refresh_token,
+            Some("test_refresh_token".to_string())
+        );
         assert_eq!(token_result.expires_in, Some(3600));
         assert_eq!(token_result.id_token, Some("test_id_token".to_string()));
     }

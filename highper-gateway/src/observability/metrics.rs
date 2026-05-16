@@ -15,10 +15,14 @@ impl Metrics {
         let builder = PrometheusBuilder::new();
 
         // Configure histogram buckets for latency (in seconds)
-        let builder = builder.set_buckets_for_metric(
-            Matcher::Full("http_request_duration_seconds".to_string()),
-            &[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
-        ).unwrap();
+        let builder = builder
+            .set_buckets_for_metric(
+                Matcher::Full("http_request_duration_seconds".to_string()),
+                &[
+                    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                ],
+            )
+            .unwrap();
 
         let handle = builder.install_recorder().unwrap();
 
@@ -32,22 +36,40 @@ impl Metrics {
     fn describe_metrics() {
         // Request metrics
         describe_counter!("http_requests_total", "Total number of HTTP requests");
-        describe_counter!("http_requests_errors_total", "Total number of HTTP request errors");
-        describe_histogram!("http_request_duration_seconds", "HTTP request latency in seconds");
+        describe_counter!(
+            "http_requests_errors_total",
+            "Total number of HTTP request errors"
+        );
+        describe_histogram!(
+            "http_request_duration_seconds",
+            "HTTP request latency in seconds"
+        );
         describe_counter!("http_requests_bytes_total", "Total bytes received");
         describe_counter!("http_responses_bytes_total", "Total bytes sent");
 
         // Connection metrics
-        describe_gauge!("http_connections_active", "Number of active HTTP connections");
+        describe_gauge!(
+            "http_connections_active",
+            "Number of active HTTP connections"
+        );
         describe_counter!("http_connections_total", "Total number of HTTP connections");
 
         // Upstream metrics
-        describe_counter!("upstream_requests_total", "Total requests to upstream servers");
+        describe_counter!(
+            "upstream_requests_total",
+            "Total requests to upstream servers"
+        );
         describe_counter!("upstream_requests_errors_total", "Total upstream errors");
-        describe_histogram!("upstream_request_duration_seconds", "Upstream request latency");
+        describe_histogram!(
+            "upstream_request_duration_seconds",
+            "Upstream request latency"
+        );
 
         // Load balancer metrics
-        describe_counter!("load_balancer_selections_total", "Total load balancer selections");
+        describe_counter!(
+            "load_balancer_selections_total",
+            "Total load balancer selections"
+        );
 
         // TLS metrics
         describe_counter!("tls_handshakes_total", "Total TLS handshakes");
@@ -60,9 +82,18 @@ impl Metrics {
 
         // Per-route metrics
         describe_counter!("route_requests_total", "Total requests per route");
-        describe_histogram!("route_request_duration_seconds", "Request latency per route");
-        describe_counter!("route_requests_bytes_total", "Total request bytes per route");
-        describe_counter!("route_responses_bytes_total", "Total response bytes per route");
+        describe_histogram!(
+            "route_request_duration_seconds",
+            "Request latency per route"
+        );
+        describe_counter!(
+            "route_requests_bytes_total",
+            "Total request bytes per route"
+        );
+        describe_counter!(
+            "route_responses_bytes_total",
+            "Total response bytes per route"
+        );
 
         // Protocol-specific metrics
         crate::observability::tcp_metrics::describe_tcp_metrics();
@@ -92,7 +123,8 @@ impl Default for Metrics {
 
 /// Record an HTTP request
 pub fn record_request(method: &str, status: u16, duration: f64) {
-    counter!("http_requests_total", "method" => method.to_string(), "status" => status.to_string()).increment(1);
+    counter!("http_requests_total", "method" => method.to_string(), "status" => status.to_string())
+        .increment(1);
     histogram!("http_request_duration_seconds", "method" => method.to_string(), "status" => status.to_string()).record(duration);
 }
 
@@ -120,7 +152,8 @@ pub fn record_connection() {
 /// Record upstream request
 pub fn record_upstream_request(upstream: &str, status: u16, duration: f64) {
     counter!("upstream_requests_total", "upstream" => upstream.to_string(), "status" => status.to_string()).increment(1);
-    histogram!("upstream_request_duration_seconds", "upstream" => upstream.to_string()).record(duration);
+    histogram!("upstream_request_duration_seconds", "upstream" => upstream.to_string())
+        .record(duration);
 }
 
 /// Record upstream error
@@ -152,7 +185,14 @@ pub fn record_acme_request(domain: &str, success: bool) {
 }
 
 /// Record per-route request metrics
-pub fn record_route_request(route: &str, method: &str, status: u16, duration: f64, request_bytes: u64, response_bytes: u64) {
+pub fn record_route_request(
+    route: &str,
+    method: &str,
+    status: u16,
+    duration: f64,
+    request_bytes: u64,
+    response_bytes: u64,
+) {
     // Count total requests per route
     counter!("route_requests_total", "route" => route.to_string(), "method" => method.to_string(), "status" => status.to_string()).increment(1);
 
@@ -218,7 +258,10 @@ mod tests {
         let output = metrics.render();
         // Metrics output should contain metric data
         assert!(!output.is_empty(), "Metrics output should not be empty");
-        assert!(output.contains("http_requests_total"), "Should contain http_requests_total metric");
+        assert!(
+            output.contains("http_requests_total"),
+            "Should contain http_requests_total metric"
+        );
     }
 
     #[test]

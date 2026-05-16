@@ -161,18 +161,18 @@ pub async fn create_discovery(config: DiscoveryConfig) -> Result<Arc<dyn Service
             Ok(Arc::new(discovery) as Arc<dyn ServiceDiscovery>)
         }
         #[cfg(not(feature = "consul"))]
-        DiscoveryBackend::Consul => {
-            Err(anyhow::anyhow!("Consul support not enabled. Enable the 'consul' feature to use Consul discovery."))
-        }
+        DiscoveryBackend::Consul => Err(anyhow::anyhow!(
+            "Consul support not enabled. Enable the 'consul' feature to use Consul discovery."
+        )),
         #[cfg(feature = "etcd-client")]
         DiscoveryBackend::Etcd => {
             let discovery = EtcdDiscovery::new(config).await?;
             Ok(Arc::new(discovery) as Arc<dyn ServiceDiscovery>)
         }
         #[cfg(not(feature = "etcd-client"))]
-        DiscoveryBackend::Etcd => {
-            Err(anyhow::anyhow!("etcd support not enabled. Enable the 'etcd-client' feature to use etcd discovery."))
-        }
+        DiscoveryBackend::Etcd => Err(anyhow::anyhow!(
+            "etcd support not enabled. Enable the 'etcd-client' feature to use etcd discovery."
+        )),
         DiscoveryBackend::Static => {
             if config.static_backends.is_empty() {
                 return Err(anyhow::anyhow!(

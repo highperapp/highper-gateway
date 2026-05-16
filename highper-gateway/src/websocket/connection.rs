@@ -3,12 +3,12 @@
 //! Provides per-connection state management for monitoring and debugging
 //! WebSocket connections, including metrics, lifecycle tracking, and error handling.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 use dashmap::DashMap;
-use uuid::Uuid;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
+use uuid::Uuid;
 
 /// Connection ID type (UUID v7)
 pub type ConnectionId = Uuid;
@@ -89,7 +89,8 @@ impl ConnectionMetrics {
     /// Record a message received
     pub fn record_message_received(&self, size: usize) {
         self.messages_received.fetch_add(1, Ordering::Relaxed);
-        self.bytes_received.fetch_add(size as u64, Ordering::Relaxed);
+        self.bytes_received
+            .fetch_add(size as u64, Ordering::Relaxed);
     }
 
     /// Record a ping sent
@@ -181,11 +182,7 @@ pub struct ConnectionInfo {
 
 impl ConnectionInfo {
     /// Create new connection info
-    pub fn new(
-        backend_index: usize,
-        session_id: Option<Uuid>,
-        client_ip: Option<String>,
-    ) -> Self {
+    pub fn new(backend_index: usize, session_id: Option<Uuid>, client_ip: Option<String>) -> Self {
         let now = Instant::now();
         Self {
             id: Uuid::now_v7(),
@@ -205,7 +202,10 @@ impl ConnectionInfo {
 
     /// Update connection state
     pub fn set_state(&mut self, state: ConnectionState) {
-        debug!("Connection {} state: {:?} -> {:?}", self.id, self.state, state);
+        debug!(
+            "Connection {} state: {:?} -> {:?}",
+            self.id, self.state, state
+        );
         self.state = state;
         self.touch();
     }
@@ -357,22 +357,30 @@ impl ConnectionTracker {
     /// Record ping sent
     pub fn record_ping_sent(&self, conn_id: &ConnectionId) {
         if let Some(entry) = self.connections.get(conn_id) {
-            entry.value().metrics.pings_sent.fetch_add(1, Ordering::Relaxed);
+            entry
+                .value()
+                .metrics
+                .pings_sent
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 
     /// Record pong received
     pub fn record_pong_received(&self, conn_id: &ConnectionId) {
         if let Some(entry) = self.connections.get(conn_id) {
-            entry.value().metrics.pongs_received.fetch_add(1, Ordering::Relaxed);
+            entry
+                .value()
+                .metrics
+                .pongs_received
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 
     /// Get metrics snapshot for a connection
     pub fn get_metrics(&self, conn_id: &ConnectionId) -> Option<ConnectionMetricsSnapshot> {
-        self.connections.get(conn_id).map(|entry| {
-            entry.value().metrics.snapshot()
-        })
+        self.connections
+            .get(conn_id)
+            .map(|entry| entry.value().metrics.snapshot())
     }
 
     /// Unregister a connection
@@ -404,7 +412,8 @@ impl ConnectionTracker {
 
     /// Clean up idle connections
     pub fn cleanup_idle(&self) -> usize {
-        let idle: Vec<ConnectionId> = self.connections
+        let idle: Vec<ConnectionId> = self
+            .connections
             .iter()
             .filter(|entry| entry.value().is_idle(self.idle_timeout))
             .map(|entry| *entry.key())
@@ -433,7 +442,10 @@ impl ConnectionTracker {
         for entry in self.connections.iter() {
             entry.value().request_graceful_shutdown();
         }
-        info!("Requested graceful shutdown for {} connections", self.connections.len());
+        info!(
+            "Requested graceful shutdown for {} connections",
+            self.connections.len()
+        );
     }
 
     /// Get all connection IDs

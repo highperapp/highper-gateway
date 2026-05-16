@@ -6,7 +6,7 @@
 //! 3. Applying changes atomically
 //! 4. Rolling back on failure
 
-use super::{Config, ConfigEvent, ConfigWatcher, load_config, validate_config};
+use super::{load_config, validate_config, Config, ConfigEvent, ConfigWatcher};
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -69,10 +69,7 @@ pub struct ReloadResult {
 
 impl ConfigReloader {
     /// Create a new config reloader
-    pub fn new<P: AsRef<Path>>(
-        config_path: P,
-        initial_config: Config,
-    ) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(config_path: P, initial_config: Config) -> Result<Self> {
         let config_path = config_path.as_ref().to_path_buf();
         let config = Arc::new(RwLock::new(initial_config));
 
@@ -115,7 +112,10 @@ impl ConfigReloader {
         self.watcher = Some(watcher);
         self.event_rx = Some(event_rx);
 
-        info!("Started watching configuration file: {:?}", self.config_path);
+        info!(
+            "Started watching configuration file: {:?}",
+            self.config_path
+        );
         Ok(())
     }
 
@@ -123,7 +123,9 @@ impl ConfigReloader {
     pub async fn run(mut self) -> Result<()> {
         info!("Configuration reload manager started");
 
-        let mut event_rx = self.event_rx.take()
+        let mut event_rx = self
+            .event_rx
+            .take()
             .context("Watcher not initialized - call start_watching() first")?;
 
         loop {
@@ -220,8 +222,10 @@ impl ConfigReloader {
         drop(config_write);
 
         info!("Configuration reloaded successfully");
-        debug!("Routes changed: {}, Upstreams changed: {}, TLS changed: {}",
-               routes_changed, upstreams_changed, tls_changed);
+        debug!(
+            "Routes changed: {}, Upstreams changed: {}, TLS changed: {}",
+            routes_changed, upstreams_changed, tls_changed
+        );
 
         ReloadResult {
             success: true,

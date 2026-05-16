@@ -40,12 +40,14 @@ impl Compressor for DeflateCompressor {
     }
 
     fn quality(&self) -> f32 {
-        0.6  // Legacy support, lower quality preference
+        0.6 // Legacy support, lower quality preference
     }
 
-    fn compress(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>
-    {
+    fn compress(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError> {
         let original_size = data.len();
 
         // Check minimum size
@@ -69,7 +71,8 @@ impl Compressor for DeflateCompressor {
         let ratio = compressed_size as f64 / original_size as f64;
 
         // Record statistics
-        self.stats.record_compression(original_size as u64, compressed_size as u64);
+        self.stats
+            .record_compression(original_size as u64, compressed_size as u64);
 
         Ok(CompressionResult {
             data: compressed,
@@ -80,9 +83,11 @@ impl Compressor for DeflateCompressor {
         })
     }
 
-    async fn compress_async(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>
-    {
+    async fn compress_async(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError> {
         let data = data.to_vec();
         let config = config.clone();
 

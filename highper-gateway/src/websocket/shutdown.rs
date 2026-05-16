@@ -3,13 +3,13 @@
 //! Provides coordinated shutdown of WebSocket connections with proper close handshakes
 //! and timeout-based forced closure.
 
-use std::sync::Arc;
+use crate::websocket::{ConnectionState, ConnectionTracker};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
-use tokio::time::{timeout, sleep};
+use tokio::time::{sleep, timeout};
 use tracing::{debug, info, warn};
-use crate::websocket::{ConnectionTracker, ConnectionState};
 
 /// Shutdown coordinator for WebSocket connections
 #[derive(Clone)]
@@ -125,7 +125,8 @@ impl ShutdownCoordinator {
         // Update all remaining connections to Closed state
         // The actual connection handlers will detect this and terminate
         for conn_id in self.connection_tracker.all_connection_ids() {
-            self.connection_tracker.update_state(&conn_id, ConnectionState::Closed);
+            self.connection_tracker
+                .update_state(&conn_id, ConnectionState::Closed);
         }
 
         // Wait briefly for handlers to process the state change
@@ -235,11 +236,8 @@ mod tests {
     #[test]
     fn test_shutdown_coordinator_creation() {
         let tracker = Arc::new(ConnectionTracker::default());
-        let coordinator = ShutdownCoordinator::new(
-            tracker,
-            Duration::from_secs(30),
-            Duration::from_secs(5),
-        );
+        let coordinator =
+            ShutdownCoordinator::new(tracker, Duration::from_secs(30), Duration::from_secs(5));
 
         assert!(!coordinator.is_shutdown_initiated());
     }
@@ -247,11 +245,8 @@ mod tests {
     #[test]
     fn test_shutdown_initiation() {
         let tracker = Arc::new(ConnectionTracker::default());
-        let coordinator = ShutdownCoordinator::new(
-            tracker,
-            Duration::from_secs(30),
-            Duration::from_secs(5),
-        );
+        let coordinator =
+            ShutdownCoordinator::new(tracker, Duration::from_secs(30), Duration::from_secs(5));
 
         coordinator.initiate_shutdown();
         assert!(coordinator.is_shutdown_initiated());
@@ -264,11 +259,8 @@ mod tests {
     #[tokio::test]
     async fn test_wait_for_shutdown() {
         let tracker = Arc::new(ConnectionTracker::default());
-        let coordinator = ShutdownCoordinator::new(
-            tracker,
-            Duration::from_secs(30),
-            Duration::from_secs(5),
-        );
+        let coordinator =
+            ShutdownCoordinator::new(tracker, Duration::from_secs(30), Duration::from_secs(5));
 
         let coordinator_clone = coordinator.clone();
 
@@ -286,11 +278,8 @@ mod tests {
     #[tokio::test]
     async fn test_wait_for_connections_empty() {
         let tracker = Arc::new(ConnectionTracker::default());
-        let coordinator = ShutdownCoordinator::new(
-            tracker,
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-        );
+        let coordinator =
+            ShutdownCoordinator::new(tracker, Duration::from_secs(1), Duration::from_secs(1));
 
         coordinator.initiate_shutdown();
 
@@ -371,12 +360,8 @@ mod tests {
         let conn2_state = tracker.get(&conn2).map(|c| c.state);
 
         // States should be updated to Closed (or connections cleared)
-        assert!(
-            conn1_state.is_none() || conn1_state == Some(ConnectionState::Closed)
-        );
-        assert!(
-            conn2_state.is_none() || conn2_state == Some(ConnectionState::Closed)
-        );
+        assert!(conn1_state.is_none() || conn1_state == Some(ConnectionState::Closed));
+        assert!(conn2_state.is_none() || conn2_state == Some(ConnectionState::Closed));
     }
 
     #[tokio::test]
@@ -385,11 +370,8 @@ mod tests {
         tracker.register(0, None, None);
         tracker.register(1, None, None);
 
-        let coordinator = ShutdownCoordinator::new(
-            tracker,
-            Duration::from_secs(30),
-            Duration::from_secs(5),
-        );
+        let coordinator =
+            ShutdownCoordinator::new(tracker, Duration::from_secs(30), Duration::from_secs(5));
 
         let stats = coordinator.get_stats();
         assert!(!stats.shutdown_initiated);

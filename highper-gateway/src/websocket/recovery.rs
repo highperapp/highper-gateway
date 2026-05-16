@@ -4,12 +4,12 @@
 //! for WebSocket connections. Includes retry logic with exponential backoff
 //! and circuit breaker pattern for failing backends.
 
-use std::sync::Arc;
+use crate::websocket::{ConnectionId, ConnectionTracker};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
-use tracing::{debug, info, warn, error};
-use crate::websocket::{ConnectionId, ConnectionTracker};
+use tracing::{debug, error, info, warn};
 
 /// Error recovery configuration
 #[derive(Debug, Clone)]
@@ -194,7 +194,9 @@ impl CircuitBreaker {
                 // Check if timeout has elapsed
                 if let Some(last_failure) = *self.last_failure_time.read().unwrap() {
                     if last_failure.elapsed() >= self.config.circuit_breaker_timeout {
-                        info!("Circuit breaker transitioning from Open to HalfOpen (timeout elapsed)");
+                        info!(
+                            "Circuit breaker transitioning from Open to HalfOpen (timeout elapsed)"
+                        );
                         *state = CircuitState::HalfOpen;
                         true
                     } else {
@@ -340,10 +342,7 @@ impl RecoveryManager {
 
                     // Check if we should retry
                     if !error.is_retryable() {
-                        error!(
-                            "Non-retryable error {:?}, aborting reconnection",
-                            error
-                        );
+                        error!("Non-retryable error {:?}, aborting reconnection", error);
                         return Err(error);
                     }
 

@@ -67,13 +67,27 @@ pub struct CrlCheckerConfig {
     pub hard_fail: bool,
 }
 
-fn default_refresh_interval() -> u64 { 3600 }
-fn default_timeout() -> u64 { 10 }
-fn default_max_retries() -> u32 { 3 }
-fn default_initial_retry_delay() -> u64 { 500 }
-fn default_max_cache_entries() -> usize { 100 }
-fn default_true() -> bool { true }
-fn default_max_stale_age() -> u64 { 86400 }
+fn default_refresh_interval() -> u64 {
+    3600
+}
+fn default_timeout() -> u64 {
+    10
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_initial_retry_delay() -> u64 {
+    500
+}
+fn default_max_cache_entries() -> usize {
+    100
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_stale_age() -> u64 {
+    86400
+}
 
 impl Default for CrlCheckerConfig {
     fn default() -> Self {
@@ -257,7 +271,10 @@ impl CrlChecker {
         let serial_hex = hex::encode(parsed_cert.serial.to_bytes_be());
         let issuer_key = parsed_cert.issuer().to_string();
 
-        debug!("Checking CRL for serial number: {} (issuer: {})", serial_hex, issuer_key);
+        debug!(
+            "Checking CRL for serial number: {} (issuer: {})",
+            serial_hex, issuer_key
+        );
 
         // First check main cache
         let main_cache = self.cache.read().await;
@@ -290,7 +307,10 @@ impl CrlChecker {
                     warn!("Using stale CRL (age: {:?})", age);
                     let is_revoked = crl_data.revoked_serials.contains(&serial_hex);
                     if is_revoked {
-                        warn!("Certificate is REVOKED (serial: {}) - based on stale CRL", serial_hex);
+                        warn!(
+                            "Certificate is REVOKED (serial: {}) - based on stale CRL",
+                            serial_hex
+                        );
                     }
                     return Ok(is_revoked);
                 }
@@ -299,7 +319,9 @@ impl CrlChecker {
 
         // No valid CRL available
         if self.config.hard_fail {
-            Err(anyhow!("No valid CRL available and hard-fail mode is enabled"))
+            Err(anyhow!(
+                "No valid CRL available and hard-fail mode is enabled"
+            ))
         } else {
             warn!("No CRL available, soft-fail: assuming certificate is not revoked");
             Ok(false)
@@ -327,7 +349,11 @@ impl CrlChecker {
     }
 
     /// Check if certificate is revoked for a specific issuer CRL URL
-    pub async fn is_revoked_with_crl_url(&self, cert: &CertificateDer<'_>, crl_url: &str) -> Result<bool> {
+    pub async fn is_revoked_with_crl_url(
+        &self,
+        cert: &CertificateDer<'_>,
+        crl_url: &str,
+    ) -> Result<bool> {
         use x509_parser::prelude::*;
 
         let (_, parsed_cert) = parse_x509_certificate(cert.as_ref())
@@ -424,7 +450,10 @@ impl CrlChecker {
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
-                debug!("CRL fetch retry attempt {}/{}", attempt, self.config.max_retries);
+                debug!(
+                    "CRL fetch retry attempt {}/{}",
+                    attempt, self.config.max_retries
+                );
                 tokio::time::sleep(retry_delay).await;
                 retry_delay = std::cmp::min(retry_delay * 2, max_delay);
             }
@@ -440,7 +469,10 @@ impl CrlChecker {
             }
         }
 
-        Err(anyhow!("CRL fetch failed after {} retries", self.config.max_retries))
+        Err(anyhow!(
+            "CRL fetch failed after {} retries",
+            self.config.max_retries
+        ))
     }
 
     /// Single CRL fetch attempt
@@ -476,13 +508,15 @@ impl CrlChecker {
         // Try DER format first, then PEM
         let crl_der = if crl_bytes.starts_with(b"-----BEGIN") {
             // PEM format
-            let pem_str = std::str::from_utf8(crl_bytes)
-                .map_err(|_| anyhow!("Invalid UTF-8 in PEM CRL"))?;
+            let pem_str =
+                std::str::from_utf8(crl_bytes).map_err(|_| anyhow!("Invalid UTF-8 in PEM CRL"))?;
 
             // Find the base64 content between headers
-            let start = pem_str.find("-----BEGIN X509 CRL-----")
+            let start = pem_str
+                .find("-----BEGIN X509 CRL-----")
                 .ok_or_else(|| anyhow!("No CRL found in PEM"))?;
-            let end = pem_str.find("-----END X509 CRL-----")
+            let end = pem_str
+                .find("-----END X509 CRL-----")
                 .ok_or_else(|| anyhow!("Invalid PEM format"))?;
 
             let base64_content: String = pem_str[start + 24..end]
@@ -499,8 +533,8 @@ impl CrlChecker {
         };
 
         // Parse CRL
-        let (_, parsed_crl) = parse_x509_crl(&crl_der)
-            .map_err(|e| anyhow!("Failed to parse CRL: {}", e))?;
+        let (_, parsed_crl) =
+            parse_x509_crl(&crl_der).map_err(|e| anyhow!("Failed to parse CRL: {}", e))?;
 
         // Extract revoked certificate serial numbers
         let mut revoked_serials = HashSet::new();
@@ -541,14 +575,20 @@ impl CrlChecker {
     }
 
     /// Extract CRL number from CRL extensions
-    fn extract_crl_number(&self, _crl: &x509_parser::revocation_list::CertificateRevocationList<'_>) -> Option<u64> {
+    fn extract_crl_number(
+        &self,
+        _crl: &x509_parser::revocation_list::CertificateRevocationList<'_>,
+    ) -> Option<u64> {
         // TODO: Parse CRL number extension (OID 2.5.29.20)
         // For now, return None
         None
     }
 
     /// Extract delta CRL distribution point URL
-    fn extract_delta_crl_url(&self, _crl: &x509_parser::revocation_list::CertificateRevocationList<'_>) -> Option<String> {
+    fn extract_delta_crl_url(
+        &self,
+        _crl: &x509_parser::revocation_list::CertificateRevocationList<'_>,
+    ) -> Option<String> {
         // TODO: Parse freshestCRL extension (OID 2.5.29.46)
         // For now, return None
         None
@@ -566,7 +606,10 @@ impl CrlChecker {
             .map_err(|e| anyhow!("Failed to download delta CRL: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Delta CRL server returned error: {}", response.status()));
+            return Err(anyhow!(
+                "Delta CRL server returned error: {}",
+                response.status()
+            ));
         }
 
         let delta_bytes = response
@@ -670,11 +713,7 @@ mod tests {
 
     #[test]
     fn test_crl_checker_creation() {
-        let checker = CrlChecker::new(
-            "http://crl.example.com/ca.crl".to_string(),
-            3600,
-            10,
-        );
+        let checker = CrlChecker::new("http://crl.example.com/ca.crl".to_string(), 3600, 10);
         assert!(checker.is_ok());
     }
 
@@ -701,12 +740,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_crl_stats_empty() {
-        let checker = CrlChecker::new(
-            "http://crl.example.com/ca.crl".to_string(),
-            3600,
-            10,
-        )
-        .unwrap();
+        let checker =
+            CrlChecker::new("http://crl.example.com/ca.crl".to_string(), 3600, 10).unwrap();
 
         let stats = checker.stats().await;
         assert!(!stats.cached);
@@ -751,12 +786,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_cache() {
-        let checker = CrlChecker::new(
-            "http://crl.example.com/ca.crl".to_string(),
-            3600,
-            10,
-        )
-        .unwrap();
+        let checker =
+            CrlChecker::new("http://crl.example.com/ca.crl".to_string(), 3600, 10).unwrap();
 
         checker.clear_cache().await;
 

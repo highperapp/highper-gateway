@@ -12,10 +12,7 @@ use hyper::Response;
 /// - h3: HTTP/3 protocol identifier
 /// - port: The UDP port where HTTP/3 is available
 /// - ma: Max age in seconds (how long to remember this alternative)
-pub fn add_alt_svc_header<T>(
-    response: &mut Response<T>,
-    http3_port: u16,
-) {
+pub fn add_alt_svc_header<T>(response: &mut Response<T>, http3_port: u16) {
     add_alt_svc_header_with_max_age(response, http3_port, 2592000) // 30 days
 }
 
@@ -121,7 +118,10 @@ mod tests {
 
         add_alt_svc_header(&mut response, 443);
 
-        assert_eq!(response.headers().get("content-type").unwrap(), "application/json");
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/json"
+        );
         assert_eq!(response.headers().get("x-custom").unwrap(), "value");
         assert!(has_alt_svc_header(&response));
     }

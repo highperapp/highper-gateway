@@ -3,9 +3,9 @@
 //! Routes TLS connections based on SNI (Server Name Indication) without terminating TLS.
 //! The proxy acts as a TCP proxy, forwarding encrypted traffic to backends.
 
+use anyhow::{anyhow, Result};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, error, info};
-use anyhow::{Result, anyhow};
 
 /// SNI (Server Name Indication) information extracted from TLS ClientHello
 #[derive(Debug, Clone)]
@@ -194,7 +194,7 @@ mod tests {
         // SNI extension with hostname "example.com"
         let sni_data = vec![
             0x00, 0x0f, // Server name list length (15 bytes)
-            0x00,       // Name type (0 = hostname)
+            0x00, // Name type (0 = hostname)
             0x00, 0x0b, // Name length (11 bytes)
             0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d, // "example.com"
         ];

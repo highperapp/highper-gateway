@@ -143,24 +143,20 @@ impl GeoLoadBalancer {
     pub fn new<P: AsRef<Path>>(provider: GeoIpProvider, db_path: Option<P>) -> Result<Self> {
         let adapter: Option<Box<dyn GeoIpAdapter>> = if let Some(path) = db_path {
             match provider {
-                GeoIpProvider::MaxMind => {
-                    match MaxMindAdapter::new(path) {
-                        Ok(adapter) => Some(Box::new(adapter)),
-                        Err(e) => {
-                            warn!("Failed to load MaxMind database: {}. Geographic load balancing disabled.", e);
-                            None
-                        }
+                GeoIpProvider::MaxMind => match MaxMindAdapter::new(path) {
+                    Ok(adapter) => Some(Box::new(adapter)),
+                    Err(e) => {
+                        warn!("Failed to load MaxMind database: {}. Geographic load balancing disabled.", e);
+                        None
                     }
-                }
-                GeoIpProvider::Ip2Location => {
-                    match Ip2LocationAdapter::new(path) {
-                        Ok(adapter) => Some(Box::new(adapter)),
-                        Err(e) => {
-                            warn!("Failed to load IP2Location database: {}. Geographic load balancing disabled.", e);
-                            None
-                        }
+                },
+                GeoIpProvider::Ip2Location => match Ip2LocationAdapter::new(path) {
+                    Ok(adapter) => Some(Box::new(adapter)),
+                    Err(e) => {
+                        warn!("Failed to load IP2Location database: {}. Geographic load balancing disabled.", e);
+                        None
                     }
-                }
+                },
             }
         } else {
             warn!("No GeoIP database path configured. Geographic load balancing disabled.");
@@ -171,11 +167,7 @@ impl GeoLoadBalancer {
     }
 
     /// Select nearest server based on client IP
-    pub fn select_nearest(
-        &self,
-        client_ip: Option<&str>,
-        servers: &[GeoServer],
-    ) -> Option<usize> {
+    pub fn select_nearest(&self, client_ip: Option<&str>, servers: &[GeoServer]) -> Option<usize> {
         if servers.is_empty() {
             return None;
         }
@@ -213,9 +205,7 @@ impl GeoLoadBalancer {
 
             debug!(
                 "Distance to server {} (region: {:?}): {:.2} km",
-                server.index,
-                server.region,
-                distance
+                server.index, server.region, distance
             );
 
             if distance < min_distance {
@@ -293,7 +283,11 @@ mod tests {
     #[test]
     fn test_distance_same_location() {
         let distance = calculate_distance(40.7128, -74.0060, 40.7128, -74.0060);
-        assert!(distance < 0.1, "Distance should be nearly zero: {}", distance);
+        assert!(
+            distance < 0.1,
+            "Distance should be nearly zero: {}",
+            distance
+        );
     }
 
     #[test]
@@ -303,11 +297,7 @@ mod tests {
         let distance = calculate_distance(0.0, 0.0, 0.0, 180.0);
 
         // Half Earth's circumference is approximately 20,037 km
-        assert!(
-            (distance - 20037.0).abs() < 500.0,
-            "Distance: {}",
-            distance
-        );
+        assert!((distance - 20037.0).abs() < 500.0, "Distance: {}", distance);
     }
 
     #[test]
@@ -360,11 +350,7 @@ mod tests {
         let distance = calculate_distance(90.0, 0.0, -90.0, 0.0);
 
         // Should be approximately half Earth's circumference
-        assert!(
-            (distance - 20037.0).abs() < 500.0,
-            "Distance: {}",
-            distance
-        );
+        assert!((distance - 20037.0).abs() < 500.0, "Distance: {}", distance);
     }
 
     #[test]
@@ -373,10 +359,6 @@ mod tests {
         let distance = calculate_distance(0.0, 0.0, 0.0, 90.0);
 
         // Should be approximately quarter circumference (10,018 km)
-        assert!(
-            (distance - 10018.0).abs() < 200.0,
-            "Distance: {}",
-            distance
-        );
+        assert!((distance - 10018.0).abs() < 200.0, "Distance: {}", distance);
     }
 }

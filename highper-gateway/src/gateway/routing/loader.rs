@@ -1,13 +1,16 @@
 //! Configuration loader for per-hostname routes
 
-use super::{HostnameRouter, HostRoutes, Route, HostnameRoutesConfig, PathMatch};
+use super::{HostRoutes, HostnameRouter, HostnameRoutesConfig, PathMatch, Route};
 use std::path::Path;
 use tokio::fs;
 use tracing::{info, warn};
 
 impl HostnameRouter {
     /// Load routes from JSON file
-    pub async fn load_from_json_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn load_from_json_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let path = path.as_ref();
         info!("Loading routes from: {}", path.display());
 
@@ -70,12 +73,18 @@ impl HostnameRouter {
             total_routes += route_count;
         }
 
-        info!("Successfully loaded {} routes across {} hosts", total_routes, host_count);
+        info!(
+            "Successfully loaded {} routes across {} hosts",
+            total_routes, host_count
+        );
         Ok(())
     }
 
     /// Reload routes from file (atomic swap)
-    pub async fn reload_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn reload_from_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Reloading routes from: {}", path.as_ref().display());
 
         // Create new router
@@ -143,11 +152,15 @@ mod tests {
 
         assert_eq!(router.host_count(), 1);
 
-        let matched = router.match_request("api.example.com", "/api/users", "GET").await;
+        let matched = router
+            .match_request("api.example.com", "/api/users", "GET")
+            .await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().route.name, "users");
 
-        let matched = router.match_request("api.example.com", "/api/products/123", "GET").await;
+        let matched = router
+            .match_request("api.example.com", "/api/products/123", "GET")
+            .await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().route.name, "products");
     }

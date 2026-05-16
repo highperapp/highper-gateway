@@ -112,10 +112,7 @@ impl RetryExecutor {
                 }
                 Err(e) => {
                     if attempt >= self.config.max_attempts {
-                        warn!(
-                            "Operation failed after {} attempts: {}",
-                            attempt, e
-                        );
+                        warn!("Operation failed after {} attempts: {}", attempt, e);
                         return Err(e);
                     }
 
@@ -137,14 +134,10 @@ impl RetryExecutor {
             RetryStrategy::Fixed => self.config.initial_backoff,
             RetryStrategy::Exponential => {
                 let multiplier = self.config.multiplier.powi(attempt as i32 - 1);
-                Duration::from_secs_f64(
-                    self.config.initial_backoff.as_secs_f64() * multiplier
-                )
+                Duration::from_secs_f64(self.config.initial_backoff.as_secs_f64() * multiplier)
             }
             RetryStrategy::Linear => {
-                Duration::from_secs_f64(
-                    self.config.initial_backoff.as_secs_f64() * attempt as f64
-                )
+                Duration::from_secs_f64(self.config.initial_backoff.as_secs_f64() * attempt as f64)
             }
         };
 
@@ -224,11 +217,8 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Exponential,
-            RetryPolicy::default(),
-        );
+        let executor =
+            RetryExecutor::new(config, RetryStrategy::Exponential, RetryPolicy::default());
 
         let result = executor
             .execute(|| async {
@@ -259,11 +249,8 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Exponential,
-            RetryPolicy::default(),
-        );
+        let executor =
+            RetryExecutor::new(config, RetryStrategy::Exponential, RetryPolicy::default());
 
         let result = executor
             .execute(|| async {
@@ -304,11 +291,8 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Exponential,
-            RetryPolicy::default(),
-        );
+        let executor =
+            RetryExecutor::new(config, RetryStrategy::Exponential, RetryPolicy::default());
 
         // Test exponential backoff
         assert_eq!(executor.calculate_backoff(1), Duration::from_millis(100));
@@ -327,11 +311,7 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Linear,
-            RetryPolicy::default(),
-        );
+        let executor = RetryExecutor::new(config, RetryStrategy::Linear, RetryPolicy::default());
 
         assert_eq!(executor.calculate_backoff(1), Duration::from_millis(100));
         assert_eq!(executor.calculate_backoff(2), Duration::from_millis(200));
@@ -348,11 +328,7 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Fixed,
-            RetryPolicy::default(),
-        );
+        let executor = RetryExecutor::new(config, RetryStrategy::Fixed, RetryPolicy::default());
 
         assert_eq!(executor.calculate_backoff(1), Duration::from_millis(100));
         assert_eq!(executor.calculate_backoff(2), Duration::from_millis(100));
@@ -390,11 +366,8 @@ mod tests {
             jitter: false,
         };
 
-        let executor = RetryExecutor::new(
-            config,
-            RetryStrategy::Exponential,
-            RetryPolicy::default(),
-        );
+        let executor =
+            RetryExecutor::new(config, RetryStrategy::Exponential, RetryPolicy::default());
 
         // After many attempts, backoff should be capped at max_backoff
         let backoff = executor.calculate_backoff(10);

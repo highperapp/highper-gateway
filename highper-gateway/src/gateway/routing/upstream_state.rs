@@ -7,10 +7,10 @@ use super::types::UpstreamConfig;
 use crate::config::{ActiveHealthCheckConfig, ServerDef};
 use crate::proxy::health::{Backend, HealthChecker};
 use crate::proxy::Client;
+use parking_lot::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use parking_lot::Mutex;
 use tracing::{info, warn};
 
 /// Runtime state for an upstream (backends + health tracking)
@@ -33,11 +33,7 @@ pub struct UpstreamState {
 
 impl UpstreamState {
     /// Create upstream state from configuration
-    pub fn from_config(
-        name: String,
-        config: UpstreamConfig,
-        client: Client,
-    ) -> Self {
+    pub fn from_config(name: String, config: UpstreamConfig, client: Client) -> Self {
         info!(
             "Creating upstream state for '{}' with {} servers",
             name,
@@ -51,10 +47,10 @@ impl UpstreamState {
             .map(|url| {
                 Arc::new(Backend::new(ServerDef {
                     url: url.clone(),
-                    weight: 1, // Default weight
+                    weight: 1,      // Default weight
                     max_conns: 100, // Default max connections
                     location: None, // No geographic location by default
-                    region: None, // No region by default
+                    region: None,   // No region by default
                 }))
             })
             .collect();
@@ -138,9 +134,9 @@ impl UpstreamState {
                 // Lock to get the checker, then release immediately
                 let checker = checker_arc.lock();
                 drop(checker); // Release lock
-                // Run health checks (this method needs Arc<Self>)
-                // For now, we'll skip this as the HealthChecker API needs refactoring
-                // TODO: Refactor HealthChecker to support this use case
+                               // Run health checks (this method needs Arc<Self>)
+                               // For now, we'll skip this as the HealthChecker API needs refactoring
+                               // TODO: Refactor HealthChecker to support this use case
             });
         }
     }
@@ -160,10 +156,7 @@ impl UpstreamState {
 
     /// Get backend by URL (for passive health tracking)
     pub fn find_backend(&self, url: &str) -> Option<Arc<Backend>> {
-        self.backends
-            .iter()
-            .find(|b| b.server.url == url)
-            .cloned()
+        self.backends.iter().find(|b| b.server.url == url).cloned()
     }
 
     /// Get upstream name
@@ -198,7 +191,10 @@ mod tests {
     #[test]
     fn test_create_upstream_state() {
         let config = UpstreamConfig {
-            servers: vec!["http://localhost:8001".to_string(), "http://localhost:8002".to_string()],
+            servers: vec![
+                "http://localhost:8001".to_string(),
+                "http://localhost:8002".to_string(),
+            ],
             algorithm: "round_robin".to_string(),
             health_check: None,
         };

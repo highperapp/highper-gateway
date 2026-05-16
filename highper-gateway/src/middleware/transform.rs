@@ -126,7 +126,12 @@ impl Middleware for TransformMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         let config = self.config.clone();
 
         Box::pin(async move {
@@ -203,7 +208,10 @@ impl Middleware for TransformMiddleware {
 
 impl TransformMiddleware {
     /// Static method for path transformation (for use in async context)
-    fn transform_path_static(config: &TransformConfig, original_uri: &Uri) -> Result<Uri, hyper::http::uri::InvalidUri> {
+    fn transform_path_static(
+        config: &TransformConfig,
+        original_uri: &Uri,
+    ) -> Result<Uri, hyper::http::uri::InvalidUri> {
         let mut path = original_uri.path().to_string();
         let query = original_uri.query();
 
@@ -289,9 +297,7 @@ mod tests {
     #[test]
     fn test_path_rewrite() {
         let mut config = TransformConfig::default();
-        config.path_rewrites = vec![
-            ("/old".to_string(), "/new".to_string()),
-        ];
+        config.path_rewrites = vec![("/old".to_string(), "/new".to_string())];
 
         let uri: Uri = "/old/path".parse().unwrap();
         let middleware = TransformMiddleware::new(config);
@@ -303,8 +309,12 @@ mod tests {
     #[test]
     fn test_query_params() {
         let mut config = TransformConfig::default();
-        config.query_params_add.insert("version".to_string(), "v1".to_string());
-        config.query_params_add.insert("api_key".to_string(), "test123".to_string());
+        config
+            .query_params_add
+            .insert("version".to_string(), "v1".to_string());
+        config
+            .query_params_add
+            .insert("api_key".to_string(), "test123".to_string());
 
         let uri: Uri = "/users?page=1".parse().unwrap();
         let middleware = TransformMiddleware::new(config);
@@ -321,7 +331,9 @@ mod tests {
         let mut config = TransformConfig::default();
         config.strip_path_prefix = Some("/api".to_string());
         config.path_prefix = Some("/v2".to_string());
-        config.query_params_add.insert("client".to_string(), "proxy".to_string());
+        config
+            .query_params_add
+            .insert("client".to_string(), "proxy".to_string());
 
         let uri: Uri = "/api/users?page=1".parse().unwrap();
         let middleware = TransformMiddleware::new(config);

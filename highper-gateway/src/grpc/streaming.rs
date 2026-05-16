@@ -5,11 +5,11 @@
 //! - Streaming context management
 //! - Backpressure handling
 
-use bytes::{Bytes, BytesMut, Buf};
+use anyhow::{anyhow, Result};
+use bytes::{Buf, Bytes, BytesMut};
+use http_body::{Body, Frame};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use http_body::{Body, Frame};
-use anyhow::{Result, anyhow};
 
 /// gRPC frame header (5 bytes)
 ///

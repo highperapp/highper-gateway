@@ -134,8 +134,18 @@ pub struct AuthDb {
 
 impl AuthDb {
     /// Create new auth database with default settings (bcrypt)
-    pub async fn new(db_path: &str, jwt_secret: String, jwt_expiration: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::new_with_hash_algorithm(db_path, jwt_secret, jwt_expiration, PasswordHashAlgorithm::default()).await
+    pub async fn new(
+        db_path: &str,
+        jwt_secret: String,
+        jwt_expiration: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::new_with_hash_algorithm(
+            db_path,
+            jwt_secret,
+            jwt_expiration,
+            PasswordHashAlgorithm::default(),
+        )
+        .await
     }
 
     /// Create new auth database with configurable hash algorithm
@@ -145,7 +155,14 @@ impl AuthDb {
         jwt_expiration: &str,
         hash_algorithm: PasswordHashAlgorithm,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::new_with_lockout(db_path, jwt_secret, jwt_expiration, hash_algorithm, LockoutConfig::default()).await
+        Self::new_with_lockout(
+            db_path,
+            jwt_secret,
+            jwt_expiration,
+            hash_algorithm,
+            LockoutConfig::default(),
+        )
+        .await
     }
 
     /// Create new auth database with configurable hash algorithm and lockout settings
@@ -181,9 +198,10 @@ impl AuthDb {
         .await?;
 
         // Add lockout columns to existing tables (migration)
-        let _ = sqlx::query("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool)
-            .await;
+        let _ =
+            sqlx::query("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0")
+                .execute(&pool)
+                .await;
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN locked_until INTEGER")
             .execute(&pool)
             .await;
@@ -237,7 +255,10 @@ impl AuthDb {
         if let Some(until) = locked_until {
             if until > now {
                 let remaining = (until - now) as u64;
-                warn!("Login attempt for locked user: {} (locked for {} more seconds)", req.username, remaining);
+                warn!(
+                    "Login attempt for locked user: {} (locked for {} more seconds)",
+                    req.username, remaining
+                );
                 return Err(AuthError::Locked {
                     until,
                     remaining_seconds: remaining,
@@ -261,24 +282,31 @@ impl AuthDb {
                 None
             };
 
-            sqlx::query("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE username = ?")
-                .bind(new_attempts)
-                .bind(lock_until)
-                .bind(&req.username)
-                .execute(&*self.pool)
-                .await
-                .map_err(|e| AuthError::Internal(format!("Database error: {}", e)))?;
+            sqlx::query(
+                "UPDATE users SET failed_attempts = ?, locked_until = ? WHERE username = ?",
+            )
+            .bind(new_attempts)
+            .bind(lock_until)
+            .bind(&req.username)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AuthError::Internal(format!("Database error: {}", e)))?;
 
             if let Some(until) = lock_until {
-                warn!("User {} locked after {} failed attempts", req.username, new_attempts);
+                warn!(
+                    "User {} locked after {} failed attempts",
+                    req.username, new_attempts
+                );
                 return Err(AuthError::Locked {
                     until,
                     remaining_seconds: self.lockout_config.lockout_duration_seconds,
                 });
             }
 
-            warn!("Failed login attempt for user: {} ({}/{} attempts)",
-                  req.username, new_attempts, self.lockout_config.max_attempts);
+            warn!(
+                "Failed login attempt for user: {} ({}/{} attempts)",
+                req.username, new_attempts, self.lockout_config.max_attempts
+            );
             return Err(AuthError::Unauthorized("Invalid credentials".to_string()));
         }
 
@@ -320,11 +348,13 @@ impl AuthDb {
     pub async fn unlock_user(&self, username: &str) -> Result<(), AuthError> {
         info!("Unlocking user: {}", username);
 
-        let result = sqlx::query("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE username = ?")
-            .bind(username)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AuthError::Internal(format!("Database error: {}", e)))?;
+        let result = sqlx::query(
+            "UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE username = ?",
+        )
+        .bind(username)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| AuthError::Internal(format!("Database error: {}", e)))?;
 
         if result.rows_affected() == 0 {
             return Err(AuthError::NotFound("User not found".to_string()));
@@ -336,7 +366,10 @@ impl AuthDb {
 
     /// Create a new user
     pub async fn create_user(&self, req: CreateUserRequest) -> Result<User, AuthError> {
-        info!("Creating new user: {} (hash algorithm: {})", req.username, self.hash_algorithm);
+        info!(
+            "Creating new user: {} (hash algorithm: {})",
+            req.username, self.hash_algorithm
+        );
 
         // Hash the password using configured algorithm
         let password_hash = hash_password(&req.password, self.hash_algorithm)?;
@@ -463,7 +496,10 @@ pub enum AuthError {
     Conflict(String),
     Internal(String),
     /// Account is locked due to too many failed attempts
-    Locked { until: i64, remaining_seconds: u64 },
+    Locked {
+        until: i64,
+        remaining_seconds: u64,
+    },
 }
 
 impl std::fmt::Display for AuthError {
@@ -473,8 +509,14 @@ impl std::fmt::Display for AuthError {
             AuthError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AuthError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             AuthError::Internal(msg) => write!(f, "Internal error: {}", msg),
-            AuthError::Locked { remaining_seconds, .. } => {
-                write!(f, "Account locked. Try again in {} seconds", remaining_seconds)
+            AuthError::Locked {
+                remaining_seconds, ..
+            } => {
+                write!(
+                    f,
+                    "Account locked. Try again in {} seconds",
+                    remaining_seconds
+                )
             }
         }
     }
@@ -489,19 +531,18 @@ impl From<AuthError> for Response<Full<Bytes>> {
                 StatusCode::UNAUTHORIZED,
                 serde_json::json!({ "error": msg }),
             ),
-            AuthError::NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                serde_json::json!({ "error": msg }),
-            ),
-            AuthError::Conflict(msg) => (
-                StatusCode::CONFLICT,
-                serde_json::json!({ "error": msg }),
-            ),
+            AuthError::NotFound(msg) => {
+                (StatusCode::NOT_FOUND, serde_json::json!({ "error": msg }))
+            }
+            AuthError::Conflict(msg) => (StatusCode::CONFLICT, serde_json::json!({ "error": msg })),
             AuthError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 serde_json::json!({ "error": msg }),
             ),
-            AuthError::Locked { until, remaining_seconds } => (
+            AuthError::Locked {
+                until,
+                remaining_seconds,
+            } => (
                 StatusCode::TOO_MANY_REQUESTS,
                 serde_json::json!({
                     "error": format!("Account locked. Try again in {} seconds", remaining_seconds),
@@ -522,10 +563,8 @@ impl From<AuthError> for Response<Full<Bytes>> {
 /// Hash a password using the specified algorithm
 fn hash_password(password: &str, algorithm: PasswordHashAlgorithm) -> Result<String, AuthError> {
     match algorithm {
-        PasswordHashAlgorithm::Bcrypt => {
-            bcrypt::hash(password, bcrypt::DEFAULT_COST)
-                .map_err(|e| AuthError::Internal(format!("Bcrypt hashing failed: {}", e)))
-        }
+        PasswordHashAlgorithm::Bcrypt => bcrypt::hash(password, bcrypt::DEFAULT_COST)
+            .map_err(|e| AuthError::Internal(format!("Bcrypt hashing failed: {}", e))),
         PasswordHashAlgorithm::Argon2id => {
             use argon2::{
                 password_hash::{PasswordHasher, SaltString},
@@ -547,7 +586,11 @@ fn hash_password(password: &str, algorithm: PasswordHashAlgorithm) -> Result<Str
 }
 
 /// Verify a password against a hash (auto-detects algorithm from hash format)
-fn verify_password(password: &str, hash: &str, _preferred_algorithm: PasswordHashAlgorithm) -> Result<bool, AuthError> {
+fn verify_password(
+    password: &str,
+    hash: &str,
+    _preferred_algorithm: PasswordHashAlgorithm,
+) -> Result<bool, AuthError> {
     // Auto-detect algorithm from hash prefix
     if hash.starts_with("$2") {
         // Bcrypt hash format: $2a$, $2b$, $2y$
@@ -567,7 +610,10 @@ fn verify_password(password: &str, hash: &str, _preferred_algorithm: PasswordHas
         match argon2.verify_password(password.as_bytes(), &parsed_hash) {
             Ok(_) => Ok(true),
             Err(argon2::password_hash::Error::Password) => Ok(false),
-            Err(e) => Err(AuthError::Internal(format!("Argon2 verification failed: {}", e))),
+            Err(e) => Err(AuthError::Internal(format!(
+                "Argon2 verification failed: {}",
+                e
+            ))),
         }
     } else {
         Err(AuthError::Internal(format!("Unknown password hash format")))
@@ -632,7 +678,9 @@ mod tests {
 
         // Verify password
         assert!(verify_password(password, &hash, PasswordHashAlgorithm::Argon2id).unwrap());
-        assert!(!verify_password("wrong_password", &hash, PasswordHashAlgorithm::Argon2id).unwrap());
+        assert!(
+            !verify_password("wrong_password", &hash, PasswordHashAlgorithm::Argon2id).unwrap()
+        );
     }
 
     #[test]
@@ -650,9 +698,18 @@ mod tests {
 
     #[test]
     fn test_hash_algorithm_from_str() {
-        assert_eq!("bcrypt".parse::<PasswordHashAlgorithm>().unwrap(), PasswordHashAlgorithm::Bcrypt);
-        assert_eq!("argon2id".parse::<PasswordHashAlgorithm>().unwrap(), PasswordHashAlgorithm::Argon2id);
-        assert_eq!("argon2".parse::<PasswordHashAlgorithm>().unwrap(), PasswordHashAlgorithm::Argon2id);
+        assert_eq!(
+            "bcrypt".parse::<PasswordHashAlgorithm>().unwrap(),
+            PasswordHashAlgorithm::Bcrypt
+        );
+        assert_eq!(
+            "argon2id".parse::<PasswordHashAlgorithm>().unwrap(),
+            PasswordHashAlgorithm::Argon2id
+        );
+        assert_eq!(
+            "argon2".parse::<PasswordHashAlgorithm>().unwrap(),
+            PasswordHashAlgorithm::Argon2id
+        );
         assert!("unknown".parse::<PasswordHashAlgorithm>().is_err());
     }
 }

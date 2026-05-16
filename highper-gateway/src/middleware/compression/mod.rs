@@ -62,41 +62,28 @@
 //! GLOBAL_COMPRESSOR_REGISTRY.register(Arc::new(CustomCompressor));
 //! ```
 
-mod compressor;
-mod registry;
-mod negotiation;
-mod gzip;
 mod brotli;
-mod zstd;
+mod compressor;
 mod deflate;
+mod gzip;
+mod negotiation;
+mod registry;
+mod zstd;
 
 // Re-export public API
-pub use compressor::{
-    Compressor,
-    CompressorStream,
-    CompressorConfig,
-    CompressionResult,
-    CompressionError,
-    CompressorStats,
-    StatsTracker,
-};
-pub use registry::{
-    CompressorRegistry,
-    CompressorInfo,
-    GLOBAL_COMPRESSOR_REGISTRY,
-};
-pub use negotiation::{
-    parse_accept_encoding,
-    select_compressor,
-    is_compressible,
-    is_already_compressed,
-    default_server_preferences,
-    EncodingPreference,
-};
-pub use gzip::GzipCompressor;
 pub use brotli::BrotliCompressor;
-pub use zstd::ZstdCompressor;
+pub use compressor::{
+    CompressionError, CompressionResult, Compressor, CompressorConfig, CompressorStats,
+    CompressorStream, StatsTracker,
+};
 pub use deflate::DeflateCompressor;
+pub use gzip::GzipCompressor;
+pub use negotiation::{
+    default_server_preferences, is_already_compressed, is_compressible, parse_accept_encoding,
+    select_compressor, EncodingPreference,
+};
+pub use registry::{CompressorInfo, CompressorRegistry, GLOBAL_COMPRESSOR_REGISTRY};
+pub use zstd::ZstdCompressor;
 
 use std::sync::Arc;
 use tracing::info;

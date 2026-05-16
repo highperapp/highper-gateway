@@ -53,13 +53,27 @@ pub struct OcspFetcherConfig {
     pub max_stale_age_secs: u64,
 }
 
-fn default_timeout() -> u64 { 10 }
-fn default_max_retries() -> u32 { 3 }
-fn default_initial_retry_delay() -> u64 { 500 }
-fn default_max_retry_delay() -> u64 { 30000 }
-fn default_retry_multiplier() -> f64 { 2.0 }
-fn default_true() -> bool { true }
-fn default_max_stale_age() -> u64 { 86400 }
+fn default_timeout() -> u64 {
+    10
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_initial_retry_delay() -> u64 {
+    500
+}
+fn default_max_retry_delay() -> u64 {
+    30000
+}
+fn default_retry_multiplier() -> f64 {
+    2.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_stale_age() -> u64 {
+    86400
+}
 
 impl Default for OcspFetcherConfig {
     fn default() -> Self {
@@ -177,10 +191,7 @@ impl OcspFetcher {
                     return Ok(response);
                 }
                 Err(e) => {
-                    warn!(
-                        "OCSP responder {} failed: {}",
-                        ocsp_url, e
-                    );
+                    warn!("OCSP responder {} failed: {}", ocsp_url, e);
                     last_error = Some(e);
                 }
             }
@@ -223,10 +234,7 @@ impl OcspFetcher {
             match self.fetch_once(ocsp_url, ocsp_request).await {
                 Ok(response) => {
                     if attempt > 0 {
-                        info!(
-                            "OCSP fetch succeeded on retry attempt {}",
-                            attempt
-                        );
+                        info!("OCSP fetch succeeded on retry attempt {}", attempt);
                     }
                     return Ok(response);
                 }
@@ -239,7 +247,10 @@ impl OcspFetcher {
             }
         }
 
-        Err(anyhow!("OCSP fetch failed after {} retries", self.config.max_retries))
+        Err(anyhow!(
+            "OCSP fetch failed after {} retries",
+            self.config.max_retries
+        ))
     }
 
     /// Single OCSP fetch attempt (no retry)
@@ -305,8 +316,8 @@ impl OcspFetcher {
 
     /// Extract OCSP responder URL from certificate's AIA (Authority Information Access) extension
     fn extract_ocsp_url(&self, cert: &CertificateDer<'_>) -> Result<String> {
-        use x509_parser::prelude::*;
         use x509_parser::oid_registry;
+        use x509_parser::prelude::*;
 
         let (_, parsed_cert) = parse_x509_certificate(cert.as_ref())
             .map_err(|e| anyhow!("Failed to parse certificate: {}", e))?;
@@ -508,7 +519,9 @@ mod tests {
         let fetcher = OcspFetcher::with_config(config).unwrap();
 
         // Store a response
-        fetcher.store_response(&vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).await;
+        fetcher
+            .store_response(&vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+            .await;
 
         // Should be valid immediately
         assert!(fetcher.get_stale_response().await.is_some());

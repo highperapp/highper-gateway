@@ -40,12 +40,14 @@ impl Compressor for GzipCompressor {
     }
 
     fn quality(&self) -> f32 {
-        0.7  // Good compression, widely supported
+        0.7 // Good compression, widely supported
     }
 
-    fn compress(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>
-    {
+    fn compress(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError> {
         let original_size = data.len();
 
         // Check minimum size
@@ -69,7 +71,8 @@ impl Compressor for GzipCompressor {
         let ratio = compressed_size as f64 / original_size as f64;
 
         // Record statistics
-        self.stats.record_compression(original_size as u64, compressed_size as u64);
+        self.stats
+            .record_compression(original_size as u64, compressed_size as u64);
 
         Ok(CompressionResult {
             data: compressed,
@@ -80,9 +83,11 @@ impl Compressor for GzipCompressor {
         })
     }
 
-    async fn compress_async(&self, data: &[u8], config: &CompressorConfig)
-        -> Result<CompressionResult, CompressionError>
-    {
+    async fn compress_async(
+        &self,
+        data: &[u8],
+        config: &CompressorConfig,
+    ) -> Result<CompressionResult, CompressionError> {
         let data = data.to_vec();
         let config = config.clone();
 
@@ -133,7 +138,10 @@ impl CompressorStream for GzipStream {
 
     fn finalize(&mut self) -> Result<Vec<u8>, CompressionError> {
         // Finish encoding and get the compressed data
-        let compressed = std::mem::replace(&mut self.encoder, GzEncoder::new(Vec::new(), Compression::new(self.level)));
+        let compressed = std::mem::replace(
+            &mut self.encoder,
+            GzEncoder::new(Vec::new(), Compression::new(self.level)),
+        );
         let result = compressed.finish()?;
         Ok(result)
     }
@@ -183,7 +191,7 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(CompressionError::TooSmall(_, _)) => {},
+            Err(CompressionError::TooSmall(_, _)) => {}
             _ => panic!("Expected TooSmall error"),
         }
     }

@@ -69,7 +69,7 @@ impl Default for StreamingValidatorConfig {
     fn default() -> Self {
         Self {
             max_body_size: Some(100 * 1024 * 1024), // 100 MB default
-            allowed_content_types: vec![],           // Allow all by default
+            allowed_content_types: vec![],          // Allow all by default
             require_content_type: false,
             enabled: true,
         }
@@ -142,7 +142,10 @@ where
                     }
 
                     *this.bytes_read += chunk_size as u64;
-                    debug!("Validated chunk: {} bytes (total: {})", chunk_size, this.bytes_read);
+                    debug!(
+                        "Validated chunk: {} bytes (total: {})",
+                        chunk_size, this.bytes_read
+                    );
                 }
 
                 Poll::Ready(Some(Ok(frame)))
@@ -289,10 +292,7 @@ mod tests {
         assert!(validator.validate_headers(&headers).is_ok());
 
         // Invalid content type
-        headers.insert(
-            hyper::header::CONTENT_TYPE,
-            "text/html".parse().unwrap(),
-        );
+        headers.insert(hyper::header::CONTENT_TYPE, "text/html".parse().unwrap());
         assert!(validator.validate_headers(&headers).is_err());
     }
 
@@ -316,10 +316,7 @@ mod tests {
         );
         assert!(validator.validate_headers(&headers).is_ok());
 
-        headers.insert(
-            hyper::header::CONTENT_TYPE,
-            "text/plain".parse().unwrap(),
-        );
+        headers.insert(hyper::header::CONTENT_TYPE, "text/plain".parse().unwrap());
         assert!(validator.validate_headers(&headers).is_err());
     }
 

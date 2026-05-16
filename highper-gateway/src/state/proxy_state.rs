@@ -3,15 +3,15 @@
 //! Provides centralized state management for the proxy, allowing
 //! components like the Admin API to interact with runtime state.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
-use crate::gateway::cache::LocalCache;
 use crate::gateway::cache::distributed::DistributedCache;
+use crate::gateway::cache::LocalCache;
 use crate::proxy::ConnectionPoolMetrics;
 use crate::state::request_metrics::RequestMetrics;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Backend state information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,7 +284,12 @@ impl ProxyState {
     }
 
     /// Update backend enabled status
-    pub async fn set_backend_enabled(&self, id: &str, enabled: bool, reason: Option<String>) -> bool {
+    pub async fn set_backend_enabled(
+        &self,
+        id: &str,
+        enabled: bool,
+        reason: Option<String>,
+    ) -> bool {
         let mut backends = self.backends.write().await;
         if let Some(backend) = backends.get_mut(id) {
             backend.enabled = enabled;
@@ -297,7 +302,8 @@ impl ProxyState {
 
     /// Update backend drain status
     pub async fn set_backend_draining(&self, id: &str, draining: bool) -> bool {
-        self.set_backend_draining_with_timeout(id, draining, None, None).await
+        self.set_backend_draining_with_timeout(id, draining, None, None)
+            .await
     }
 
     /// Update backend drain status with timeout and reason
@@ -317,7 +323,7 @@ impl ProxyState {
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
-                        .as_secs()
+                        .as_secs(),
                 );
                 backend.drain_timeout_secs = timeout_secs;
                 backend.drain_completed = false;
@@ -354,7 +360,9 @@ impl ProxyState {
     pub async fn is_drain_timed_out(&self, id: &str) -> bool {
         let backends = self.backends.read().await;
         if let Some(backend) = backends.get(id) {
-            if let (Some(started_at), Some(timeout)) = (backend.drain_started_at, backend.drain_timeout_secs) {
+            if let (Some(started_at), Some(timeout)) =
+                (backend.drain_started_at, backend.drain_timeout_secs)
+            {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -378,8 +386,12 @@ impl ProxyState {
                 .unwrap_or_default()
                 .as_secs();
 
-            let elapsed = backend.drain_started_at.map(|s| now.saturating_sub(s)).unwrap_or(0);
-            let remaining = backend.drain_timeout_secs
+            let elapsed = backend
+                .drain_started_at
+                .map(|s| now.saturating_sub(s))
+                .unwrap_or(0);
+            let remaining = backend
+                .drain_timeout_secs
                 .map(|t| t.saturating_sub(elapsed))
                 .unwrap_or(0);
 
@@ -391,7 +403,10 @@ impl ProxyState {
                 elapsed_secs: elapsed,
                 timeout_secs: backend.drain_timeout_secs.unwrap_or(0),
                 remaining_secs: remaining,
-                timed_out: backend.drain_timeout_secs.map(|t| elapsed >= t).unwrap_or(false),
+                timed_out: backend
+                    .drain_timeout_secs
+                    .map(|t| elapsed >= t)
+                    .unwrap_or(false),
             })
         })
     }
@@ -479,11 +494,9 @@ mod tests {
 
         state.register_backend(backend).await;
 
-        let success = state.set_backend_enabled(
-            "test_upstream_0",
-            false,
-            Some("Maintenance".to_string())
-        ).await;
+        let success = state
+            .set_backend_enabled("test_upstream_0", false, Some("Maintenance".to_string()))
+            .await;
 
         assert!(success);
 
@@ -538,12 +551,14 @@ mod tests {
         state.register_backend(backend).await;
 
         // Start draining with 60 second timeout
-        let success = state.set_backend_draining_with_timeout(
-            "test_upstream_0",
-            true,
-            Some(60),
-            Some("Maintenance".to_string()),
-        ).await;
+        let success = state
+            .set_backend_draining_with_timeout(
+                "test_upstream_0",
+                true,
+                Some(60),
+                Some("Maintenance".to_string()),
+            )
+            .await;
         assert!(success);
 
         // Verify drain state
@@ -580,12 +595,9 @@ mod tests {
         assert!(status.is_none());
 
         // Start draining
-        state.set_backend_draining_with_timeout(
-            "test_upstream_0",
-            true,
-            Some(30),
-            None,
-        ).await;
+        state
+            .set_backend_draining_with_timeout("test_upstream_0", true, Some(30), None)
+            .await;
 
         // Get drain status
         let status = state.get_drain_status("test_upstream_0").await;
@@ -620,12 +632,9 @@ mod tests {
         state.register_backend(backend).await;
 
         // Start draining
-        state.set_backend_draining_with_timeout(
-            "test_upstream_0",
-            true,
-            Some(60),
-            None,
-        ).await;
+        state
+            .set_backend_draining_with_timeout("test_upstream_0", true, Some(60), None)
+            .await;
 
         // Complete drain
         let success = state.complete_drain("test_upstream_0").await;
@@ -658,12 +667,14 @@ mod tests {
         state.register_backend(backend).await;
 
         // Start draining
-        state.set_backend_draining_with_timeout(
-            "test_upstream_0",
-            true,
-            Some(60),
-            Some("Maintenance".to_string()),
-        ).await;
+        state
+            .set_backend_draining_with_timeout(
+                "test_upstream_0",
+                true,
+                Some(60),
+                Some("Maintenance".to_string()),
+            )
+            .await;
 
         // Cancel drain
         let success = state.set_backend_draining("test_upstream_0", false).await;

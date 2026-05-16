@@ -91,7 +91,10 @@ impl ValidationResult {
             Ok(self.warnings)
         } else {
             let error_messages: Vec<String> = self.errors.iter().map(|e| e.to_string()).collect();
-            Err(anyhow!("Configuration validation failed:\n  {}", error_messages.join("\n  ")))
+            Err(anyhow!(
+                "Configuration validation failed:\n  {}",
+                error_messages.join("\n  ")
+            ))
         }
     }
 }
@@ -247,7 +250,8 @@ impl ConfigValidator {
                 let field = format!("tls.certificates[{}]", i);
 
                 // Check certificate file exists
-                if !cert_config.cert_file.is_empty() && !Path::new(&cert_config.cert_file).exists() {
+                if !cert_config.cert_file.is_empty() && !Path::new(&cert_config.cert_file).exists()
+                {
                     self.result.add_error(ValidationError::InvalidField {
                         field: format!("{}.cert_file", field),
                         message: format!("certificate file '{}' not found", cert_config.cert_file),
@@ -277,9 +281,8 @@ impl ConfigValidator {
             // Validate ACME config if present
             if let Some(acme) = &tls_config.acme {
                 if acme.email.is_empty() {
-                    self.result.add_error(ValidationError::MissingField(
-                        "tls.acme.email".to_string(),
-                    ));
+                    self.result
+                        .add_error(ValidationError::MissingField("tls.acme.email".to_string()));
                 }
 
                 if !acme.email.contains('@') {
@@ -313,9 +316,8 @@ impl ConfigValidator {
 
             // Check for empty name
             if upstream.name.is_empty() {
-                self.result.add_error(ValidationError::MissingField(
-                    format!("{}.name", field),
-                ));
+                self.result
+                    .add_error(ValidationError::MissingField(format!("{}.name", field)));
                 continue;
             }
 
@@ -339,9 +341,10 @@ impl ConfigValidator {
                 let server_field = format!("{}.servers[{}]", field, j);
 
                 if server.url.is_empty() {
-                    self.result.add_error(ValidationError::MissingField(
-                        format!("{}.url", server_field),
-                    ));
+                    self.result.add_error(ValidationError::MissingField(format!(
+                        "{}.url",
+                        server_field
+                    )));
                 } else if server.url.parse::<url::Url>().is_err() {
                     self.result.add_error(ValidationError::InvalidField {
                         field: format!("{}.url", server_field),
@@ -388,7 +391,9 @@ impl ConfigValidator {
                     );
                 }
 
-                if health_check.active.healthy_threshold == 0 || health_check.active.unhealthy_threshold == 0 {
+                if health_check.active.healthy_threshold == 0
+                    || health_check.active.unhealthy_threshold == 0
+                {
                     self.result.add_error(ValidationError::InvalidField {
                         field: format!("{}.health_check.active.threshold", field),
                         message: "thresholds must be greater than 0".to_string(),
@@ -412,9 +417,8 @@ impl ConfigValidator {
 
             // Check for empty name
             if route.name.is_empty() {
-                self.result.add_error(ValidationError::MissingField(
-                    format!("{}.name", field),
-                ));
+                self.result
+                    .add_error(ValidationError::MissingField(format!("{}.name", field)));
                 continue;
             }
 
@@ -428,9 +432,8 @@ impl ConfigValidator {
 
             // Validate upstream reference
             if route.upstream.is_empty() {
-                self.result.add_error(ValidationError::MissingField(
-                    format!("{}.upstream", field),
-                ));
+                self.result
+                    .add_error(ValidationError::MissingField(format!("{}.upstream", field)));
             } else if !upstream_names.contains(&route.upstream) {
                 self.result.add_error(ValidationError::InvalidReference {
                     field: format!("{}.upstream", field),
@@ -475,7 +478,12 @@ impl ConfigValidator {
             if admin_config.enabled {
                 self.validate_socket_addr("admin.bind", &admin_config.bind);
 
-                if admin_config.auth_enabled && admin_config.jwt_secret.as_ref().map_or(true, |s| s.is_empty()) {
+                if admin_config.auth_enabled
+                    && admin_config
+                        .jwt_secret
+                        .as_ref()
+                        .map_or(true, |s| s.is_empty())
+                {
                     self.result.add_error(ValidationError::InvalidField {
                         field: "admin.jwt_secret".to_string(),
                         message: "JWT secret required when auth is enabled".to_string(),
@@ -485,11 +493,8 @@ impl ConfigValidator {
                 if let Some(secret) = &admin_config.jwt_secret {
                     if secret.len() < 32 {
                         self.result.add_warning(
-                            ValidationWarning::new(
-                                "admin.jwt_secret",
-                                "JWT secret is too short",
-                            )
-                            .with_suggestion("Use at least 32 characters for security"),
+                            ValidationWarning::new("admin.jwt_secret", "JWT secret is too short")
+                                .with_suggestion("Use at least 32 characters for security"),
                         );
                     }
                 }

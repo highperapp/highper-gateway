@@ -183,11 +183,7 @@ fn default_keepalive() -> u64 {
 }
 
 fn default_php_extensions() -> Vec<String> {
-    vec![
-        ".php".to_string(),
-        ".php5".to_string(),
-        ".php7".to_string(),
-    ]
+    vec![".php".to_string(), ".php5".to_string(), ".php7".to_string()]
 }
 
 /// Cache control configuration

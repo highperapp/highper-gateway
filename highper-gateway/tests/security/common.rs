@@ -351,10 +351,7 @@ pub async fn run_tcp_echo_backend(port: u16) {
 
 /// HTTP client for security testing
 pub struct SecurityHttpClient {
-    client: Client<
-        hyper_util::client::legacy::connect::HttpConnector,
-        Full<Bytes>,
-    >,
+    client: Client<hyper_util::client::legacy::connect::HttpConnector, Full<Bytes>>,
     base_url: String,
 }
 
@@ -376,9 +373,7 @@ impl SecurityHttpClient {
         let url = format!("{}{}", self.base_url, path);
         let start = std::time::Instant::now();
 
-        let mut builder = Request::builder()
-            .method(Method::GET)
-            .uri(&url);
+        let mut builder = Request::builder().method(Method::GET).uri(&url);
 
         for (key, value) in headers {
             builder = builder.header(&key, &value);
@@ -417,9 +412,7 @@ impl SecurityHttpClient {
         let url = format!("{}{}", self.base_url, path);
         let start = std::time::Instant::now();
 
-        let mut builder = Request::builder()
-            .method(Method::POST)
-            .uri(&url);
+        let mut builder = Request::builder().method(Method::POST).uri(&url);
 
         for (key, value) in headers {
             builder = builder.header(&key, &value);
@@ -462,12 +455,7 @@ impl SecurityHttpClient {
         let mut buf = [0u8; 4096];
 
         loop {
-            match tokio::time::timeout(
-                Duration::from_millis(500),
-                stream.read(&mut buf),
-            )
-            .await
-            {
+            match tokio::time::timeout(Duration::from_millis(500), stream.read(&mut buf)).await {
                 Ok(Ok(0)) => break,
                 Ok(Ok(n)) => response.extend_from_slice(&buf[..n]),
                 Ok(Err(e)) => return Err(e.to_string()),
@@ -664,11 +652,11 @@ pub fn calculate_cvss_score(
     };
 
     let pr = match (privileges_required, scope) {
-        ("N", _) => 0.85,        // None
-        ("L", "U") => 0.62,      // Low, Unchanged
-        ("L", "C") => 0.68,      // Low, Changed
-        ("H", "U") => 0.27,      // High, Unchanged
-        ("H", "C") => 0.50,      // High, Changed
+        ("N", _) => 0.85,   // None
+        ("L", "U") => 0.62, // Low, Unchanged
+        ("L", "C") => 0.68, // Low, Changed
+        ("H", "U") => 0.27, // High, Unchanged
+        ("H", "C") => 0.50, // High, Changed
         _ => 0.0,
     };
 
@@ -738,7 +726,11 @@ mod tests {
     fn test_cvss_high() {
         // SQL injection with limited impact (requires privileges)
         let score = calculate_cvss_score("N", "L", "L", "N", "U", "H", "H", "N");
-        assert!(score >= 7.0 && score < 9.0, "SQLi with privs should be high: {}", score);
+        assert!(
+            score >= 7.0 && score < 9.0,
+            "SQLi with privs should be high: {}",
+            score
+        );
     }
 
     #[test]

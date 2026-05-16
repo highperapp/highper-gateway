@@ -5,12 +5,12 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone, Default)]
 pub struct ObservabilityRuntimeConfig {
-    pub metrics_backend: Reloadable<MetricsBackend>,    // HIGHPER_OBS_METRICS_BACKEND
-    pub log_backend: Reloadable<LogBackend>,            // HIGHPER_OBS_LOG_BACKEND
-    pub log_format: Reloadable<LogFormat>,              // HIGHPER_OBS_LOG_FORMAT
-    pub log_level: Reloadable<LogLevel>,                // HIGHPER_OBS_LOG_LEVEL
-    pub trace_sampling_rate: Reloadable<f64>,           // HIGHPER_OBS_TRACE_SAMPLING (0.0..=1.0)
-    pub otlp_endpoint: Reloadable<Option<String>>,      // HIGHPER_OBS_OTLP_ENDPOINT
+    pub metrics_backend: Reloadable<MetricsBackend>, // HIGHPER_OBS_METRICS_BACKEND
+    pub log_backend: Reloadable<LogBackend>,         // HIGHPER_OBS_LOG_BACKEND
+    pub log_format: Reloadable<LogFormat>,           // HIGHPER_OBS_LOG_FORMAT
+    pub log_level: Reloadable<LogLevel>,             // HIGHPER_OBS_LOG_LEVEL
+    pub trace_sampling_rate: Reloadable<f64>,        // HIGHPER_OBS_TRACE_SAMPLING (0.0..=1.0)
+    pub otlp_endpoint: Reloadable<Option<String>>,   // HIGHPER_OBS_OTLP_ENDPOINT
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -52,14 +52,26 @@ pub(crate) fn load() -> Result<ObservabilityRuntimeConfig, RuntimeConfigError> {
         None | Some("prometheus") => MetricsBackend::Prometheus,
         Some("otlp") => MetricsBackend::Otlp,
         Some("none") => MetricsBackend::None,
-        Some(o) => return Err(parse_err("HIGHPER_OBS_METRICS_BACKEND", o, "prometheus|otlp|none")),
+        Some(o) => {
+            return Err(parse_err(
+                "HIGHPER_OBS_METRICS_BACKEND",
+                o,
+                "prometheus|otlp|none",
+            ))
+        }
     };
     let log_backend = match env_string("OBS_LOG_BACKEND").as_deref() {
         None | Some("stderr") => LogBackend::Stderr,
         Some("stdout") => LogBackend::Stdout,
         Some("file") => LogBackend::File,
         Some("otlp") => LogBackend::Otlp,
-        Some(o) => return Err(parse_err("HIGHPER_OBS_LOG_BACKEND", o, "stderr|stdout|file|otlp")),
+        Some(o) => {
+            return Err(parse_err(
+                "HIGHPER_OBS_LOG_BACKEND",
+                o,
+                "stderr|stdout|file|otlp",
+            ))
+        }
     };
     let log_format = match env_string("OBS_LOG_FORMAT").as_deref() {
         None | Some("pretty") => LogFormat::Pretty,
@@ -72,16 +84,25 @@ pub(crate) fn load() -> Result<ObservabilityRuntimeConfig, RuntimeConfigError> {
         Some("debug") => LogLevel::Debug,
         Some("warn") => LogLevel::Warn,
         Some("error") => LogLevel::Error,
-        Some(o) => return Err(parse_err("HIGHPER_OBS_LOG_LEVEL", o, "trace|debug|info|warn|error")),
+        Some(o) => {
+            return Err(parse_err(
+                "HIGHPER_OBS_LOG_LEVEL",
+                o,
+                "trace|debug|info|warn|error",
+            ))
+        }
     };
     let trace_sampling_rate = match env_string("OBS_TRACE_SAMPLING") {
         None => 0.1,
         Some(s) => {
-            let v = s.trim().parse::<f64>().map_err(|_| RuntimeConfigError::ParseError {
-                env_var: "HIGHPER_OBS_TRACE_SAMPLING".into(),
-                value: s.clone(),
-                expected: "f64 in [0.0, 1.0]",
-            })?;
+            let v = s
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| RuntimeConfigError::ParseError {
+                    env_var: "HIGHPER_OBS_TRACE_SAMPLING".into(),
+                    value: s.clone(),
+                    expected: "f64 in [0.0, 1.0]",
+                })?;
             if !(0.0..=1.0).contains(&v) {
                 return Err(RuntimeConfigError::OutOfRange {
                     env_var: "HIGHPER_OBS_TRACE_SAMPLING".into(),

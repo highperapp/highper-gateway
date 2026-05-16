@@ -11,12 +11,12 @@
 
 use super::{Middleware, MiddlewareResult};
 use crate::http::ResponseBody;
-use hyper::{Request, Response, StatusCode, header};
+use hyper::{header, Request, Response, StatusCode};
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
-use tracing::{info, warn, error};
-use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{error, info, warn};
 
 /// Security event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,7 +198,7 @@ impl Default for SecurityAuditConfig {
             log_suspicious_requests: true,
             log_rate_limit_violations: true,
             log_validation_failures: true,
-            log_tls_events: false,  // Can be noisy
+            log_tls_events: false, // Can be noisy
             log_successful_requests: false,
             min_severity: SecurityEventSeverity::Info,
         }
@@ -308,11 +308,7 @@ impl SecurityAuditMiddleware {
     }
 
     /// Log security event for validation failure
-    pub fn log_validation_failure<B>(
-        &self,
-        req: &Request<B>,
-        failure_reason: &str,
-    ) {
+    pub fn log_validation_failure<B>(&self, req: &Request<B>, failure_reason: &str) {
         if !self.config.log_validation_failures {
             return;
         }
@@ -334,12 +330,7 @@ impl SecurityAuditMiddleware {
     }
 
     /// Log security event for rate limit violation
-    pub fn log_rate_limit_violation<B>(
-        &self,
-        req: &Request<B>,
-        limit: usize,
-        window: &str,
-    ) {
+    pub fn log_rate_limit_violation<B>(&self, req: &Request<B>, limit: usize, window: &str) {
         if !self.config.log_rate_limit_violations {
             return;
         }
@@ -361,11 +352,7 @@ impl SecurityAuditMiddleware {
     }
 
     /// Log security event for suspicious request
-    pub fn log_suspicious_request<B>(
-        &self,
-        req: &Request<B>,
-        reason: &str,
-    ) {
+    pub fn log_suspicious_request<B>(&self, req: &Request<B>, reason: &str) {
         if !self.config.log_suspicious_requests {
             return;
         }

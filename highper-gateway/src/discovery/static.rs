@@ -157,9 +157,8 @@ impl StaticDiscovery {
         let timeout = self.config.health_check_timeout;
 
         tokio::spawn(async move {
-            let mut interval_timer = tokio::time::interval(
-                tokio::time::Duration::from_secs(interval)
-            );
+            let mut interval_timer =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval));
 
             loop {
                 interval_timer.tick().await;
@@ -174,8 +173,13 @@ impl StaticDiscovery {
                         // Perform TCP health check
                         let health_status = match tokio::time::timeout(
                             tokio::time::Duration::from_secs(timeout),
-                            tokio::net::TcpStream::connect(format!("{}:{}", instance.address, instance.port))
-                        ).await {
+                            tokio::net::TcpStream::connect(format!(
+                                "{}:{}",
+                                instance.address, instance.port
+                            )),
+                        )
+                        .await
+                        {
                             Ok(Ok(_)) => HealthStatus::Passing,
                             Ok(Err(_)) => HealthStatus::Critical,
                             Err(_) => HealthStatus::Critical, // Timeout
@@ -217,7 +221,10 @@ impl ServiceDiscovery for StaticDiscovery {
                 if let Some(instances) = services.get("default") {
                     Ok(instances.clone())
                 } else {
-                    Err(anyhow!("Service '{}' not found in static discovery", service_name))
+                    Err(anyhow!(
+                        "Service '{}' not found in static discovery",
+                        service_name
+                    ))
                 }
             }
         }
@@ -304,7 +311,10 @@ mod tests {
         let discovery = StaticDiscovery::new(config).await.unwrap();
 
         // Get all instances
-        let instances = discovery.get_service_instances("test-service").await.unwrap();
+        let instances = discovery
+            .get_service_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(instances.len(), 2);
         assert_eq!(instances[0].address, "192.168.1.10");
         assert_eq!(instances[1].address, "192.168.1.11");
@@ -326,11 +336,17 @@ mod tests {
         let discovery = StaticDiscovery::new(config).await.unwrap();
 
         // Get user-service instances
-        let user_instances = discovery.get_service_instances("user-service").await.unwrap();
+        let user_instances = discovery
+            .get_service_instances("user-service")
+            .await
+            .unwrap();
         assert_eq!(user_instances.len(), 2);
 
         // Get order-service instances
-        let order_instances = discovery.get_service_instances("order-service").await.unwrap();
+        let order_instances = discovery
+            .get_service_instances("order-service")
+            .await
+            .unwrap();
         assert_eq!(order_instances.len(), 1);
         assert_eq!(order_instances[0].port, 9000);
     }
@@ -353,7 +369,10 @@ mod tests {
         let discovery = StaticDiscovery::new(config).await.unwrap();
 
         // Get only healthy instances
-        let healthy = discovery.get_healthy_instances("test-service").await.unwrap();
+        let healthy = discovery
+            .get_healthy_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(healthy.len(), 1);
         assert_eq!(healthy[0].id, "backend-1");
     }
@@ -361,7 +380,12 @@ mod tests {
     #[tokio::test]
     async fn test_static_discovery_register_deregister() {
         let config = StaticDiscoveryConfig {
-            backends: vec![create_test_backend("backend-1", "test-service", "192.168.1.10", 8080)],
+            backends: vec![create_test_backend(
+                "backend-1",
+                "test-service",
+                "192.168.1.10",
+                8080,
+            )],
             health_check_enabled: false,
             health_check_interval: 10,
             health_check_timeout: 3,
@@ -383,21 +407,32 @@ mod tests {
         discovery.register_service(new_instance).await.unwrap();
 
         // Verify registration
-        let instances = discovery.get_service_instances("test-service").await.unwrap();
+        let instances = discovery
+            .get_service_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(instances.len(), 2);
 
         // Deregister service
         discovery.deregister_service("backend-2").await.unwrap();
 
         // Verify deregistration
-        let instances = discovery.get_service_instances("test-service").await.unwrap();
+        let instances = discovery
+            .get_service_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(instances.len(), 1);
     }
 
     #[tokio::test]
     async fn test_static_discovery_update_health() {
         let config = StaticDiscoveryConfig {
-            backends: vec![create_test_backend("backend-1", "test-service", "192.168.1.10", 8080)],
+            backends: vec![create_test_backend(
+                "backend-1",
+                "test-service",
+                "192.168.1.10",
+                8080,
+            )],
             health_check_enabled: false,
             health_check_interval: 10,
             health_check_timeout: 3,
@@ -406,31 +441,38 @@ mod tests {
         let discovery = StaticDiscovery::new(config).await.unwrap();
 
         // Update health status
-        discovery.update_health("backend-1", HealthStatus::Critical).await.unwrap();
+        discovery
+            .update_health("backend-1", HealthStatus::Critical)
+            .await
+            .unwrap();
 
         // Verify health updated
-        let instances = discovery.get_service_instances("test-service").await.unwrap();
+        let instances = discovery
+            .get_service_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(instances[0].health, HealthStatus::Critical);
 
         // Get healthy instances (should be empty)
-        let healthy = discovery.get_healthy_instances("test-service").await.unwrap();
+        let healthy = discovery
+            .get_healthy_instances("test-service")
+            .await
+            .unwrap();
         assert_eq!(healthy.len(), 0);
     }
 
     #[tokio::test]
     async fn test_static_discovery_default_service() {
         let config = StaticDiscoveryConfig {
-            backends: vec![
-                StaticBackend {
-                    id: "backend-1".to_string(),
-                    service_name: "".to_string(), // Empty service name -> "default"
-                    address: "192.168.1.10".to_string(),
-                    port: 8080,
-                    tags: vec![],
-                    metadata: HashMap::new(),
-                    health: HealthStatus::Passing,
-                },
-            ],
+            backends: vec![StaticBackend {
+                id: "backend-1".to_string(),
+                service_name: "".to_string(), // Empty service name -> "default"
+                address: "192.168.1.10".to_string(),
+                port: 8080,
+                tags: vec![],
+                metadata: HashMap::new(),
+                health: HealthStatus::Passing,
+            }],
             health_check_enabled: false,
             health_check_interval: 10,
             health_check_timeout: 3,
@@ -443,7 +485,10 @@ mod tests {
         assert_eq!(instances.len(), 1);
 
         // Unknown service should fall back to "default"
-        let instances = discovery.get_service_instances("unknown-service").await.unwrap();
+        let instances = discovery
+            .get_service_instances("unknown-service")
+            .await
+            .unwrap();
         assert_eq!(instances.len(), 1);
     }
 
@@ -458,7 +503,10 @@ mod tests {
 
         let result = StaticDiscovery::new(config).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("at least one backend"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("at least one backend"));
     }
 
     #[tokio::test]

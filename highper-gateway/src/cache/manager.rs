@@ -100,7 +100,10 @@ impl CacheManager {
                     min_object_size,
                     compression,
                     cleanup_interval: Duration::from_secs(
-                        *crate::runtime_config::current().cache.disk_cleanup_interval_secs.get(),
+                        *crate::runtime_config::current()
+                            .cache
+                            .disk_cleanup_interval_secs
+                            .get(),
                     ),
                 };
                 Arc::new(DiskBackend::new(config).await?)
@@ -118,19 +121,26 @@ impl CacheManager {
                     min_object_size: 0,
                     compression,
                     cleanup_interval: Duration::from_secs(
-                        *crate::runtime_config::current().cache.disk_cleanup_interval_secs.get(),
+                        *crate::runtime_config::current()
+                            .cache
+                            .disk_cleanup_interval_secs
+                            .get(),
                     ),
                 };
                 let disk = Arc::new(DiskBackend::new(disk_config).await?);
                 Arc::new(TieredBackend::new(
-                    disk, hot_max_size,
-                    Duration::from_secs(*crate::runtime_config::current().cache.tiered_hot_ttl_secs.get()),
+                    disk,
+                    hot_max_size,
+                    Duration::from_secs(
+                        *crate::runtime_config::current()
+                            .cache
+                            .tiered_hot_ttl_secs
+                            .get(),
+                    ),
                 ))
             }
 
-            CacheBackendType::Redis { url } => {
-                Arc::new(RedisBackend::new(&url).await?)
-            }
+            CacheBackendType::Redis { url } => Arc::new(RedisBackend::new(&url).await?),
 
             CacheBackendType::MultiTier { distributed } => {
                 let dist_backend = Self::create_backend(*distributed).await?;
@@ -142,7 +152,11 @@ impl CacheManager {
     }
 
     /// Create a backend from configuration (internal helper)
-    fn create_backend(backend_type: CacheBackendType) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Arc<dyn CacheBackend>, CacheError>> + Send>> {
+    fn create_backend(
+        backend_type: CacheBackendType,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Arc<dyn CacheBackend>, CacheError>> + Send>,
+    > {
         Box::pin(async move {
             match backend_type {
                 CacheBackendType::InMemory => {
@@ -182,8 +196,14 @@ impl CacheManager {
                     };
                     let disk = Arc::new(DiskBackend::new(disk_config).await?);
                     Ok(Arc::new(TieredBackend::new(
-                        disk, hot_max_size,
-                        Duration::from_secs(*crate::runtime_config::current().cache.tiered_hot_ttl_secs.get()),
+                        disk,
+                        hot_max_size,
+                        Duration::from_secs(
+                            *crate::runtime_config::current()
+                                .cache
+                                .tiered_hot_ttl_secs
+                                .get(),
+                        ),
                     )) as Arc<dyn CacheBackend>)
                 }
 
@@ -221,17 +241,27 @@ impl CacheManager {
     }
 
     /// Set a value in cache
-    pub async fn set<T>(&self, key: &str, value: &T, ttl: Option<Duration>) -> Result<(), CacheError>
+    pub async fn set<T>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError>
     where
         T: Serialize,
     {
-        let bytes = serde_json::to_vec(value)
-            .map_err(|e| CacheError::Serialization(e.to_string()))?;
+        let bytes =
+            serde_json::to_vec(value).map_err(|e| CacheError::Serialization(e.to_string()))?;
         self.backend.set(key, bytes, ttl).await
     }
 
     /// Set raw bytes in cache
-    pub async fn set_bytes(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    pub async fn set_bytes(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         self.backend.set(key, value, ttl).await
     }
 
@@ -266,15 +296,18 @@ impl CacheManager {
     }
 
     /// Set multiple key-value pairs
-    pub async fn mset<T>(&self, entries: Vec<(&str, &T, Option<Duration>)>) -> Result<(), CacheError>
+    pub async fn mset<T>(
+        &self,
+        entries: Vec<(&str, &T, Option<Duration>)>,
+    ) -> Result<(), CacheError>
     where
         T: Serialize,
     {
         let mut byte_entries = Vec::with_capacity(entries.len());
 
         for (key, value, ttl) in entries {
-            let bytes = serde_json::to_vec(value)
-                .map_err(|e| CacheError::Serialization(e.to_string()))?;
+            let bytes =
+                serde_json::to_vec(value).map_err(|e| CacheError::Serialization(e.to_string()))?;
             byte_entries.push((key, bytes, ttl));
         }
 
@@ -315,7 +348,12 @@ impl CacheManager {
     /// Get or set (lazy cache pattern)
     ///
     /// Gets value from cache, or executes the provided function and caches the result.
-    pub async fn get_or_set<T, F, Fut>(&self, key: &str, ttl: Option<Duration>, f: F) -> Result<T, CacheError>
+    pub async fn get_or_set<T, F, Fut>(
+        &self,
+        key: &str,
+        ttl: Option<Duration>,
+        f: F,
+    ) -> Result<T, CacheError>
     where
         T: Serialize + for<'de> Deserialize<'de>,
         F: FnOnce() -> Fut,
@@ -414,17 +452,24 @@ mod tests {
     async fn test_manager_mget_mset() {
         let manager = CacheManager::new(CacheBackendType::InMemory).await.unwrap();
 
-        let data1 = TestData { id: 1, name: "alice".to_string() };
-        let data2 = TestData { id: 2, name: "bob".to_string() };
+        let data1 = TestData {
+            id: 1,
+            name: "alice".to_string(),
+        };
+        let data2 = TestData {
+            id: 2,
+            name: "bob".to_string(),
+        };
 
         // Test mset
-        manager.mset(vec![
-            ("key1", &data1, None),
-            ("key2", &data2, None),
-        ]).await.unwrap();
+        manager
+            .mset(vec![("key1", &data1, None), ("key2", &data2, None)])
+            .await
+            .unwrap();
 
         // Test mget
-        let results: Vec<Option<TestData>> = manager.mget(vec!["key1", "key2", "key3"]).await.unwrap();
+        let results: Vec<Option<TestData>> =
+            manager.mget(vec!["key1", "key2", "key3"]).await.unwrap();
         assert_eq!(results.len(), 3);
         assert_eq!(results[0], Some(data1));
         assert_eq!(results[1], Some(data2));
@@ -441,15 +486,22 @@ mod tests {
         };
 
         // First call should execute function
-        let result = manager.get_or_set("key1", None, || async {
-            Ok::<_, CacheError>(data.clone())
-        }).await.unwrap();
+        let result = manager
+            .get_or_set("key1", None, || async { Ok::<_, CacheError>(data.clone()) })
+            .await
+            .unwrap();
         assert_eq!(result, data);
 
         // Second call should get from cache (function not executed)
-        let result2 = manager.get_or_set("key1", None, || async {
-            Ok::<_, CacheError>(TestData { id: 999, name: "should not be used".to_string() })
-        }).await.unwrap();
+        let result2 = manager
+            .get_or_set("key1", None, || async {
+                Ok::<_, CacheError>(TestData {
+                    id: 999,
+                    name: "should not be used".to_string(),
+                })
+            })
+            .await
+            .unwrap();
         assert_eq!(result2, data); // Should still be original data
     }
 

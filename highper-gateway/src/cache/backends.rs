@@ -72,7 +72,10 @@ impl InMemoryBackend {
         // Spawn background cleanup task
         let entries = backend.entries.clone();
         tokio::spawn(async move {
-            let cleanup_secs = *crate::runtime_config::current().cache.cleanup_interval_secs.get();
+            let cleanup_secs = *crate::runtime_config::current()
+                .cache
+                .cleanup_interval_secs
+                .get();
             let mut interval = tokio::time::interval(Duration::from_secs(cleanup_secs));
             loop {
                 interval.tick().await;
@@ -110,7 +113,12 @@ impl CacheBackend for InMemoryBackend {
         }
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         let cache_value = CacheValue::new(value, ttl);
         self.entries.insert(key.to_string(), cache_value);
         Ok(())
@@ -230,7 +238,12 @@ impl CacheBackend for RedisBackend {
         Ok(result)
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         use redis::AsyncCommands;
 
         let mut conn = (*self.pool).clone();
@@ -360,17 +373,30 @@ impl CacheBackend for MultiTierBackend {
         if let Some(value) = self.distributed.get(key).await? {
             debug!("L2 cache hit: {}", key);
             // Backfill L1
-            let l1_ttl = *crate::runtime_config::current().cache.multi_tier_l1_ttl_secs.get();
-            self.local.set(key, value.clone(), Some(Duration::from_secs(l1_ttl))).await?;
+            let l1_ttl = *crate::runtime_config::current()
+                .cache
+                .multi_tier_l1_ttl_secs
+                .get();
+            self.local
+                .set(key, value.clone(), Some(Duration::from_secs(l1_ttl)))
+                .await?;
             return Ok(Some(value));
         }
 
         Ok(None)
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         // Set in both L1 and L2
-        let l1_max_secs = *crate::runtime_config::current().cache.multi_tier_l1_max_ttl_secs.get();
+        let l1_max_secs = *crate::runtime_config::current()
+            .cache
+            .multi_tier_l1_max_ttl_secs
+            .get();
         let l1_ttl = ttl.map(|t| t.min(Duration::from_secs(l1_max_secs))); // L1 cap configurable
         self.local.set(key, value.clone(), l1_ttl).await?;
         self.distributed.set(key, value, ttl).await?;
@@ -411,7 +437,11 @@ impl CacheBackend for MultiTierBackend {
             hit_rate: (l1_stats.hit_rate + l2_stats.hit_rate) / 2.0,
             hits: l1_stats.hits + l2_stats.hits,
             misses: l1_stats.misses + l2_stats.misses,
-            backend_info: format!("MultiTier (L1: {}, L2: {})", self.local.name(), self.distributed.name()),
+            backend_info: format!(
+                "MultiTier (L1: {}, L2: {})",
+                self.local.name(),
+                self.distributed.name()
+            ),
         })
     }
 
@@ -451,7 +481,10 @@ mod tests {
     async fn test_in_memory_expiration() {
         let cache = InMemoryBackend::new();
 
-        cache.set("key1", b"value1".to_vec(), Some(Duration::from_millis(100))).await.unwrap();
+        cache
+            .set("key1", b"value1".to_vec(), Some(Duration::from_millis(100)))
+            .await
+            .unwrap();
 
         // Should exist initially
         assert!(cache.exists("key1").await.unwrap());

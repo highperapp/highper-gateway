@@ -40,9 +40,8 @@ impl AutoHttpsManager {
             config.provider, config.email
         );
 
-        let storage: Arc<dyn CertificateStorage> = Arc::new(
-            FileStorage::new(&config.storage.path)?
-        );
+        let storage: Arc<dyn CertificateStorage> =
+            Arc::new(FileStorage::new(&config.storage.path)?);
 
         let challenge_store = ChallengeStore::new();
 
@@ -355,7 +354,10 @@ mod tests {
             challenge_type: "http-01".to_string(),
             storage: StorageConfig {
                 storage_type: "file".to_string(),
-                path: temp_dir().join("highper-gateway-auto-https-test").to_string_lossy().to_string(),
+                path: temp_dir()
+                    .join("highper-gateway-auto-https-test")
+                    .to_string_lossy()
+                    .to_string(),
             },
             renewal_days: 30,
             renew_check_interval: Duration::from_secs(3600),

@@ -81,9 +81,7 @@ pub enum WafDecision {
     },
 
     /// Rate limit exceeded
-    RateLimit {
-        retry_after: u64,
-    },
+    RateLimit { retry_after: u64 },
 
     /// Log suspicious activity but allow
     Log {

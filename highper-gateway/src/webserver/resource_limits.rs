@@ -1,11 +1,11 @@
+use anyhow::{anyhow, Result};
+use dashmap::DashMap;
 /// Resource limits and quotas for production webserver deployment
 ///
 /// This module provides comprehensive resource management to prevent abuse and ensure
 /// fair resource allocation across clients and requests.
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use dashmap::DashMap;
-use anyhow::{Result, anyhow};
 use tracing::{debug, warn};
 
 /// Global resource limits configuration
@@ -62,28 +62,43 @@ impl ConnectionLimiter {
     /// Check if a new connection from the given IP is allowed
     pub fn check_connection(&self, client_ip: &str) -> Result<ConnectionGuard> {
         // Check global limit
-        let global_count = self.global_connections.load(std::sync::atomic::Ordering::Relaxed);
+        let global_count = self
+            .global_connections
+            .load(std::sync::atomic::Ordering::Relaxed);
         if global_count >= self.config.max_concurrent_connections {
-            warn!("Global connection limit reached: {}/{}",
-                global_count, self.config.max_concurrent_connections);
+            warn!(
+                "Global connection limit reached: {}/{}",
+                global_count, self.config.max_concurrent_connections
+            );
             return Err(anyhow!("Too many concurrent connections"));
         }
 
         // Check per-IP limit
-        let mut entry = self.ip_connections.entry(client_ip.to_string()).or_insert(0);
+        let mut entry = self
+            .ip_connections
+            .entry(client_ip.to_string())
+            .or_insert(0);
         if *entry >= self.config.max_connections_per_ip {
-            warn!("Connection limit reached for IP {}: {}/{}",
-                client_ip, *entry, self.config.max_connections_per_ip);
+            warn!(
+                "Connection limit reached for IP {}: {}/{}",
+                client_ip, *entry, self.config.max_connections_per_ip
+            );
             return Err(anyhow!("Too many connections from this IP"));
         }
 
         // Increment counters
-        self.global_connections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.global_connections
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         *entry += 1;
 
-        debug!("Connection allowed for {}: {}/{} (global: {}/{})",
-            client_ip, *entry, self.config.max_connections_per_ip,
-            global_count + 1, self.config.max_concurrent_connections);
+        debug!(
+            "Connection allowed for {}: {}/{} (global: {}/{})",
+            client_ip,
+            *entry,
+            self.config.max_connections_per_ip,
+            global_count + 1,
+            self.config.max_concurrent_connections
+        );
 
         Ok(ConnectionGuard {
             limiter: self,
@@ -93,7 +108,8 @@ impl ConnectionLimiter {
 
     /// Decrement connection counters (called when connection closes)
     fn release_connection(&self, client_ip: &str) {
-        self.global_connections.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.global_connections
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
 
         if let Some(mut entry) = self.ip_connections.get_mut(client_ip) {
             if *entry > 0 {
@@ -110,7 +126,8 @@ impl ConnectionLimiter {
 
     /// Get current global connection count
     pub fn global_connection_count(&self) -> usize {
-        self.global_connections.load(std::sync::atomic::Ordering::Relaxed)
+        self.global_connections
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Get connection count for specific IP
@@ -143,9 +160,10 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(config: ResourceLimitsConfig) -> Self {
         Self {
-            global_bucket: Arc::new(parking_lot::Mutex::new(
-                TokenBucket::new(config.max_requests_per_second_global, config.rate_limit_window)
-            )),
+            global_bucket: Arc::new(parking_lot::Mutex::new(TokenBucket::new(
+                config.max_requests_per_second_global,
+                config.rate_limit_window,
+            ))),
             ip_buckets: Arc::new(DashMap::new()),
             config,
         }
@@ -162,12 +180,15 @@ impl RateLimiter {
         drop(global_bucket);
 
         // Check per-IP rate limit
-        let mut entry = self.ip_buckets.entry(client_ip.to_string()).or_insert_with(|| {
-            TokenBucket::new(
-                self.config.max_requests_per_second_per_ip,
-                self.config.rate_limit_window
-            )
-        });
+        let mut entry = self
+            .ip_buckets
+            .entry(client_ip.to_string())
+            .or_insert_with(|| {
+                TokenBucket::new(
+                    self.config.max_requests_per_second_per_ip,
+                    self.config.rate_limit_window,
+                )
+            });
 
         if !entry.consume(1) {
             warn!("Rate limit exceeded for IP: {}", client_ip);
@@ -181,9 +202,8 @@ impl RateLimiter {
     /// Cleanup expired buckets (should be called periodically)
     pub fn cleanup_expired_buckets(&self, max_age: Duration) {
         let now = Instant::now();
-        self.ip_buckets.retain(|_, bucket| {
-            now.duration_since(bucket.last_refill) < max_age
-        });
+        self.ip_buckets
+            .retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
     }
 }
 
@@ -253,16 +273,17 @@ impl FileDescriptorLimiter {
         let current = self.open_files.load(std::sync::atomic::Ordering::Relaxed);
 
         if current >= self.config.max_open_files {
-            warn!("File descriptor limit reached: {}/{}",
-                current, self.config.max_open_files);
+            warn!(
+                "File descriptor limit reached: {}/{}",
+                current, self.config.max_open_files
+            );
             return Err(anyhow!("Too many open files"));
         }
 
-        self.open_files.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.open_files
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        Ok(FileGuard {
-            limiter: self,
-        })
+        Ok(FileGuard { limiter: self })
     }
 
     /// Get current open file count
@@ -272,7 +293,8 @@ impl FileDescriptorLimiter {
 
     /// Decrement open file counter
     fn release_file(&self) {
-        self.open_files.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.open_files
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -306,12 +328,15 @@ impl MemoryLimiter {
         let current = self.used_memory.load(std::sync::atomic::Ordering::Relaxed);
 
         if current + size > self.config.max_request_buffer_memory {
-            warn!("Memory limit would be exceeded: {} + {} > {}",
-                current, size, self.config.max_request_buffer_memory);
+            warn!(
+                "Memory limit would be exceeded: {} + {} > {}",
+                current, size, self.config.max_request_buffer_memory
+            );
             return Err(anyhow!("Memory limit exceeded"));
         }
 
-        self.used_memory.fetch_add(size, std::sync::atomic::Ordering::Relaxed);
+        self.used_memory
+            .fetch_add(size, std::sync::atomic::Ordering::Relaxed);
 
         Ok(MemoryGuard {
             limiter: self,
@@ -326,7 +351,8 @@ impl MemoryLimiter {
 
     /// Release allocated memory
     fn release_memory(&self, size: usize) {
-        self.used_memory.fetch_sub(size, std::sync::atomic::Ordering::Relaxed);
+        self.used_memory
+            .fetch_sub(size, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

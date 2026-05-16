@@ -56,7 +56,10 @@ pub struct BufferedRequest {
 
 impl BufferedRequest {
     /// Create a new buffered request by consuming the incoming request
-    pub async fn from_request(req: Request<Incoming>, max_size: usize) -> Result<Self, BodyAccessError> {
+    pub async fn from_request(
+        req: Request<Incoming>,
+        max_size: usize,
+    ) -> Result<Self, BodyAccessError> {
         let (parts, body) = req.into_parts();
 
         // Collect body with size limit
@@ -152,7 +155,9 @@ impl BufferedRequest {
         let len = self.body.len();
         self.request.headers_mut().insert(
             hyper::header::CONTENT_LENGTH,
-            len.to_string().parse().expect("numeric content-length is valid"),
+            len.to_string()
+                .parse()
+                .expect("numeric content-length is valid"),
         );
     }
 }
@@ -174,12 +179,16 @@ impl BodyAccessError {
     /// Convert to HTTP response
     pub fn to_response(&self) -> Response<Full<Bytes>> {
         let (status, message) = match self {
-            Self::BodyReadError(msg) => (StatusCode::BAD_REQUEST, format!("Body read error: {}", msg)),
+            Self::BodyReadError(msg) => {
+                (StatusCode::BAD_REQUEST, format!("Body read error: {}", msg))
+            }
             Self::BodyTooLarge { size, limit } => (
                 StatusCode::PAYLOAD_TOO_LARGE,
                 format!("Body too large: {} bytes (limit: {} bytes)", size, limit),
             ),
-            Self::InvalidFormat(msg) => (StatusCode::BAD_REQUEST, format!("Invalid format: {}", msg)),
+            Self::InvalidFormat(msg) => {
+                (StatusCode::BAD_REQUEST, format!("Invalid format: {}", msg))
+            }
         };
 
         Response::builder()
@@ -230,7 +239,10 @@ mod tests {
         let patterns = vec!["application/json".to_string(), "text/*".to_string()];
 
         assert!(content_type_matches("application/json", &patterns));
-        assert!(content_type_matches("application/json; charset=utf-8", &patterns));
+        assert!(content_type_matches(
+            "application/json; charset=utf-8",
+            &patterns
+        ));
         assert!(content_type_matches("text/plain", &patterns));
         assert!(content_type_matches("text/html", &patterns));
         assert!(!content_type_matches("image/png", &patterns));
@@ -256,7 +268,10 @@ mod tests {
 
     #[test]
     fn test_body_access_error_status_codes() {
-        let err = BodyAccessError::BodyTooLarge { size: 1000, limit: 500 };
+        let err = BodyAccessError::BodyTooLarge {
+            size: 1000,
+            limit: 500,
+        };
         let response = err.to_response();
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 

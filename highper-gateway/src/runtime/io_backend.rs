@@ -129,9 +129,7 @@ pub struct BackendStats {
 /// 3. kqueue (macOS/BSD)
 /// 4. IOCP (Windows)
 use once_cell::sync::Lazy;
-pub static GLOBAL_IO: Lazy<Box<dyn AsyncIoBackend>> = Lazy::new(|| {
-    select_best_backend()
-});
+pub static GLOBAL_IO: Lazy<Box<dyn AsyncIoBackend>> = Lazy::new(|| select_best_backend());
 
 /// Select the best available I/O backend for this platform
 fn select_best_backend() -> Box<dyn AsyncIoBackend> {

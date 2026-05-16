@@ -55,7 +55,9 @@ impl PhpFpmPool {
 
         // No idle connection, create new if under limit
         if self.connections.len() < self.config.pool_size {
-            let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let id = self
+                .next_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let socket = self.create_connection()?;
 
             let pooled_conn = PooledConnection {
@@ -74,7 +76,7 @@ impl PhpFpmPool {
 
         Err(io::Error::new(
             io::ErrorKind::WouldBlock,
-            "Connection pool exhausted"
+            "Connection pool exhausted",
         ))
     }
 

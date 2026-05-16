@@ -189,10 +189,7 @@ mod tests {
             actual: 1000,
             limit: 500,
         };
-        assert_eq!(
-            err.to_string(),
-            "Body size 1000 exceeds limit of 500 bytes"
-        );
+        assert_eq!(err.to_string(), "Body size 1000 exceeds limit of 500 bytes");
 
         let err = BodyError::LengthMismatch {
             expected: 100,

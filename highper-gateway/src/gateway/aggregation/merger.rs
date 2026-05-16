@@ -59,9 +59,7 @@ impl ResponseMerger {
             MergeStrategy::Object => self.merge_as_object(&results),
             MergeStrategy::Array => self.merge_as_array(&results),
             MergeStrategy::First => self.merge_first(&results),
-            MergeStrategy::Custom { template } => {
-                self.merge_custom(&results, template)
-            }
+            MergeStrategy::Custom { template } => self.merge_custom(&results, template),
         };
 
         MergedResponse {
@@ -186,10 +184,7 @@ impl ResponseMerger {
     fn merge_custom(&self, results: &[BackendResult], template: &str) -> Value {
         // TODO: Full JSONPath template implementation
         // For now, just log and fall back to object merge
-        warn!(
-            "Custom merge template not fully implemented: {}",
-            template
-        );
+        warn!("Custom merge template not fully implemented: {}", template);
         self.merge_as_object(results)
     }
 }

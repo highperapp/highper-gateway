@@ -102,13 +102,7 @@ impl LoggingMiddleware {
 
     /// Log in common format (Apache)
     /// Format: remote_addr - remote_user [time] "request" status bytes
-    fn log_common(
-        method: &str,
-        uri: &str,
-        version: &str,
-        status: u16,
-        duration_ms: f64,
-    ) {
+    fn log_common(method: &str, uri: &str, version: &str, status: u16, duration_ms: f64) {
         info!(
             target: "access_log",
             method = method,
@@ -157,7 +151,12 @@ impl Middleware for LoggingMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         let config = self.config.clone();
 
         Box::pin(async move {
@@ -330,13 +329,7 @@ mod tests {
             Some("http://example.com"),
         );
 
-        LoggingMiddleware::log_common(
-            "GET",
-            "/test",
-            "HTTP/1.1",
-            200,
-            12.34,
-        );
+        LoggingMiddleware::log_common("GET", "/test", "HTTP/1.1", 200, 12.34);
 
         LoggingMiddleware::log_json(
             "GET",

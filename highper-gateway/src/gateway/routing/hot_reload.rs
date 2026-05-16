@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::time;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use super::HostRoutes;
 
@@ -38,7 +38,11 @@ impl ReloadHandle {
             return Err(format!("Configuration file not found: {}", config_path.display()).into());
         }
 
-        info!("Enabling hot reload for: {} (interval: {}s)", config_path.display(), interval_secs);
+        info!(
+            "Enabling hot reload for: {} (interval: {}s)",
+            config_path.display(),
+            interval_secs
+        );
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

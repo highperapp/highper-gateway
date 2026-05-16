@@ -3,12 +3,12 @@
 //! Provides periodic ping sending and pong tracking to detect dead connections.
 //! Automatically cleans up connections that don't respond to pings.
 
+use crate::websocket::{ConnectionId, ConnectionState, ConnectionTracker};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::{interval, sleep};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::time::{interval, sleep};
 use tracing::{debug, info, warn};
-use crate::websocket::{ConnectionTracker, ConnectionId, ConnectionState};
 
 /// Keep-alive manager configuration
 #[derive(Debug, Clone)]
@@ -70,8 +70,7 @@ impl KeepAliveManager {
 
             info!(
                 "Starting WebSocket keep-alive monitor (interval: {:?}, timeout: {:?})",
-                manager.config.ping_interval,
-                manager.config.pong_timeout
+                manager.config.ping_interval, manager.config.pong_timeout
             );
 
             let mut interval = interval(manager.config.ping_interval);
@@ -104,7 +103,8 @@ impl KeepAliveManager {
                     // Get actual metrics (not from snapshot)
                     if let Some(metrics) = self.connection_tracker.get_metrics(&conn_id) {
                         // Check pong history to detect dead connections
-                        let missed_pongs = metrics.pings_sent.saturating_sub(metrics.pongs_received);
+                        let missed_pongs =
+                            metrics.pings_sent.saturating_sub(metrics.pongs_received);
 
                         if missed_pongs >= self.config.max_missed_pongs as u64 {
                             warn!(
@@ -131,7 +131,8 @@ impl KeepAliveManager {
 
         // Clean up dead connections
         for conn_id in dead_connections {
-            self.connection_tracker.update_state(&conn_id, ConnectionState::Closed);
+            self.connection_tracker
+                .update_state(&conn_id, ConnectionState::Closed);
             self.connection_tracker.unregister(&conn_id);
         }
     }
@@ -198,14 +199,14 @@ pub struct KeepAliveStats {
 ///
 /// This is a low-level helper that actual connection handlers should use.
 /// In a real implementation, this would encode a proper WebSocket ping frame (opcode 0x9).
-pub async fn send_ping_frame<W>(
-    stream: &mut W,
-    payload: &[u8],
-) -> Result<(), std::io::Error>
+pub async fn send_ping_frame<W>(stream: &mut W, payload: &[u8]) -> Result<(), std::io::Error>
 where
     W: AsyncWrite + Unpin,
 {
-    debug!("Sending WebSocket ping frame ({} bytes payload)", payload.len());
+    debug!(
+        "Sending WebSocket ping frame ({} bytes payload)",
+        payload.len()
+    );
 
     // In a real implementation, this would:
     // 1. Create WebSocket frame header (FIN=1, opcode=0x9 for ping)
@@ -221,14 +222,14 @@ where
 /// Helper function to send a WebSocket pong frame
 ///
 /// Should be called when a ping is received to respond with pong (opcode 0xA).
-pub async fn send_pong_frame<W>(
-    stream: &mut W,
-    payload: &[u8],
-) -> Result<(), std::io::Error>
+pub async fn send_pong_frame<W>(stream: &mut W, payload: &[u8]) -> Result<(), std::io::Error>
 where
     W: AsyncWrite + Unpin,
 {
-    debug!("Sending WebSocket pong frame ({} bytes payload)", payload.len());
+    debug!(
+        "Sending WebSocket pong frame ({} bytes payload)",
+        payload.len()
+    );
 
     // In a real implementation, this would:
     // 1. Create WebSocket frame header (FIN=1, opcode=0xA for pong)

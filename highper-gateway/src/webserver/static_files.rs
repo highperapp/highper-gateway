@@ -53,7 +53,7 @@ impl StaticFileHandler {
         if !canonical.starts_with(&self.document_root) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "Path traversal attempt detected"
+                "Path traversal attempt detected",
             ));
         }
 
@@ -90,7 +90,7 @@ impl StaticFileHandler {
             } else {
                 return Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
-                    "Directory listing disabled"
+                    "Directory listing disabled",
                 ));
             }
         }
@@ -98,7 +98,8 @@ impl StaticFileHandler {
         Ok(FileInfo {
             path: path.to_path_buf(),
             metadata,
-            is_php: path.extension()
+            is_php: path
+                .extension()
                 .and_then(|e| e.to_str())
                 .map(|e| e == "php")
                 .unwrap_or(false),
@@ -109,7 +110,11 @@ impl StaticFileHandler {
     /// Generate directory listing
     ///
     /// Returns the listing content and content-type header value.
-    pub fn generate_directory_listing(&self, path: &Path, request_uri: &str) -> io::Result<DirectoryListing> {
+    pub fn generate_directory_listing(
+        &self,
+        path: &Path,
+        request_uri: &str,
+    ) -> io::Result<DirectoryListing> {
         let entries = fs::read_dir(path)?;
 
         let mut dirs = Vec::new();
@@ -125,7 +130,8 @@ impl StaticFileHandler {
             }
 
             let metadata = entry.metadata()?;
-            let modified = metadata.modified()
+            let modified = metadata
+                .modified()
                 .unwrap_or(UNIX_EPOCH)
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
@@ -133,7 +139,11 @@ impl StaticFileHandler {
 
             let entry_info = DirectoryEntry {
                 name: file_name,
-                size: if metadata.is_file() { Some(metadata.len()) } else { None },
+                size: if metadata.is_file() {
+                    Some(metadata.len())
+                } else {
+                    None
+                },
                 modified,
                 is_directory: metadata.is_dir(),
             };
@@ -167,8 +177,8 @@ impl StaticFileHandler {
                 }
             }
             DirectoryListingFormat::Json => {
-                let content = serde_json::to_string_pretty(listing)
-                    .unwrap_or_else(|_| "{}".to_string());
+                let content =
+                    serde_json::to_string_pretty(listing).unwrap_or_else(|_| "{}".to_string());
                 DirectoryListingResponse {
                     content,
                     content_type: "application/json".to_string(),
@@ -185,14 +195,19 @@ impl StaticFileHandler {
         html.push_str("<!DOCTYPE html>\n<html>\n<head>\n");
         html.push_str("<meta charset=\"utf-8\">\n");
         html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-        html.push_str(&format!("<title>Index of {}</title>\n", escape_html(&listing.path)));
+        html.push_str(&format!(
+            "<title>Index of {}</title>\n",
+            escape_html(&listing.path)
+        ));
         html.push_str("<style>\n");
         html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; ");
         html.push_str("margin: 40px; background: #f5f5f5; }\n");
         html.push_str("h1 { color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px; }\n");
         html.push_str("table { width: 100%; border-collapse: collapse; background: white; ");
         html.push_str("box-shadow: 0 1px 3px rgba(0,0,0,0.1); }\n");
-        html.push_str("th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }\n");
+        html.push_str(
+            "th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }\n",
+        );
         html.push_str("th { background: #f8f9fa; font-weight: 600; color: #555; }\n");
         html.push_str("tr:hover { background: #f8f9fa; }\n");
         html.push_str("a { color: #0066cc; text-decoration: none; }\n");
@@ -203,7 +218,10 @@ impl StaticFileHandler {
         html.push_str("</style>\n</head>\n<body>\n");
 
         // Heading
-        html.push_str(&format!("<h1>Index of {}</h1>\n", escape_html(&listing.path)));
+        html.push_str(&format!(
+            "<h1>Index of {}</h1>\n",
+            escape_html(&listing.path)
+        ));
 
         // Table
         html.push_str("<table>\n");
@@ -215,7 +233,10 @@ impl StaticFileHandler {
             let parent = if listing.path.ends_with('/') {
                 format!("{}../", listing.path)
             } else {
-                format!("{}/", listing.path.rsplit_once('/').map(|(p, _)| p).unwrap_or("/"))
+                format!(
+                    "{}/",
+                    listing.path.rsplit_once('/').map(|(p, _)| p).unwrap_or("/")
+                )
             };
             html.push_str(&format!(
                 "<tr><td><span class=\"icon\">\u{1F4C1}</span><a href=\"{}\">../</a></td><td>-</td><td>-</td></tr>\n",
@@ -244,7 +265,10 @@ impl StaticFileHandler {
         // Files
         for file in &listing.files {
             let href = format!("{}{}", base_path, encode_uri_component(&file.name));
-            let size_str = file.size.map(format_size).unwrap_or_else(|| "-".to_string());
+            let size_str = file
+                .size
+                .map(format_size)
+                .unwrap_or_else(|| "-".to_string());
             html.push_str(&format!(
                 "<tr><td><span class=\"icon\">\u{1F4C4}</span><a href=\"{}\">{}</a></td><td class=\"size\">{}</td><td class=\"date\">{}</td></tr>\n",
                 escape_html(&href),
@@ -274,7 +298,8 @@ impl StaticFileHandler {
         use std::time::UNIX_EPOCH;
 
         // Simple ETag: mtime-size
-        let mtime = metadata.modified()
+        let mtime = metadata
+            .modified()
             .unwrap_or(UNIX_EPOCH)
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -313,7 +338,7 @@ impl StaticFileHandler {
     ) -> io::Result<usize> {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "sendfile is only supported on Linux"
+            "sendfile is only supported on Linux",
         ))
     }
 }
@@ -372,8 +397,7 @@ fn escape_html(s: &str) -> String {
 
 /// Encode URI component
 fn encode_uri_component(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC)
-        .to_string()
+    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
 /// Format file size for display
@@ -414,8 +438,14 @@ fn format_timestamp(timestamp: u64) -> String {
         let hour = secs_of_day / 3600;
         let minute = (secs_of_day % 3600) / 60;
 
-        format!("{:04}-{:02}-{:02} {:02}:{:02}",
-            year, month.min(12), day.min(31), hour, minute)
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}",
+            year,
+            month.min(12),
+            day.min(31),
+            hour,
+            minute
+        )
     } else {
         "-".to_string()
     }
@@ -502,7 +532,9 @@ mod tests {
         assert!(info.is_directory);
 
         // Generate listing
-        let listing = handler.generate_directory_listing(temp_dir.path(), "/").unwrap();
+        let listing = handler
+            .generate_directory_listing(temp_dir.path(), "/")
+            .unwrap();
         assert_eq!(listing.directories.len(), 1);
         assert_eq!(listing.directories[0].name, "subdir");
         assert_eq!(listing.files.len(), 2);
@@ -518,7 +550,9 @@ mod tests {
         config.directory_listing_format = DirectoryListingFormat::Html;
         let handler = StaticFileHandler::new(temp_dir.path().to_path_buf(), config);
 
-        let listing = handler.generate_directory_listing(temp_dir.path(), "/").unwrap();
+        let listing = handler
+            .generate_directory_listing(temp_dir.path(), "/")
+            .unwrap();
         let response = handler.render_directory_listing(&listing);
 
         assert_eq!(response.content_type, "text/html; charset=utf-8");
@@ -537,7 +571,9 @@ mod tests {
         config.directory_listing_format = DirectoryListingFormat::Json;
         let handler = StaticFileHandler::new(temp_dir.path().to_path_buf(), config);
 
-        let listing = handler.generate_directory_listing(temp_dir.path(), "/test").unwrap();
+        let listing = handler
+            .generate_directory_listing(temp_dir.path(), "/test")
+            .unwrap();
         let response = handler.render_directory_listing(&listing);
 
         assert_eq!(response.content_type, "application/json");
@@ -560,7 +596,9 @@ mod tests {
         config.show_hidden_files = false;
         let handler = StaticFileHandler::new(temp_dir.path().to_path_buf(), config);
 
-        let listing = handler.generate_directory_listing(temp_dir.path(), "/").unwrap();
+        let listing = handler
+            .generate_directory_listing(temp_dir.path(), "/")
+            .unwrap();
         assert_eq!(listing.files.len(), 1);
         assert_eq!(listing.files[0].name, "visible.txt");
 
@@ -570,7 +608,9 @@ mod tests {
         config2.show_hidden_files = true;
         let handler2 = StaticFileHandler::new(temp_dir.path().to_path_buf(), config2);
 
-        let listing2 = handler2.generate_directory_listing(temp_dir.path(), "/").unwrap();
+        let listing2 = handler2
+            .generate_directory_listing(temp_dir.path(), "/")
+            .unwrap();
         assert_eq!(listing2.files.len(), 2);
     }
 
@@ -591,8 +631,10 @@ mod tests {
     #[test]
     fn test_helper_functions() {
         // Test escape_html
-        assert_eq!(escape_html("<script>alert('xss')</script>"),
-            "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+        assert_eq!(
+            escape_html("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+        );
 
         // Test format_size
         assert_eq!(format_size(500), "500 B");

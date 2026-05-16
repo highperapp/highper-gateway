@@ -58,7 +58,9 @@ impl Provider {
                 provider: "github".to_string(),
                 auth_url: Some("https://github.com/login/oauth/authorize".to_string()),
                 token_url: Some("https://github.com/login/oauth/access_token".to_string()),
-                revocation_url: Some("https://api.github.com/applications/CLIENT_ID/token".to_string()),
+                revocation_url: Some(
+                    "https://api.github.com/applications/CLIENT_ID/token".to_string(),
+                ),
                 scopes: vec!["user".to_string(), "user:email".to_string()],
                 ..Default::default()
             },
@@ -253,10 +255,7 @@ mod tests {
         }
         .get_config();
         assert_eq!(config.provider, "okta");
-        assert!(config
-            .auth_url
-            .unwrap()
-            .contains("dev-12345.okta.com"));
+        assert!(config.auth_url.unwrap().contains("dev-12345.okta.com"));
     }
 
     #[test]

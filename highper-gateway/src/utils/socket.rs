@@ -7,7 +7,7 @@
 //! - TCP_FASTOPEN for reduced connection latency
 //! - Receive and send buffer tuning
 
-use socket2::{Socket, Domain, Type, Protocol, SockAddr};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -54,7 +54,7 @@ impl Default for SocketConfig {
             keepalive: Some(Duration::from_secs(60)),
             recv_buffer_size: Some(256 * 1024), // 256KB
             send_buffer_size: Some(256 * 1024), // 256KB
-            backlog: 4096, // Large backlog for high concurrency
+            backlog: 4096,                      // Large backlog for high concurrency
         }
     }
 }
@@ -71,7 +71,7 @@ impl SocketConfig {
             keepalive: Some(Duration::from_secs(60)),
             recv_buffer_size: Some(512 * 1024), // 512KB for high throughput
             send_buffer_size: Some(512 * 1024), // 512KB for high throughput
-            backlog: 8192, // Very large backlog
+            backlog: 8192,                      // Very large backlog
         }
     }
 
@@ -81,7 +81,7 @@ impl SocketConfig {
             reuse_addr: true,
             reuse_port: true,
             linger: Some(Duration::from_secs(0)),
-            nodelay: true, // Critical for low latency
+            nodelay: true,  // Critical for low latency
             fastopen: true, // Save 1 RTT
             keepalive: Some(Duration::from_secs(30)),
             recv_buffer_size: Some(128 * 1024), // Smaller buffers for lower latency
@@ -92,10 +92,7 @@ impl SocketConfig {
 }
 
 /// Create an optimized TCP socket bound to the given address
-pub fn create_optimized_socket(
-    addr: SocketAddr,
-    config: &SocketConfig,
-) -> std::io::Result<Socket> {
+pub fn create_optimized_socket(addr: SocketAddr, config: &SocketConfig) -> std::io::Result<Socket> {
     let domain = if addr.is_ipv4() {
         Domain::IPV4
     } else {
@@ -123,10 +120,7 @@ pub fn create_optimized_socket(
 }
 
 /// Apply socket optimizations to an existing socket
-pub fn apply_socket_options(
-    socket: &Socket,
-    config: &SocketConfig,
-) -> std::io::Result<()> {
+pub fn apply_socket_options(socket: &Socket, config: &SocketConfig) -> std::io::Result<()> {
     // SO_REUSEADDR: Allow immediate port reuse (critical for <10s port release)
     if config.reuse_addr {
         socket.set_reuse_address(true)?;

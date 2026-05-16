@@ -165,10 +165,9 @@ impl PluginManager {
         let plugin: BoxedPlugin = match config.plugin_type {
             #[cfg(feature = "plugin-wasm")]
             PluginType::Wasm => {
-                let loader = self
-                    .wasm_loader
-                    .as_ref()
-                    .ok_or_else(|| PluginError::Config("WASM loader not initialized".to_string()))?;
+                let loader = self.wasm_loader.as_ref().ok_or_else(|| {
+                    PluginError::Config("WASM loader not initialized".to_string())
+                })?;
                 loader.load(&config).await?
             }
             #[cfg(feature = "plugin-ffi")]
@@ -298,7 +297,9 @@ impl PluginManager {
             self.registry.update_stats(&plugin_name, |stats| {
                 stats.decrement_active();
                 match result {
-                    Ok(FilterResult::Continue) | Ok(FilterResult::Pause) | Ok(FilterResult::StopIteration) => {
+                    Ok(FilterResult::Continue)
+                    | Ok(FilterResult::Pause)
+                    | Ok(FilterResult::StopIteration) => {
                         stats.record_success(execution_time_us);
                     }
                     Ok(FilterResult::Error) | Err(_) => {

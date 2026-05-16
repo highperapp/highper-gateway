@@ -4,7 +4,7 @@
 //! for common parsing and validation scenarios in the proxy.
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-use super::simd_opt::{simd_find_pattern, simd_checksum};
+use super::simd_opt::{simd_checksum, simd_find_pattern};
 
 /// Fast HTTP header name/value separator finding
 ///

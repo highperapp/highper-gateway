@@ -4,16 +4,16 @@ pub mod body_access;
 pub mod compression;
 pub mod compression_middleware;
 pub mod cors;
+pub mod ddos_protection;
 pub mod headers;
 pub mod logging;
-pub mod transform;
 pub mod mtls;
 pub mod rate_limit;
 pub mod request_size_limit;
-pub mod streaming_validator;
 pub mod request_validation;
 pub mod security_audit;
-pub mod ddos_protection;
+pub mod streaming_validator;
+pub mod transform;
 
 // WAF module with adapter pattern
 pub mod waf;
@@ -34,7 +34,12 @@ pub trait Middleware: Send + Sync {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         Box::pin(async move { Ok(req) })
     }
 

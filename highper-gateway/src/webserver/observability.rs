@@ -1,10 +1,10 @@
+use dashmap::DashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 /// Observability and monitoring hooks for webserver operations
 ///
 /// Provides comprehensive metrics, logging, and health checks for production monitoring.
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use dashmap::DashMap;
 
 /// Webserver metrics aggregator
 #[derive(Default)]
@@ -64,9 +64,11 @@ impl WebserverMetrics {
     // Request tracking
     pub fn record_request(&self, path: &str) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.path_metrics.entry(path.to_string())
+        self.path_metrics
+            .entry(path.to_string())
             .or_default()
-            .request_count.fetch_add(1, Ordering::Relaxed);
+            .request_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_static_file_request(&self) {
@@ -78,7 +80,8 @@ impl WebserverMetrics {
     }
 
     pub fn record_directory_listing_request(&self) {
-        self.directory_listing_requests.fetch_add(1, Ordering::Relaxed);
+        self.directory_listing_requests
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     // Response tracking
@@ -96,62 +99,58 @@ impl WebserverMetrics {
             _ => 0,
         };
 
-        self.path_metrics.entry(path.to_string())
+        self.path_metrics
+            .entry(path.to_string())
             .or_default()
-            .error_count.fetch_add(1, Ordering::Relaxed);
+            .error_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     // Security event tracking
     pub fn record_path_traversal_attempt(&self, path: &str) {
         self.path_traversal_attempts.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Path traversal attempt detected: {}",
-            path
-        );
+        tracing::warn!("Path traversal attempt detected: {}", path);
     }
 
     pub fn record_sensitive_file_access(&self, file: &str) {
-        self.sensitive_file_access_attempts.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Sensitive file access attempt: {}",
-            file
-        );
+        self.sensitive_file_access_attempts
+            .fetch_add(1, Ordering::Relaxed);
+        tracing::warn!("Sensitive file access attempt: {}", file);
     }
 
     pub fn record_hidden_file_access(&self, file: &str) {
-        self.hidden_file_access_attempts.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Hidden file access attempt: {}",
-            file
-        );
+        self.hidden_file_access_attempts
+            .fetch_add(1, Ordering::Relaxed);
+        tracing::warn!("Hidden file access attempt: {}", file);
     }
 
     pub fn record_oversized_file(&self, size: u64, limit: u64) {
         self.oversized_file_requests.fetch_add(1, Ordering::Relaxed);
         tracing::warn!(
             "Oversized file request: {} bytes (limit: {} bytes)",
-            size, limit
+            size,
+            limit
         );
     }
 
     pub fn record_oversized_request_body(&self, size: usize, limit: usize) {
-        self.oversized_request_bodies.fetch_add(1, Ordering::Relaxed);
+        self.oversized_request_bodies
+            .fetch_add(1, Ordering::Relaxed);
         tracing::warn!(
             "Oversized request body: {} bytes (limit: {} bytes)",
-            size, limit
+            size,
+            limit
         );
     }
 
     pub fn record_invalid_php_script(&self, path: &str) {
         self.invalid_php_scripts.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Invalid PHP script access attempt: {}",
-            path
-        );
+        tracing::warn!("Invalid PHP script access attempt: {}", path);
     }
 
     pub fn record_fastcgi_injection_attempt(&self, param: &str) {
-        self.fastcgi_injection_attempts.fetch_add(1, Ordering::Relaxed);
+        self.fastcgi_injection_attempts
+            .fetch_add(1, Ordering::Relaxed);
         tracing::warn!(
             "Potential FastCGI injection attempt in parameter: {}",
             param
@@ -160,48 +159,46 @@ impl WebserverMetrics {
 
     // Resource limit tracking
     pub fn record_connection_limit_rejection(&self, client_ip: &str) {
-        self.connection_limit_rejections.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Connection limit rejection for IP: {}",
-            client_ip
-        );
+        self.connection_limit_rejections
+            .fetch_add(1, Ordering::Relaxed);
+        tracing::warn!("Connection limit rejection for IP: {}", client_ip);
     }
 
     pub fn record_rate_limit_rejection(&self, client_ip: &str) {
         self.rate_limit_rejections.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Rate limit rejection for IP: {}",
-            client_ip
-        );
+        tracing::warn!("Rate limit rejection for IP: {}", client_ip);
     }
 
     pub fn record_file_descriptor_limit_rejection(&self) {
-        self.file_descriptor_limit_rejections.fetch_add(1, Ordering::Relaxed);
+        self.file_descriptor_limit_rejections
+            .fetch_add(1, Ordering::Relaxed);
         tracing::warn!("File descriptor limit reached");
     }
 
     pub fn record_memory_limit_rejection(&self, size: usize) {
         self.memory_limit_rejections.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!(
-            "Memory limit rejection: requested {} bytes",
-            size
-        );
+        tracing::warn!("Memory limit rejection: requested {} bytes", size);
     }
 
     // Performance tracking
     pub fn record_bytes_served(&self, bytes: u64, path: &str) {
         self.total_bytes_served.fetch_add(bytes, Ordering::Relaxed);
-        self.path_metrics.entry(path.to_string())
+        self.path_metrics
+            .entry(path.to_string())
             .or_insert_with(PathMetrics::default)
-            .bytes_served.fetch_add(bytes, Ordering::Relaxed);
+            .bytes_served
+            .fetch_add(bytes, Ordering::Relaxed);
     }
 
     pub fn record_request_duration(&self, duration: Duration, path: &str) {
         let duration_ms = duration.as_millis() as u64;
-        self.total_request_duration_ms.fetch_add(duration_ms, Ordering::Relaxed);
-        self.path_metrics.entry(path.to_string())
+        self.total_request_duration_ms
+            .fetch_add(duration_ms, Ordering::Relaxed);
+        self.path_metrics
+            .entry(path.to_string())
             .or_insert_with(PathMetrics::default)
-            .total_duration_ms.fetch_add(duration_ms, Ordering::Relaxed);
+            .total_duration_ms
+            .fetch_add(duration_ms, Ordering::Relaxed);
     }
 
     pub fn record_cache_hit(&self) {
@@ -225,7 +222,9 @@ impl WebserverMetrics {
             forbidden_errors: self.forbidden_errors.load(Ordering::Relaxed),
             server_errors: self.server_errors.load(Ordering::Relaxed),
             path_traversal_attempts: self.path_traversal_attempts.load(Ordering::Relaxed),
-            sensitive_file_access_attempts: self.sensitive_file_access_attempts.load(Ordering::Relaxed),
+            sensitive_file_access_attempts: self
+                .sensitive_file_access_attempts
+                .load(Ordering::Relaxed),
             hidden_file_access_attempts: self.hidden_file_access_attempts.load(Ordering::Relaxed),
             oversized_file_requests: self.oversized_file_requests.load(Ordering::Relaxed),
             oversized_request_bodies: self.oversized_request_bodies.load(Ordering::Relaxed),
@@ -233,7 +232,9 @@ impl WebserverMetrics {
             fastcgi_injection_attempts: self.fastcgi_injection_attempts.load(Ordering::Relaxed),
             connection_limit_rejections: self.connection_limit_rejections.load(Ordering::Relaxed),
             rate_limit_rejections: self.rate_limit_rejections.load(Ordering::Relaxed),
-            file_descriptor_limit_rejections: self.file_descriptor_limit_rejections.load(Ordering::Relaxed),
+            file_descriptor_limit_rejections: self
+                .file_descriptor_limit_rejections
+                .load(Ordering::Relaxed),
             memory_limit_rejections: self.memory_limit_rejections.load(Ordering::Relaxed),
             total_bytes_served: self.total_bytes_served.load(Ordering::Relaxed),
             total_request_duration_ms: self.total_request_duration_ms.load(Ordering::Relaxed),
@@ -244,27 +245,27 @@ impl WebserverMetrics {
     }
 
     pub fn get_path_metrics(&self, path: &str) -> Option<PathMetricsSnapshot> {
-        self.path_metrics.get(path).map(|metrics| {
-            PathMetricsSnapshot {
+        self.path_metrics
+            .get(path)
+            .map(|metrics| PathMetricsSnapshot {
                 path: path.to_string(),
                 request_count: metrics.request_count.load(Ordering::Relaxed),
                 total_duration_ms: metrics.total_duration_ms.load(Ordering::Relaxed),
                 error_count: metrics.error_count.load(Ordering::Relaxed),
                 bytes_served: metrics.bytes_served.load(Ordering::Relaxed),
-            }
-        })
+            })
     }
 
     pub fn get_top_paths(&self, limit: usize) -> Vec<PathMetricsSnapshot> {
-        let mut paths: Vec<_> = self.path_metrics.iter()
-            .map(|entry| {
-                PathMetricsSnapshot {
-                    path: entry.key().clone(),
-                    request_count: entry.value().request_count.load(Ordering::Relaxed),
-                    total_duration_ms: entry.value().total_duration_ms.load(Ordering::Relaxed),
-                    error_count: entry.value().error_count.load(Ordering::Relaxed),
-                    bytes_served: entry.value().bytes_served.load(Ordering::Relaxed),
-                }
+        let mut paths: Vec<_> = self
+            .path_metrics
+            .iter()
+            .map(|entry| PathMetricsSnapshot {
+                path: entry.key().clone(),
+                request_count: entry.value().request_count.load(Ordering::Relaxed),
+                total_duration_ms: entry.value().total_duration_ms.load(Ordering::Relaxed),
+                error_count: entry.value().error_count.load(Ordering::Relaxed),
+                bytes_served: entry.value().bytes_served.load(Ordering::Relaxed),
             })
             .collect();
 
@@ -285,7 +286,8 @@ impl WebserverMetrics {
         self.forbidden_errors.store(0, Ordering::Relaxed);
         self.server_errors.store(0, Ordering::Relaxed);
         self.path_traversal_attempts.store(0, Ordering::Relaxed);
-        self.sensitive_file_access_attempts.store(0, Ordering::Relaxed);
+        self.sensitive_file_access_attempts
+            .store(0, Ordering::Relaxed);
         self.hidden_file_access_attempts.store(0, Ordering::Relaxed);
         self.oversized_file_requests.store(0, Ordering::Relaxed);
         self.oversized_request_bodies.store(0, Ordering::Relaxed);
@@ -293,7 +295,8 @@ impl WebserverMetrics {
         self.fastcgi_injection_attempts.store(0, Ordering::Relaxed);
         self.connection_limit_rejections.store(0, Ordering::Relaxed);
         self.rate_limit_rejections.store(0, Ordering::Relaxed);
-        self.file_descriptor_limit_rejections.store(0, Ordering::Relaxed);
+        self.file_descriptor_limit_rejections
+            .store(0, Ordering::Relaxed);
         self.memory_limit_rejections.store(0, Ordering::Relaxed);
         self.total_bytes_served.store(0, Ordering::Relaxed);
         self.total_request_duration_ms.store(0, Ordering::Relaxed);
@@ -438,7 +441,11 @@ impl HealthStatus {
         if status != "ok" {
             self.healthy = false;
         }
-        self.checks.push(HealthCheck { name, status, message });
+        self.checks.push(HealthCheck {
+            name,
+            status,
+            message,
+        });
     }
 }
 

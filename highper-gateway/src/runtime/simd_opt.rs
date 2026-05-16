@@ -287,7 +287,10 @@ unsafe fn avx2_find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
     }
 
     // Search remaining bytes
-    haystack[pos..].iter().position(|&b| b == needle).map(|i| pos + i)
+    haystack[pos..]
+        .iter()
+        .position(|&b| b == needle)
+        .map(|i| pos + i)
 }
 
 /// SSE2-accelerated byte search
@@ -317,7 +320,10 @@ unsafe fn sse2_find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
     }
 
     // Search remaining bytes
-    haystack[pos..].iter().position(|&b| b == needle).map(|i| pos + i)
+    haystack[pos..]
+        .iter()
+        .position(|&b| b == needle)
+        .map(|i| pos + i)
 }
 
 /// SIMD-accelerated checksum calculation (simple XOR-based)

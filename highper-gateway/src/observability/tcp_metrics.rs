@@ -99,10 +99,7 @@ pub fn describe_tcp_metrics() {
         "tcp_backend_connections_total",
         "Total connections per TCP backend"
     );
-    describe_counter!(
-        "tcp_backend_errors_total",
-        "Total errors per TCP backend"
-    );
+    describe_counter!("tcp_backend_errors_total", "Total errors per TCP backend");
 }
 
 /// Record a new TCP connection
@@ -113,12 +110,13 @@ pub fn record_connection_open(backend: &str, _remote_addr: &str) {
     gauge!(
         "tcp_backend_connections_active",
         "backend" => backend.to_string(),
-    ).increment(1.0);
+    )
+    .increment(1.0);
     counter!(
         "tcp_backend_connections_total",
         "backend" => backend.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record a TCP connection close
@@ -135,7 +133,8 @@ pub fn record_connection_close(
     gauge!(
         "tcp_backend_connections_active",
         "backend" => backend.to_string(),
-    ).decrement(1.0);
+    )
+    .decrement(1.0);
 
     // Record duration
     let duration_secs = duration.as_secs_f64();
@@ -148,7 +147,6 @@ pub fn record_connection_close(
     if bytes_received > 0 {
         counter!("tcp_bytes_received_total").increment(bytes_received);
     }
-
 }
 
 /// Record a TCP connection error
@@ -157,13 +155,15 @@ pub fn record_connection_error(backend: &str, error_type: &str) {
         "tcp_connection_errors_total",
         "backend" => backend.to_string(),
         "error" => error_type.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     counter!(
         "tcp_backend_errors_total",
         "backend" => backend.to_string(),
         "error" => error_type.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     // Record specific error types
     match error_type {
@@ -172,7 +172,6 @@ pub fn record_connection_error(backend: &str, error_type: &str) {
         "reset" => counter!("tcp_connection_reset_total").increment(1),
         _ => {}
     }
-
 }
 
 /// Record connection pool stats
@@ -186,7 +185,6 @@ pub fn record_pool_stats(active: usize, idle: usize) {
 pub fn record_pool_wait(duration: Duration) {
     let duration_secs = duration.as_secs_f64();
     histogram!("tcp_pool_wait_duration_seconds").record(duration_secs);
-
 }
 
 /// Record pool exhaustion event
@@ -194,8 +192,8 @@ pub fn record_pool_exhausted(backend: &str) {
     counter!(
         "tcp_pool_exhausted_total",
         "backend" => backend.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record pool connection created
@@ -203,8 +201,8 @@ pub fn record_pool_connection_created(backend: &str) {
     counter!(
         "tcp_pool_created_total",
         "backend" => backend.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record pool connection reused
@@ -212,8 +210,8 @@ pub fn record_pool_connection_reused(backend: &str) {
     counter!(
         "tcp_pool_reused_total",
         "backend" => backend.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Get current active TCP connections (for monitoring)

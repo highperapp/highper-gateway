@@ -2,8 +2,8 @@
 //!
 //! Provides JWT, API key, OAuth2, and basic authentication.
 
-pub mod jwt;
 pub mod api_key;
+pub mod jwt;
 pub mod oauth2;
 pub mod oauth2_providers;
 

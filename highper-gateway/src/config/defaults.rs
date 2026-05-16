@@ -377,7 +377,7 @@ impl ProtocolDefaults {
                     max_requests_per_connection: 1000,
                     connect_timeout: Duration::from_secs(5),
                     request_timeout: Duration::from_secs(0), // No timeout for WebSocket
-                    idle_timeout: Duration::from_secs(0), // No idle timeout
+                    idle_timeout: Duration::from_secs(0),    // No idle timeout
                     connection_pool: ConnectionPoolConfig::default(),
                 },
                 shutdown_timeout: Duration::from_secs(30),
@@ -386,8 +386,8 @@ impl ProtocolDefaults {
             websocket: crate::websocket::WebSocketConfig {
                 enabled: true,
                 max_message_size: 67108864, // 64 MB
-                ping_interval: 30, // 30 seconds
-                timeout: 300, // 5 minutes
+                ping_interval: 30,          // 30 seconds
+                timeout: 300,               // 5 minutes
                 sticky_sessions: true,
                 session_cookie_name: "ws_session".to_string(),
                 session_timeout: 3600, // 1 hour
@@ -674,7 +674,10 @@ mod tests {
         let config = ProtocolDefaults::mysql();
         assert_eq!(config.server.bind, vec!["0.0.0.0:3306"]);
         assert!(config.server.performance.connection_pool.prewarm);
-        assert_eq!(config.server.performance.connection_pool.min_idle_per_host, 10);
+        assert_eq!(
+            config.server.performance.connection_pool.min_idle_per_host,
+            10
+        );
     }
 
     #[test]
@@ -689,7 +692,10 @@ mod tests {
         let config = ProtocolDefaults::http_api();
         assert!(config.cache.is_some());
         assert!(config.rate_limit.is_some());
-        assert_eq!(config.server.protocols, vec![Protocol::Http1, Protocol::Http2]);
+        assert_eq!(
+            config.server.protocols,
+            vec![Protocol::Http1, Protocol::Http2]
+        );
     }
 
     #[test]
@@ -713,7 +719,10 @@ mod tests {
     fn test_websocket_defaults() {
         let config = ProtocolDefaults::websocket();
         assert!(config.websocket.enabled);
-        assert_eq!(config.server.performance.request_timeout, Duration::from_secs(0));
+        assert_eq!(
+            config.server.performance.request_timeout,
+            Duration::from_secs(0)
+        );
     }
 
     #[test]
@@ -736,13 +745,19 @@ mod tests {
     #[test]
     fn test_php_fpm_defaults() {
         let config = ProtocolDefaults::php_fpm();
-        assert_eq!(config.server.performance.request_timeout, Duration::from_secs(90));
+        assert_eq!(
+            config.server.performance.request_timeout,
+            Duration::from_secs(90)
+        );
     }
 
     #[test]
     fn test_postgresql_defaults() {
         let config = ProtocolDefaults::postgresql();
         assert_eq!(config.server.bind, vec!["0.0.0.0:5432"]);
-        assert_eq!(config.server.performance.idle_timeout, Duration::from_secs(600));
+        assert_eq!(
+            config.server.performance.idle_timeout,
+            Duration::from_secs(600)
+        );
     }
 }

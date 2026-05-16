@@ -98,11 +98,12 @@ async fn test_grpc_02_message_flooding() {
     let addr = harness.tcp_addr();
 
     // Connect and send HTTP/2 preface
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
-    stream.write_all(H2_PREFACE).await.expect("Failed to write preface");
+    stream
+        .write_all(H2_PREFACE)
+        .await
+        .expect("Failed to write preface");
     stream
         .write_all(&h2_settings_frame())
         .await
@@ -135,9 +136,7 @@ async fn test_grpc_03_stream_exhaustion() {
 
     let addr = harness.tcp_addr();
 
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     stream.write_all(H2_PREFACE).await.expect("Failed to write");
     stream
@@ -155,16 +154,32 @@ async fn test_grpc_03_stream_exhaustion() {
         // Stream IDs are odd for client-initiated
         // This is simplified - real implementation needs proper HPACK encoding
         let headers_frame = vec![
-            0x00, 0x00, 0x10, // Length: 16
-            0x01,             // Type: HEADERS
-            0x04,             // Flags: END_HEADERS
+            0x00,
+            0x00,
+            0x10, // Length: 16
+            0x01, // Type: HEADERS
+            0x04, // Flags: END_HEADERS
             (stream_id >> 24) as u8,
             (stream_id >> 16) as u8,
             (stream_id >> 8) as u8,
             stream_id as u8, // Stream ID
             // Simplified header block (would need real HPACK)
-            0x82, 0x86, 0x84, 0x41, 0x8a, 0x08, 0x9d, 0x5c, 0x0b, 0x81, 0x70, 0xdc, 0x78, 0x0f,
-            0x03, 0x00,
+            0x82,
+            0x86,
+            0x84,
+            0x41,
+            0x8a,
+            0x08,
+            0x9d,
+            0x5c,
+            0x0b,
+            0x81,
+            0x70,
+            0xdc,
+            0x78,
+            0x0f,
+            0x03,
+            0x00,
         ];
 
         if stream.write_all(&headers_frame).await.is_err() {
@@ -175,11 +190,8 @@ async fn test_grpc_03_stream_exhaustion() {
         if stream_id > 100 {
             // Should receive GOAWAY or RST_STREAM after exceeding limit
             let mut buf = vec![0u8; 100];
-            if let Ok(Ok(n)) = tokio::time::timeout(
-                Duration::from_millis(100),
-                stream.read(&mut buf),
-            )
-            .await
+            if let Ok(Ok(n)) =
+                tokio::time::timeout(Duration::from_millis(100), stream.read(&mut buf)).await
             {
                 if n > 0 {
                     // Check for GOAWAY (type 7) or RST_STREAM (type 3)

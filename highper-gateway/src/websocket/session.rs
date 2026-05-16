@@ -6,8 +6,8 @@
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 /// Session ID type (UUID v4)
 pub type SessionId = Uuid;
@@ -80,7 +80,11 @@ impl SessionManager {
     }
 
     /// Create and register a new session
-    pub fn create_session(&self, backend_index: usize, client_id: Option<String>) -> WebSocketSession {
+    pub fn create_session(
+        &self,
+        backend_index: usize,
+        client_id: Option<String>,
+    ) -> WebSocketSession {
         let session = WebSocketSession::new(backend_index, client_id.clone());
 
         debug!(
@@ -114,7 +118,8 @@ impl SessionManager {
 
     /// Clean up expired sessions
     pub fn cleanup_expired(&self) -> usize {
-        let expired: Vec<SessionId> = self.sessions
+        let expired: Vec<SessionId> = self
+            .sessions
             .iter()
             .filter(|entry| entry.value().is_expired(self.timeout))
             .map(|entry| *entry.key())

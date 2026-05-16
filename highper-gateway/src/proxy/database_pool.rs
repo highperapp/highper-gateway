@@ -15,8 +15,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{Semaphore, Notify};
-use tracing::{debug, info, warn, error};
+use tokio::sync::{Notify, Semaphore};
+use tracing::{debug, error, info, warn};
 
 use crate::observability::tcp_logger::TcpConnectionId;
 use crate::observability::tcp_metrics;
@@ -163,7 +163,9 @@ impl PooledDatabaseConnection {
             let mut response = [0u8; 7];
             self.stream.read_exact(&mut response).await?;
             Ok::<_, std::io::Error>(())
-        }).await {
+        })
+        .await
+        {
             Ok(Ok(())) => true,
             _ => false,
         }
@@ -235,7 +237,9 @@ impl PooledDatabaseConnection {
             let mut response = [0u8; 7]; // +PONG\r\n
             self.stream.read_exact(&mut response).await?;
             Ok::<_, std::io::Error>(response.starts_with(b"+PONG"))
-        }).await {
+        })
+        .await
+        {
             Ok(Ok(true)) => true,
             _ => false,
         }
@@ -246,7 +250,9 @@ impl PooledDatabaseConnection {
         match tokio::time::timeout(timeout, async {
             let mut buf = [0u8; 1];
             self.stream.peek(&mut buf).await
-        }).await {
+        })
+        .await
+        {
             Ok(Ok(_)) => true,
             _ => false,
         }
@@ -321,9 +327,13 @@ impl DatabaseBackendPool {
             // Check if connection expired
             if conn.is_expired(&self.config) {
                 if conn.last_used.elapsed() > self.config.max_idle_duration {
-                    self.stats.total_idle_expired.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .total_idle_expired
+                        .fetch_add(1, Ordering::Relaxed);
                 } else {
-                    self.stats.total_lifetime_expired.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .total_lifetime_expired
+                        .fetch_add(1, Ordering::Relaxed);
                 }
                 drop(conn);
                 continue;
@@ -332,7 +342,9 @@ impl DatabaseBackendPool {
             // Validate connection if enabled
             if self.config.validate_on_checkout {
                 if !conn.validate(self.config.validation_timeout).await {
-                    self.stats.total_validation_failures.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .total_validation_failures
+                        .fetch_add(1, Ordering::Relaxed);
                     warn!(
                         backend = %self.backend_name,
                         connection_id = %conn.connection_id,
@@ -376,10 +388,9 @@ impl DatabaseBackendPool {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         let wait_duration = wait_start.elapsed();
-        self.stats.total_wait_time_ms.fetch_add(
-            wait_duration.as_millis() as u64,
-            Ordering::Relaxed
-        );
+        self.stats
+            .total_wait_time_ms
+            .fetch_add(wait_duration.as_millis() as u64, Ordering::Relaxed);
 
         // Record wait time metrics
         tcp_metrics::record_pool_wait(wait_duration);
@@ -387,7 +398,7 @@ impl DatabaseBackendPool {
         // Create new connection with timeout
         let stream = tokio::time::timeout(
             self.config.connect_timeout,
-            TcpStream::connect(self.backend_addr)
+            TcpStream::connect(self.backend_addr),
         )
         .await
         .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "Connection timeout"))?
@@ -404,8 +415,7 @@ impl DatabaseBackendPool {
         // Configure TCP keep-alive if enabled
         if self.config.keep_alive {
             let sock_ref = socket2::SockRef::from(&stream);
-            let keepalive = socket2::TcpKeepalive::new()
-                .with_time(self.config.keep_alive_timeout);
+            let keepalive = socket2::TcpKeepalive::new().with_time(self.config.keep_alive_timeout);
             sock_ref.set_tcp_keepalive(&keepalive)?;
         }
 
@@ -433,7 +443,7 @@ impl DatabaseBackendPool {
             let conn = PooledDatabaseConnection::new(
                 stream,
                 self.backend_name.clone(),
-                self.config.protocol
+                self.config.protocol,
             );
             idle.push(conn);
 
@@ -600,7 +610,7 @@ impl DatabaseConnectionPoolManager {
                 Arc::new(DatabaseBackendPool::new(
                     backend.to_string(),
                     addr,
-                    pool_config
+                    pool_config,
                 ))
             })
             .clone()
@@ -680,10 +690,7 @@ impl Default for DatabaseConnectionPoolManager {
 }
 
 /// Spawn background task to cleanup idle connections
-pub fn spawn_cleanup_task(
-    pool_manager: Arc<DatabaseConnectionPoolManager>,
-    interval: Duration,
-) {
+pub fn spawn_cleanup_task(pool_manager: Arc<DatabaseConnectionPoolManager>, interval: Duration) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(interval);
         loop {
@@ -694,10 +701,7 @@ pub fn spawn_cleanup_task(
 }
 
 /// Spawn background task to maintain minimum idle connections
-pub fn spawn_prewarm_task(
-    pool_manager: Arc<DatabaseConnectionPoolManager>,
-    interval: Duration,
-) {
+pub fn spawn_prewarm_task(pool_manager: Arc<DatabaseConnectionPoolManager>, interval: Duration) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(interval);
         loop {
@@ -866,7 +870,7 @@ mod tests {
         let mut conn = PooledDatabaseConnection::new(
             stream,
             "test-backend".to_string(),
-            DatabaseProtocol::MySQL
+            DatabaseProtocol::MySQL,
         );
 
         // Should not be expired immediately

@@ -63,7 +63,13 @@ pub fn analyze(doc: &ExecutableDocument) -> Result<AnalysisStats, AnalysisError>
     let mut walk_op = |op_selection_set: &SelectionSet| -> Result<(), AnalysisError> {
         let mut visited: HashSet<&Name> = HashSet::new();
         let mut op_stats = AnalysisStats::default();
-        walk_selection_set(op_selection_set, &doc.fragments, &mut visited, 0, &mut op_stats)?;
+        walk_selection_set(
+            op_selection_set,
+            &doc.fragments,
+            &mut visited,
+            0,
+            &mut op_stats,
+        )?;
         overall.depth = overall.depth.max(op_stats.depth);
         overall.complexity = overall.complexity.saturating_add(op_stats.complexity);
         Ok(())
@@ -127,9 +133,11 @@ fn walk_selection_set<'a>(
                         name: name.to_string(),
                     });
                 }
-                let def = fragments.get(name).ok_or_else(|| AnalysisError::UnknownFragment {
-                    name: name.to_string(),
-                })?;
+                let def = fragments
+                    .get(name)
+                    .ok_or_else(|| AnalysisError::UnknownFragment {
+                        name: name.to_string(),
+                    })?;
                 visited_fragments.insert(name);
                 walk_inline_set(
                     &def.node.selection_set.node,
@@ -183,9 +191,11 @@ fn walk_inline_set<'a>(
                         name: name.to_string(),
                     });
                 }
-                let def = fragments.get(name).ok_or_else(|| AnalysisError::UnknownFragment {
-                    name: name.to_string(),
-                })?;
+                let def = fragments
+                    .get(name)
+                    .ok_or_else(|| AnalysisError::UnknownFragment {
+                        name: name.to_string(),
+                    })?;
                 visited_fragments.insert(name);
                 walk_inline_set(
                     &def.node.selection_set.node,

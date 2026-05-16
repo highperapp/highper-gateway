@@ -3,11 +3,11 @@
 //! Provides GraphQL query routing, schema stitching from multiple backends,
 //! query batching, and caching capabilities.
 
+pub mod analyzer;
+pub mod cache;
+pub mod executor;
 pub mod schema;
 pub mod stitcher;
-pub mod executor;
-pub mod cache;
-pub mod analyzer;
 
 use anyhow::{Context, Result};
 use async_graphql_parser::parse_query;
@@ -18,10 +18,10 @@ use tracing::{debug, info, warn};
 
 use crate::proxy::Client;
 
+pub use cache::QueryCache;
+pub use executor::GraphQLExecutor;
 pub use schema::SchemaRegistry;
 pub use stitcher::SchemaStitcher;
-pub use executor::GraphQLExecutor;
-pub use cache::QueryCache;
 
 /// GraphQL gateway configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,7 +152,10 @@ impl GraphQLGateway {
         // Initialize schemas from backends
         for backend in &config.backends {
             info!("Loading GraphQL schema from backend: {}", backend.name);
-            if let Err(e) = schema_registry.load_schema(&backend.name, &backend.url, client.as_ref()).await {
+            if let Err(e) = schema_registry
+                .load_schema(&backend.name, &backend.url, client.as_ref())
+                .await
+            {
                 warn!("Failed to load schema from {}: {}", backend.name, e);
             }
         }
@@ -170,8 +173,7 @@ impl GraphQLGateway {
     /// Handle GraphQL request
     pub async fn handle_request(&self, req: GraphQLRequest) -> Result<GraphQLResponse> {
         // Parse query
-        let document = parse_query(&req.query)
-            .context("Failed to parse GraphQL query")?;
+        let document = parse_query(&req.query).context("Failed to parse GraphQL query")?;
 
         // B5 — depth/complexity analyzer. Reads thresholds from
         // `runtime_config::current().graphql`; when `enforce` is true
@@ -202,32 +204,41 @@ impl GraphQLGateway {
         // Execute query - use federation if enabled and multiple backends configured
         let response = if self.config.enable_stitching && self.config.backends.len() > 1 {
             // Federation mode - analyze query, split across backends, and merge results
-            debug!("Using federation mode with {} backends", self.config.backends.len());
+            debug!(
+                "Using federation mode with {} backends",
+                self.config.backends.len()
+            );
 
-            match self.stitcher.analyze_and_split_query(&req.query, &self.schema_registry) {
+            match self
+                .stitcher
+                .analyze_and_split_query(&req.query, &self.schema_registry)
+            {
                 Ok(fragments) => {
                     if fragments.is_empty() {
                         // No fragments - query doesn't match any backend fields
                         GraphQLResponse {
                             data: None,
                             errors: Some(vec![GraphQLError {
-                                message: "Query fields don't match any configured backend".to_string(),
+                                message: "Query fields don't match any configured backend"
+                                    .to_string(),
                                 locations: None,
                                 path: None,
                             }]),
                         }
                     } else {
                         // Execute fragments in parallel across backends
-                        match self.executor.execute_federated(fragments, req.variables.clone()).await {
+                        match self
+                            .executor
+                            .execute_federated(fragments, req.variables.clone())
+                            .await
+                        {
                             Ok(fragment_results) => {
                                 // Merge results from all backends
                                 match self.stitcher.merge_results(fragment_results) {
-                                    Ok(merged_data) => {
-                                        GraphQLResponse {
-                                            data: Some(merged_data),
-                                            errors: None,
-                                        }
-                                    }
+                                    Ok(merged_data) => GraphQLResponse {
+                                        data: Some(merged_data),
+                                        errors: None,
+                                    },
                                     Err(e) => {
                                         warn!("Failed to merge results: {}", e);
                                         GraphQLResponse {
@@ -270,7 +281,13 @@ impl GraphQLGateway {
         } else if !self.config.backends.is_empty() {
             // Single backend mode - execute directly on first backend
             debug!("Using single backend mode");
-            self.executor.execute_simple(&self.config.backends[0], req.query.clone(), req.variables.clone()).await?
+            self.executor
+                .execute_simple(
+                    &self.config.backends[0],
+                    req.query.clone(),
+                    req.variables.clone(),
+                )
+                .await?
         } else {
             // No backends configured
             GraphQLResponse {
@@ -315,7 +332,10 @@ impl GraphQLGateway {
     }
 
     /// Handle batch request
-    pub async fn handle_batch(&self, requests: Vec<GraphQLRequest>) -> Result<Vec<GraphQLResponse>> {
+    pub async fn handle_batch(
+        &self,
+        requests: Vec<GraphQLRequest>,
+    ) -> Result<Vec<GraphQLResponse>> {
         if !self.config.enable_batching {
             return Err(anyhow::anyhow!("Batching is disabled"));
         }
@@ -496,14 +516,12 @@ mod tests {
             enable_batching: false,
             max_batch_size: 10,
             introspection_enabled: true,
-            backends: vec![
-                GraphQLBackend {
-                    name: "api".to_string(),
-                    url: "http://localhost:8081/graphql".to_string(),
-                    namespace: None,
-                    type_mappings: vec![],
-                },
-            ],
+            backends: vec![GraphQLBackend {
+                name: "api".to_string(),
+                url: "http://localhost:8081/graphql".to_string(),
+                namespace: None,
+                type_mappings: vec![],
+            }],
         };
 
         let client = Arc::new(Client::new());
@@ -585,19 +603,20 @@ mod tests {
         let client = Arc::new(Client::new());
         let gateway = GraphQLGateway::new(config, client).await.unwrap();
 
-        let requests = vec![
-            GraphQLRequest {
-                query: "{ hello }".to_string(),
-                operation_name: None,
-                variables: None,
-            },
-        ];
+        let requests = vec![GraphQLRequest {
+            query: "{ hello }".to_string(),
+            operation_name: None,
+            variables: None,
+        }];
 
         let result = gateway.handle_batch(requests).await;
 
         // Should return error about batching disabled
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Batching is disabled"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Batching is disabled"));
     }
 
     #[tokio::test]
@@ -637,6 +656,9 @@ mod tests {
 
         // Should return error about batch size
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Batch size exceeds maximum"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Batch size exceeds maximum"));
     }
 }

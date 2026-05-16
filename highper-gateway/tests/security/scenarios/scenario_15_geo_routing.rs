@@ -73,9 +73,8 @@ async fn test_geo_01_xff_spoofing() {
 
             if let Ok((status, body, _)) = result {
                 // Check if the spoofed IP affected routing
-                let spoofed = body.contains(ip)
-                    || body.contains("region")
-                    || body.contains("routed to");
+                let spoofed =
+                    body.contains(ip) || body.contains("region") || body.contains("routed to");
 
                 if status == StatusCode::OK && spoofed {
                     println!(
@@ -96,10 +95,7 @@ async fn test_geo_01_xff_spoofing() {
 
     let result = client.get_with_headers("/api/location", headers).await;
     if let Ok((status, body, _)) = result {
-        println!(
-            "  Multiple XFF values: {} - check which IP is used",
-            status
-        );
+        println!("  Multiple XFF values: {} - check which IP is used", status);
         if body.contains("8.8.8.8") {
             println!("    Uses first IP (leftmost)");
         } else if body.contains("10.0.0.1") {
@@ -143,20 +139,15 @@ async fn test_geo_02_private_ip_handling() {
         let result = client.get_with_headers("/api/geo", headers).await;
 
         if let Ok((status, body, _)) = result {
-            let has_geo = body.contains("country")
-                || body.contains("region")
-                || body.contains("city");
+            let has_geo =
+                body.contains("country") || body.contains("region") || body.contains("city");
 
             println!(
                 "  {} ({}): {} - {}",
                 ip,
                 description,
                 status,
-                if has_geo {
-                    "geo returned"
-                } else {
-                    "fallback"
-                }
+                if has_geo { "geo returned" } else { "fallback" }
             );
         }
     }
@@ -194,9 +185,8 @@ async fn test_geo_03_routing_manipulation() {
         let result = client.get_with_headers("/api/data", headers).await;
 
         if let Ok((status, body, _)) = result {
-            let routed = body.contains(region)
-                || body.contains("routed")
-                || body.contains("backend");
+            let routed =
+                body.contains(region) || body.contains("routed") || body.contains("backend");
 
             println!(
                 "  {}: {} -> {} - {}",

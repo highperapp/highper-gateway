@@ -17,22 +17,16 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config> {
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
     let config: Config = match path.extension().and_then(|s| s.to_str()) {
-        Some("yaml") | Some("yml") => {
-            serde_yaml::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to parse YAML config: {}", e))?
-        }
-        Some("json") => {
-            serde_json::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to parse JSON config: {}", e))?
-        }
-        Some("toml") => {
-            toml::from_str(&content)
-                .map_err(|e| anyhow::anyhow!("Failed to parse TOML config: {}", e))?
-        }
+        Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse YAML config: {}", e))?,
+        Some("json") => serde_json::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse JSON config: {}", e))?,
+        Some("toml") => toml::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse TOML config: {}", e))?,
         Some("proxy") => {
             // Caddy-like DSL format
-            use crate::config::dsl_parser::parse_dsl;
             use crate::config::dsl_converter::convert_dsl_to_config;
+            use crate::config::dsl_parser::parse_dsl;
 
             let dsl_config = parse_dsl(&content)
                 .map_err(|e| anyhow::anyhow!("Failed to parse DSL config: {}", e))?;

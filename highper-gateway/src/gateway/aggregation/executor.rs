@@ -68,8 +68,7 @@ impl AggregationExecutor {
         if self.config.parallel {
             self.execute_parallel(request_headers, path_params).await
         } else {
-            self.execute_sequential(request_headers, path_params)
-                .await
+            self.execute_sequential(request_headers, path_params).await
         }
     }
 
@@ -356,10 +355,7 @@ impl AggregationExecutor {
     }
 
     /// Evaluate JSONPath expression
-    fn evaluate_jsonpath(
-        value: &serde_json::Value,
-        path: &str,
-    ) -> Result<Vec<serde_json::Value>> {
+    fn evaluate_jsonpath(value: &serde_json::Value, path: &str) -> Result<Vec<serde_json::Value>> {
         let path = path.trim();
 
         // Handle root
@@ -374,7 +370,10 @@ impl AggregationExecutor {
         }
 
         // Remove leading $. or $
-        let path = path.strip_prefix("$.").or_else(|| path.strip_prefix("$")).unwrap_or(path);
+        let path = path
+            .strip_prefix("$.")
+            .or_else(|| path.strip_prefix("$"))
+            .unwrap_or(path);
 
         // Parse path segments
         let segments = Self::parse_jsonpath_segments(path)?;
@@ -531,7 +530,7 @@ impl AggregationExecutor {
 
         // Filter expression
         if content.starts_with("?(") && content.ends_with(')') {
-            let filter_expr = content[2..content.len()-1].to_string();
+            let filter_expr = content[2..content.len() - 1].to_string();
             return Ok(PathSegment::Filter(filter_expr));
         }
 

@@ -97,10 +97,18 @@ pub struct StickTableConfig {
     pub peers_enabled: bool,
 }
 
-fn default_size() -> usize { 100_000 }
-fn default_expire() -> u64 { 1800 } // 30 minutes
-fn default_true() -> bool { true }
-fn default_rate_period() -> u64 { 10 }
+fn default_size() -> usize {
+    100_000
+}
+fn default_expire() -> u64 {
+    1800
+} // 30 minutes
+fn default_true() -> bool {
+    true
+}
+fn default_rate_period() -> u64 {
+    10
+}
 
 impl Default for StickTableConfig {
     fn default() -> Self {
@@ -201,7 +209,11 @@ impl StickEntry {
             bytes_out_cnt: AtomicU64::new(0),
             created_at: Instant::now(),
             last_access: AtomicU64::new(now_millis),
-            expires_at: if expire_secs > 0 { now_secs + expire_secs } else { u64::MAX },
+            expires_at: if expire_secs > 0 {
+                now_secs + expire_secs
+            } else {
+                u64::MAX
+            },
             custom_data: None,
         }
     }
@@ -328,7 +340,10 @@ pub struct StickTableStats {
 impl StickTable {
     /// Create a new stick table
     pub fn new(config: StickTableConfig) -> Self {
-        info!("Creating stick table '{}' with size {}", config.name, config.size);
+        info!(
+            "Creating stick table '{}' with size {}",
+            config.name, config.size
+        );
 
         Self {
             entries: DashMap::with_capacity(config.size),
@@ -403,7 +418,10 @@ impl StickTable {
             };
             *entry = Arc::new(new_entry);
         } else {
-            self.set(key, StickEntry::new(Some(server_id), self.config.expire_secs));
+            self.set(
+                key,
+                StickEntry::new(Some(server_id), self.config.expire_secs),
+            );
         }
     }
 
@@ -470,7 +488,10 @@ impl StickTable {
         if let Some(key) = oldest_key {
             self.remove(&key);
             self.stats.evictions.fetch_add(1, AtomicOrdering::Relaxed);
-            debug!("Stick table '{}': evicted LRU key '{}'", self.config.name, key);
+            debug!(
+                "Stick table '{}': evicted LRU key '{}'",
+                self.config.name, key
+            );
         }
     }
 
@@ -490,8 +511,13 @@ impl StickTable {
         }
 
         if count > 0 {
-            self.stats.expirations.fetch_add(count as u64, AtomicOrdering::Relaxed);
-            debug!("Stick table '{}': cleaned up {} expired entries", self.config.name, count);
+            self.stats
+                .expirations
+                .fetch_add(count as u64, AtomicOrdering::Relaxed);
+            debug!(
+                "Stick table '{}': cleaned up {} expired entries",
+                self.config.name, count
+            );
         }
 
         count

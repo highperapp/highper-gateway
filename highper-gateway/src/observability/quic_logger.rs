@@ -125,10 +125,7 @@ pub fn log_connection_closed(
 }
 
 /// Log 0-RTT connection attempt
-pub fn log_zero_rtt_attempt(
-    ctx: &QuicConnectionContext,
-    session_ticket_age: Duration,
-) {
+pub fn log_zero_rtt_attempt(ctx: &QuicConnectionContext, session_ticket_age: Duration) {
     debug!(
         event = "quic_zero_rtt_attempt",
         connection_id = %ctx.connection_id,
@@ -197,7 +194,7 @@ pub fn log_connection_migration(
 pub fn log_stream_opened(
     ctx: &QuicConnectionContext,
     stream_id: u64,
-    stream_type: &str, // "unidirectional" or "bidirectional"
+    stream_type: &str,  // "unidirectional" or "bidirectional"
     initiated_by: &str, // "client" or "server"
 ) {
     debug!(
@@ -339,10 +336,7 @@ pub fn log_protocol_error(
 }
 
 /// Log QUIC timeout
-pub fn log_connection_timeout(
-    ctx: &QuicConnectionContext,
-    idle_timeout: Duration,
-) {
+pub fn log_connection_timeout(ctx: &QuicConnectionContext, idle_timeout: Duration) {
     warn!(
         event = "quic_connection_timeout",
         connection_id = %ctx.connection_id,
@@ -414,10 +408,7 @@ pub fn log_version_negotiation(
 }
 
 /// Log stateless reset
-pub fn log_stateless_reset(
-    client_addr: SocketAddr,
-    server_name: &str,
-) {
+pub fn log_stateless_reset(client_addr: SocketAddr, server_name: &str) {
     warn!(
         event = "quic_stateless_reset",
         client_addr = %client_addr,
@@ -482,7 +473,14 @@ mod tests {
         log_congestion_event(&ctx, 65536, 32768, "fast_retransmit");
 
         // Test HTTP/3
-        log_http3_request(&ctx, 0, "GET", "/api/users", 200, Duration::from_millis(100));
+        log_http3_request(
+            &ctx,
+            0,
+            "GET",
+            "/api/users",
+            200,
+            Duration::from_millis(100),
+        );
 
         assert!(true);
     }

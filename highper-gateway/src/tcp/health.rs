@@ -209,7 +209,10 @@ impl TcpHealthChecker {
 
         // Read MySQL handshake
         let mut buf = vec![0u8; 1024];
-        let n = stream.read(&mut buf).await.context("Failed to read handshake")?;
+        let n = stream
+            .read(&mut buf)
+            .await
+            .context("Failed to read handshake")?;
 
         if n < 5 {
             return Err(anyhow::anyhow!("Invalid MySQL handshake"));
@@ -217,10 +220,16 @@ impl TcpHealthChecker {
 
         // Send PING packet
         let ping = MysqlProtocol::ping_packet();
-        stream.write_all(&ping).await.context("Failed to send PING")?;
+        stream
+            .write_all(&ping)
+            .await
+            .context("Failed to send PING")?;
 
         // Read response
-        let n = stream.read(&mut buf).await.context("Failed to read PING response")?;
+        let n = stream
+            .read(&mut buf)
+            .await
+            .context("Failed to read PING response")?;
 
         if n == 0 {
             return Err(anyhow::anyhow!("Empty PING response"));
@@ -242,11 +251,17 @@ impl TcpHealthChecker {
 
         // Send simple query: SELECT 1
         let query = PostgresqlProtocol::simple_query("SELECT 1");
-        stream.write_all(&query).await.context("Failed to send query")?;
+        stream
+            .write_all(&query)
+            .await
+            .context("Failed to send query")?;
 
         // Read response
         let mut buf = vec![0u8; 1024];
-        let n = stream.read(&mut buf).await.context("Failed to read response")?;
+        let n = stream
+            .read(&mut buf)
+            .await
+            .context("Failed to read response")?;
 
         if n == 0 {
             return Err(anyhow::anyhow!("Empty query response"));
@@ -268,11 +283,17 @@ impl TcpHealthChecker {
 
         // Send PING command
         let ping = RedisProtocol::ping_command();
-        stream.write_all(&ping).await.context("Failed to send PING")?;
+        stream
+            .write_all(&ping)
+            .await
+            .context("Failed to send PING")?;
 
         // Read response
         let mut buf = vec![0u8; 1024];
-        let n = stream.read(&mut buf).await.context("Failed to read response")?;
+        let n = stream
+            .read(&mut buf)
+            .await
+            .context("Failed to read response")?;
 
         if n == 0 {
             return Err(anyhow::anyhow!("Empty PING response"));

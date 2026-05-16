@@ -42,21 +42,21 @@
 //! # }
 //! ```
 
-pub mod types;
-pub mod matcher;
-pub mod loader;
 pub mod hot_reload;
+pub mod loader;
+pub mod matcher;
+pub mod types;
 pub mod upstream_state;
 
-pub use types::*;
-pub use matcher::*;
 pub use hot_reload::*;
+pub use matcher::*;
+pub use types::*;
 pub use upstream_state::*;
 
 use crate::proxy::Client;
 use dashmap::DashMap;
 use std::sync::Arc;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// High-performance per-hostname router
 pub struct HostnameRouter {
@@ -93,7 +93,10 @@ impl HostnameRouter {
     }
 
     /// Set request metrics tracker (builder pattern)
-    pub fn with_request_metrics(mut self, metrics: Arc<crate::state::request_metrics::RequestMetrics>) -> Self {
+    pub fn with_request_metrics(
+        mut self,
+        metrics: Arc<crate::state::request_metrics::RequestMetrics>,
+    ) -> Self {
         self.request_metrics = Some(metrics);
         self
     }
@@ -112,7 +115,11 @@ impl HostnameRouter {
 
     /// Add routes for a hostname
     pub fn add_host_routes(&self, hostname: String, routes: HostRoutes) {
-        info!("Adding {} routes for hostname: {}", routes.route_count(), hostname);
+        info!(
+            "Adding {} routes for hostname: {}",
+            routes.route_count(),
+            hostname
+        );
         self.hosts.insert(hostname, Arc::new(routes));
     }
 
@@ -187,7 +194,11 @@ impl HostnameRouter {
 
     /// Add or update an upstream configuration
     pub fn add_upstream(&self, name: String, config: UpstreamConfig) {
-        info!("Adding upstream: {} ({} servers)", name, config.servers.len());
+        info!(
+            "Adding upstream: {} ({} servers)",
+            name,
+            config.servers.len()
+        );
         self.upstreams.insert(name, config);
     }
 
@@ -225,7 +236,11 @@ impl HostnameRouter {
 
     /// Add upstream with health checking (creates runtime state)
     pub async fn add_upstream_with_health(&self, name: String, config: UpstreamConfig) {
-        info!("Adding upstream with health checking: {} ({} servers)", name, config.servers.len());
+        info!(
+            "Adding upstream with health checking: {} ({} servers)",
+            name,
+            config.servers.len()
+        );
 
         // Store config
         self.upstreams.insert(name.clone(), config.clone());
@@ -485,14 +500,17 @@ impl HostnameRouter {
                 if let Some(state) = self.upstream_states.get(name.as_str()) {
                     let total = state.backend_count();
                     let healthy = state.healthy_backend_count();
-                    let backends = state.get_backends_status()
+                    let backends = state
+                        .get_backends_status()
                         .into_iter()
-                        .map(|b| json!({
-                            "url": b.url,
-                            "healthy": b.healthy,
-                            "consecutive_successes": b.consecutive_successes,
-                            "consecutive_failures": b.consecutive_failures,
-                        }))
+                        .map(|b| {
+                            json!({
+                                "url": b.url,
+                                "healthy": b.healthy,
+                                "consecutive_successes": b.consecutive_successes,
+                                "consecutive_failures": b.consecutive_failures,
+                            })
+                        })
                         .collect::<Vec<_>>();
                     (total, healthy, Some(backends))
                 } else {
@@ -513,7 +531,11 @@ impl HostnameRouter {
     }
 
     /// Enable hot reload from file
-    pub async fn enable_hot_reload(&self, config_path: String, interval_secs: u64) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn enable_hot_reload(
+        &self,
+        config_path: String,
+        interval_secs: u64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let handle = ReloadHandle::new(config_path, interval_secs, Arc::clone(&self.hosts)).await?;
         let mut reload = self.reload_handle.write().await;
         *reload = Some(handle);
@@ -613,8 +635,13 @@ impl HostRoutes {
         {
             let prefixes = self.prefixes.read().await;
             for prefix_route in prefixes.iter() {
-                if path.starts_with(&prefix_route.prefix) && prefix_route.route.matches_method(method) {
-                    debug!("Prefix match: {} {} (prefix: {})", method, path, prefix_route.prefix);
+                if path.starts_with(&prefix_route.prefix)
+                    && prefix_route.route.matches_method(method)
+                {
+                    debug!(
+                        "Prefix match: {} {} (prefix: {})",
+                        method, path, prefix_route.prefix
+                    );
                     return Some(MatchedRoute {
                         route: prefix_route.route.clone(),
                         path_params: std::collections::HashMap::new(),
@@ -630,7 +657,10 @@ impl HostRoutes {
             for pattern_route in patterns.iter() {
                 if let Some(captures) = pattern_route.regex.captures(path) {
                     if pattern_route.route.matches_method(method) {
-                        debug!("Pattern match: {} {} (pattern: {})", method, path, pattern_route.pattern);
+                        debug!(
+                            "Pattern match: {} {} (pattern: {})",
+                            method, path, pattern_route.pattern
+                        );
 
                         // Extract path parameters from regex captures
                         let mut path_params = std::collections::HashMap::new();
@@ -689,7 +719,9 @@ mod tests {
         host_routes.add_exact("/api/users".to_string(), route);
         router.add_host_routes("api.example.com".to_string(), host_routes);
 
-        let matched = router.match_request("api.example.com", "/api/users", "GET").await;
+        let matched = router
+            .match_request("api.example.com", "/api/users", "GET")
+            .await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().route.name, "test");
     }
@@ -711,7 +743,9 @@ mod tests {
         host_routes.add_prefix("/api/".to_string(), route).await;
         router.add_host_routes("api.example.com".to_string(), host_routes);
 
-        let matched = router.match_request("api.example.com", "/api/users/123", "GET").await;
+        let matched = router
+            .match_request("api.example.com", "/api/users/123", "GET")
+            .await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().route.name, "api");
     }
@@ -733,7 +767,9 @@ mod tests {
         host_routes.add_exact("/health".to_string(), route);
         router.add_host_routes("*.example.com".to_string(), host_routes);
 
-        let matched = router.match_request_wildcard("api.example.com", "/health", "GET").await;
+        let matched = router
+            .match_request_wildcard("api.example.com", "/health", "GET")
+            .await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().route.name, "wildcard");
     }
@@ -755,10 +791,14 @@ mod tests {
         host_routes.add_exact("/api/users".to_string(), route);
         router.add_host_routes("api.example.com".to_string(), host_routes);
 
-        let matched_get = router.match_request("api.example.com", "/api/users", "GET").await;
+        let matched_get = router
+            .match_request("api.example.com", "/api/users", "GET")
+            .await;
         assert!(matched_get.is_none());
 
-        let matched_post = router.match_request("api.example.com", "/api/users", "POST").await;
+        let matched_post = router
+            .match_request("api.example.com", "/api/users", "POST")
+            .await;
         assert!(matched_post.is_some());
     }
 }

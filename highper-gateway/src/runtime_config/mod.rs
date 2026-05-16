@@ -89,9 +89,7 @@ pub fn install(c: RuntimeConfig) {
 pub fn current() -> Arc<RuntimeConfig> {
     CURRENT
         .get()
-        .expect(
-            "runtime_config not initialized — call runtime_config::install(load()?) in main()",
-        )
+        .expect("runtime_config not initialized — call runtime_config::install(load()?) in main()")
         .load_full()
 }
 
@@ -146,9 +144,6 @@ mod tests {
     fn install_for_test_then_current_round_trips() {
         install_for_test(RuntimeConfig::for_test());
         let c = current();
-        assert_eq!(
-            *c.plugin.drain.get(),
-            std::time::Duration::from_secs(30)
-        );
+        assert_eq!(*c.plugin.drain.get(), std::time::Duration::from_secs(30));
     }
 }

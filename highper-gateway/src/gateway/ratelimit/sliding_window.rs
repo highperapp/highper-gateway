@@ -2,7 +2,7 @@
 //!
 //! More accurate than fixed windows, prevents burst at window boundaries.
 
-use super::{RateLimitResult, RateLimitKey};
+use super::{RateLimitKey, RateLimitResult};
 use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -103,7 +103,8 @@ impl SlidingWindowLimiter {
         let key_str = key.to_key();
 
         // Get or create window for this key
-        let mut window_ref = self.windows
+        let mut window_ref = self
+            .windows
             .entry(key_str.clone())
             .or_insert_with(WindowState::new);
 
@@ -113,8 +114,12 @@ impl SlidingWindowLimiter {
         // Check if we're under the limit
         if window_ref.count() < self.config.max_requests as usize {
             window_ref.add_request();
-            debug!("Rate limit check passed for key: {} ({}/{})",
-                   key_str, window_ref.count(), self.config.max_requests);
+            debug!(
+                "Rate limit check passed for key: {} ({}/{})",
+                key_str,
+                window_ref.count(),
+                self.config.max_requests
+            );
             RateLimitResult::Allowed
         } else {
             let retry_after = window_ref.time_until_reset(self.config.window);
@@ -163,9 +168,7 @@ impl SlidingWindowLimiter {
 
     /// Remove entries with no requests in the window
     fn cleanup_old_entries(&self) {
-        self.windows.retain(|_, window| {
-            window.count() > 0
-        });
+        self.windows.retain(|_, window| window.count() > 0);
     }
 }
 

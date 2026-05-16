@@ -489,11 +489,7 @@ impl ModSecurityEngine {
         }
 
         let op_name = parts[0];
-        let op_value = if parts.len() > 1 {
-            parts[1].trim()
-        } else {
-            ""
-        };
+        let op_value = if parts.len() > 1 { parts[1].trim() } else { "" };
 
         match op_name {
             "rx" => Ok(Operator::Rx(op_value.to_string())),
@@ -504,12 +500,14 @@ impl ModSecurityEngine {
             "validateUtf8" => Ok(Operator::ValidateUtf8),
             "ipMatch" => Ok(Operator::IpMatch(op_value.to_string())),
             "gt" => {
-                let val = op_value.parse::<i64>()
+                let val = op_value
+                    .parse::<i64>()
                     .map_err(|_| anyhow::anyhow!("Invalid gt value: {}", op_value))?;
                 Ok(Operator::Gt(val))
             }
             "lt" => {
-                let val = op_value.parse::<i64>()
+                let val = op_value
+                    .parse::<i64>()
                     .map_err(|_| anyhow::anyhow!("Invalid lt value: {}", op_value))?;
                 Ok(Operator::Lt(val))
             }
@@ -520,7 +518,14 @@ impl ModSecurityEngine {
     /// Parse actions (e.g., "id:1,phase:2,deny,msg:'SQL Injection'")
     fn parse_actions(
         action_str: &str,
-    ) -> anyhow::Result<(Vec<RuleAction>, Option<String>, Option<u8>, Option<WafSeverity>, Option<String>, Vec<String>)> {
+    ) -> anyhow::Result<(
+        Vec<RuleAction>,
+        Option<String>,
+        Option<u8>,
+        Option<WafSeverity>,
+        Option<String>,
+        Vec<String>,
+    )> {
         // Remove quotes
         let action_str = action_str.trim().trim_matches('"').trim_matches('\'');
 
@@ -548,7 +553,8 @@ impl ModSecurityEngine {
                         actions.push(RuleAction::Id(value.to_string()));
                     }
                     "phase" => {
-                        let p = value.parse::<u8>()
+                        let p = value
+                            .parse::<u8>()
                             .map_err(|_| anyhow::anyhow!("Invalid phase: {}", value))?;
                         phase = Some(p);
                         actions.push(RuleAction::Phase(p));
@@ -700,7 +706,8 @@ impl ModSecurityEngine {
         }
 
         let regex = Regex::new(pattern)?;
-        self.compiled_patterns.insert(pattern.to_string(), regex.clone());
+        self.compiled_patterns
+            .insert(pattern.to_string(), regex.clone());
         Ok(regex)
     }
 
@@ -724,19 +731,13 @@ impl ModSecurityEngine {
                 self.stats.rules_matched.fetch_add(1, Ordering::Relaxed);
 
                 // Check if rule should block
-                let should_block = rule.actions.iter().any(|a| {
-                    matches!(
-                        a,
-                        RuleAction::Block | RuleAction::Deny
-                    )
-                });
+                let should_block = rule
+                    .actions
+                    .iter()
+                    .any(|a| matches!(a, RuleAction::Block | RuleAction::Deny));
 
                 if should_block {
-                    return Some((
-                        rule.message.clone(),
-                        rule.id.clone(),
-                        rule.severity,
-                    ));
+                    return Some((rule.message.clone(), rule.id.clone(), rule.severity));
                 }
             }
         }
@@ -914,7 +915,8 @@ mod tests {
 
     #[test]
     fn test_parse_secrule_simple() {
-        let rule_str = r#"SecRule REQUEST_URI "@rx \.\.\/" "id:1,phase:1,deny,msg:'Path Traversal'"#;
+        let rule_str =
+            r#"SecRule REQUEST_URI "@rx \.\.\/" "id:1,phase:1,deny,msg:'Path Traversal'"#;
         let rule = ModSecurityEngine::parse_sec_rule(rule_str).unwrap();
 
         assert_eq!(rule.id, "1");
@@ -940,21 +942,21 @@ mod tests {
     #[test]
     fn test_parse_secrule_operators() {
         // Test @rx operator
-        let rule1 = ModSecurityEngine::parse_sec_rule(
-            r#"SecRule ARGS "@rx pattern" "id:1,deny""#
-        ).unwrap();
+        let rule1 =
+            ModSecurityEngine::parse_sec_rule(r#"SecRule ARGS "@rx pattern" "id:1,deny""#).unwrap();
         assert!(matches!(rule1.operator, Operator::Rx(_)));
 
         // Test @contains operator
-        let rule2 = ModSecurityEngine::parse_sec_rule(
-            r#"SecRule ARGS "@contains test" "id:2,deny""#
-        ).unwrap();
+        let rule2 =
+            ModSecurityEngine::parse_sec_rule(r#"SecRule ARGS "@contains test" "id:2,deny""#)
+                .unwrap();
         assert!(matches!(rule2.operator, Operator::Contains(_)));
 
         // Test @streq operator
         let rule3 = ModSecurityEngine::parse_sec_rule(
-            r#"SecRule REQUEST_METHOD "@streq POST" "id:3,deny""#
-        ).unwrap();
+            r#"SecRule REQUEST_METHOD "@streq POST" "id:3,deny""#,
+        )
+        .unwrap();
         assert!(matches!(rule3.operator, Operator::StreQ(_)));
     }
 

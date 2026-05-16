@@ -4,13 +4,13 @@ use crate::config::ReloadTrigger;
 use std::path::Path;
 use tokio::signal;
 use tokio::sync::mpsc;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Set up signal handling for graceful shutdown
 pub async fn setup_shutdown_signal() {
     let ctrl_c = async {
         match signal::ctrl_c().await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 error!("Failed to install Ctrl+C handler: {}", e);
                 error!("Shutdown signal handling disabled");
@@ -47,9 +47,7 @@ pub async fn setup_shutdown_signal() {
 
 /// Set up signal handling with reload support (Unix only)
 #[cfg(unix)]
-pub async fn setup_signals_with_reload(
-    reload_tx: mpsc::Sender<ReloadTrigger>,
-) {
+pub async fn setup_signals_with_reload(reload_tx: mpsc::Sender<ReloadTrigger>) {
     use signal::unix::{signal, SignalKind};
 
     let mut sighup = match signal(SignalKind::hangup()) {
@@ -116,9 +114,7 @@ pub async fn setup_signals_with_reload(
 
 /// Windows version (no SIGHUP support)
 #[cfg(not(unix))]
-pub async fn setup_signals_with_reload(
-    _reload_tx: mpsc::Sender<ReloadTrigger>,
-) {
+pub async fn setup_signals_with_reload(_reload_tx: mpsc::Sender<ReloadTrigger>) {
     setup_shutdown_signal().await
 }
 

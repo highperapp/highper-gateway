@@ -6,12 +6,12 @@
 //! - Health check history
 //! - Prometheus export format
 
+use crate::state::ProxyState;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use crate::state::ProxyState;
 use std::sync::Arc;
 
 /// Per-route metrics
@@ -182,7 +182,7 @@ pub async fn get_route_metrics(state: Option<Arc<ProxyState>>) -> Response<Full<
             path_pattern: "/*".to_string(),
             methods: vec!["*".to_string()],
             total_requests: total,
-            requests_per_second: 0.0, // TODO: Track over time window
+            requests_per_second: 0.0,  // TODO: Track over time window
             avg_response_time_ms: 0.0, // TODO: Track response times
             p50_latency_ms: 0.0,
             p95_latency_ms: 0.0,
@@ -312,7 +312,8 @@ proxy_requests_by_status{{status="5xx"}} {}
         // Backend metrics
         let backends = state.get_all_backends().await;
         if !backends.is_empty() {
-            prometheus_output.push_str("# HELP proxy_backend_up Backend health status (1=up, 0=down)\n");
+            prometheus_output
+                .push_str("# HELP proxy_backend_up Backend health status (1=up, 0=down)\n");
             prometheus_output.push_str("# TYPE proxy_backend_up gauge\n");
 
             for backend in &backends {
@@ -326,7 +327,8 @@ proxy_requests_by_status{{status="5xx"}} {}
                 ));
             }
 
-            prometheus_output.push_str("\n# HELP proxy_backend_connections_active Active backend connections\n");
+            prometheus_output
+                .push_str("\n# HELP proxy_backend_connections_active Active backend connections\n");
             prometheus_output.push_str("# TYPE proxy_backend_connections_active gauge\n");
 
             for backend in &backends {
@@ -388,7 +390,9 @@ proxy_pool_tracked_hosts {}
 
             // Per-host pool metrics
             if !global.per_host.is_empty() {
-                prometheus_output.push_str("# HELP proxy_pool_host_connections_active Active connections per host\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_pool_host_connections_active Active connections per host\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_pool_host_connections_active gauge\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -398,7 +402,9 @@ proxy_pool_tracked_hosts {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_pool_host_connections_idle Idle connections per host\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_pool_host_connections_idle Idle connections per host\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_pool_host_connections_idle gauge\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -408,7 +414,9 @@ proxy_pool_tracked_hosts {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_pool_host_reuse_ratio Connection reuse ratio per host\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_pool_host_reuse_ratio Connection reuse ratio per host\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_pool_host_reuse_ratio gauge\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -418,7 +426,9 @@ proxy_pool_tracked_hosts {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_pool_host_utilization Pool utilization per host (0.0-1.0)\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_pool_host_utilization Pool utilization per host (0.0-1.0)\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_pool_host_utilization gauge\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -428,7 +438,8 @@ proxy_pool_tracked_hosts {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_pool_host_errors_total Connection errors per host\n");
+                prometheus_output
+                    .push_str("# HELP proxy_pool_host_errors_total Connection errors per host\n");
                 prometheus_output.push_str("# TYPE proxy_pool_host_errors_total counter\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -438,7 +449,9 @@ proxy_pool_tracked_hosts {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_pool_host_exhausted_total Pool exhaustion events per host\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_pool_host_exhausted_total Pool exhaustion events per host\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_pool_host_exhausted_total counter\n");
                 for host_metrics in &global.per_host {
                     prometheus_output.push_str(&format!(
@@ -491,7 +504,8 @@ proxy_request_response_time_samples_total {}
             // Per-route metrics
             let route_metrics = request_metrics.get_all_route_metrics();
             if !route_metrics.is_empty() {
-                prometheus_output.push_str("# HELP proxy_route_requests_total Total requests per route\n");
+                prometheus_output
+                    .push_str("# HELP proxy_route_requests_total Total requests per route\n");
                 prometheus_output.push_str("# TYPE proxy_route_requests_total counter\n");
                 for (route, metrics) in &route_metrics {
                     prometheus_output.push_str(&format!(
@@ -501,7 +515,9 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_route_requests_by_status Requests per route by status\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_route_requests_by_status Requests per route by status\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_route_requests_by_status counter\n");
                 for (route, metrics) in &route_metrics {
                     prometheus_output.push_str(&format!(
@@ -523,25 +539,31 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_route_response_time_seconds Route response time percentiles\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_route_response_time_seconds Route response time percentiles\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_route_response_time_seconds gauge\n");
                 for (route, metrics) in &route_metrics {
                     prometheus_output.push_str(&format!(
                         "proxy_route_response_time_seconds{{route=\"{}\",quantile=\"0.5\"}} {}\n",
-                        route, metrics.response_time.p50 / 1000.0
+                        route,
+                        metrics.response_time.p50 / 1000.0
                     ));
                     prometheus_output.push_str(&format!(
                         "proxy_route_response_time_seconds{{route=\"{}\",quantile=\"0.95\"}} {}\n",
-                        route, metrics.response_time.p95 / 1000.0
+                        route,
+                        metrics.response_time.p95 / 1000.0
                     ));
                     prometheus_output.push_str(&format!(
                         "proxy_route_response_time_seconds{{route=\"{}\",quantile=\"0.99\"}} {}\n",
-                        route, metrics.response_time.p99 / 1000.0
+                        route,
+                        metrics.response_time.p99 / 1000.0
                     ));
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_route_bytes_sent_total Total bytes sent per route\n");
+                prometheus_output
+                    .push_str("# HELP proxy_route_bytes_sent_total Total bytes sent per route\n");
                 prometheus_output.push_str("# TYPE proxy_route_bytes_sent_total counter\n");
                 for (route, metrics) in &route_metrics {
                     prometheus_output.push_str(&format!(
@@ -551,7 +573,9 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_route_bytes_received_total Total bytes received per route\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_route_bytes_received_total Total bytes received per route\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_route_bytes_received_total counter\n");
                 for (route, metrics) in &route_metrics {
                     prometheus_output.push_str(&format!(
@@ -565,7 +589,8 @@ proxy_request_response_time_samples_total {}
             // Per-backend metrics
             let backend_metrics = request_metrics.get_all_backend_metrics();
             if !backend_metrics.is_empty() {
-                prometheus_output.push_str("# HELP proxy_backend_requests_total Total requests per backend\n");
+                prometheus_output
+                    .push_str("# HELP proxy_backend_requests_total Total requests per backend\n");
                 prometheus_output.push_str("# TYPE proxy_backend_requests_total counter\n");
                 for (backend_id, metrics) in &backend_metrics {
                     prometheus_output.push_str(&format!(
@@ -575,7 +600,8 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_backend_errors_total Total errors per backend\n");
+                prometheus_output
+                    .push_str("# HELP proxy_backend_errors_total Total errors per backend\n");
                 prometheus_output.push_str("# TYPE proxy_backend_errors_total counter\n");
                 for (backend_id, metrics) in &backend_metrics {
                     prometheus_output.push_str(&format!(
@@ -585,7 +611,8 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_backend_error_rate Backend error rate (0.0-1.0)\n");
+                prometheus_output
+                    .push_str("# HELP proxy_backend_error_rate Backend error rate (0.0-1.0)\n");
                 prometheus_output.push_str("# TYPE proxy_backend_error_rate gauge\n");
                 for (backend_id, metrics) in &backend_metrics {
                     prometheus_output.push_str(&format!(
@@ -613,7 +640,9 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_backend_bytes_sent_total Total bytes sent per backend\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_backend_bytes_sent_total Total bytes sent per backend\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_backend_bytes_sent_total counter\n");
                 for (backend_id, metrics) in &backend_metrics {
                     prometheus_output.push_str(&format!(
@@ -623,7 +652,9 @@ proxy_request_response_time_samples_total {}
                 }
                 prometheus_output.push('\n');
 
-                prometheus_output.push_str("# HELP proxy_backend_bytes_received_total Total bytes received per backend\n");
+                prometheus_output.push_str(
+                    "# HELP proxy_backend_bytes_received_total Total bytes received per backend\n",
+                );
                 prometheus_output.push_str("# TYPE proxy_backend_bytes_received_total counter\n");
                 for (backend_id, metrics) in &backend_metrics {
                     prometheus_output.push_str(&format!(

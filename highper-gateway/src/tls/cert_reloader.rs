@@ -39,7 +39,10 @@ impl CertificateReloader {
     /// This spawns a background task for each certificate domain.
     /// The tasks run until the program exits.
     pub async fn start_watching(self: Arc<Self>) -> anyhow::Result<()> {
-        info!("Starting certificate hot reload for {} domain(s)", self.config.certificates.len());
+        info!(
+            "Starting certificate hot reload for {} domain(s)",
+            self.config.certificates.len()
+        );
 
         if self.config.certificates.is_empty() {
             info!("No certificates configured for hot reload");
@@ -51,10 +54,16 @@ impl CertificateReloader {
 
         for cert_config in &self.config.certificates {
             let key = (cert_config.cert_file.clone(), cert_config.key_file.clone());
-            cert_groups.entry(key).or_default().push(cert_config.clone());
+            cert_groups
+                .entry(key)
+                .or_default()
+                .push(cert_config.clone());
         }
 
-        info!("Watching {} unique certificate file pair(s)", cert_groups.len());
+        info!(
+            "Watching {} unique certificate file pair(s)",
+            cert_groups.len()
+        );
 
         // Start a watcher for each unique cert/key pair
         for ((cert_path, key_path), domains) in cert_groups {
@@ -63,11 +72,10 @@ impl CertificateReloader {
             let key_path_clone = key_path.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = self_clone.watch_certificate_pair(
-                    cert_path_clone,
-                    key_path_clone,
-                    domains,
-                ).await {
+                if let Err(e) = self_clone
+                    .watch_certificate_pair(cert_path_clone, key_path_clone, domains)
+                    .await
+                {
                     error!("Certificate watcher failed: {}", e);
                 }
             });
@@ -107,26 +115,31 @@ impl CertificateReloader {
             for domain_config in &domains {
                 let tls_manager = self.tls_manager.read().await;
 
-                match tls_manager.reload_certificate(
-                    &domain_config.domain,
-                    &cert_path,
-                    &key_path,
-                ) {
+                match tls_manager.reload_certificate(&domain_config.domain, &cert_path, &key_path) {
                     Ok(()) => {
-                        info!("Certificate reloaded successfully for domain: {}", domain_config.domain);
+                        info!(
+                            "Certificate reloaded successfully for domain: {}",
+                            domain_config.domain
+                        );
                     }
                     Err(e) => {
                         error!(
                             "Failed to reload certificate for domain {}: {}",
                             domain_config.domain, e
                         );
-                        warn!("Old certificate will continue to be used for {}", domain_config.domain);
+                        warn!(
+                            "Old certificate will continue to be used for {}",
+                            domain_config.domain
+                        );
                     }
                 }
             }
         }
 
-        warn!("Certificate watcher stopped for cert={}, key={}", cert_path, key_path);
+        warn!(
+            "Certificate watcher stopped for cert={}, key={}",
+            cert_path, key_path
+        );
         Ok(())
     }
 

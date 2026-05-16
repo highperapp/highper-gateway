@@ -221,7 +221,12 @@ impl HealthChecker {
 
         // Prepare headers
         let mut headers = HeaderMap::new();
-        headers.insert("user-agent", "highper-gateway-health-checker/0.1.0".parse().expect("static header value is valid"));
+        headers.insert(
+            "user-agent",
+            "highper-gateway-health-checker/0.1.0"
+                .parse()
+                .expect("static header value is valid"),
+        );
 
         // Perform health check with timeout
         let result = tokio::time::timeout(
@@ -240,7 +245,10 @@ impl HealthChecker {
             Ok(Ok(response)) => {
                 let status = response.status();
                 if status.is_success() || status == StatusCode::OK {
-                    debug!("Backend {} health check succeeded: {}", backend.server.url, status);
+                    debug!(
+                        "Backend {} health check succeeded: {}",
+                        backend.server.url, status
+                    );
                     backend.mark_success(self.config.healthy_threshold);
                     backend.status()
                 } else {
@@ -269,8 +277,14 @@ impl HealthChecker {
 
         // Update ProxyState if available
         if let Some(ref state) = self.proxy_state {
-            let backend_id = format!("{}_{}", self.upstream_name,
-                self.backends.iter().position(|b| Arc::ptr_eq(b, &backend)).unwrap_or(0));
+            let backend_id = format!(
+                "{}_{}",
+                self.upstream_name,
+                self.backends
+                    .iter()
+                    .position(|b| Arc::ptr_eq(b, &backend))
+                    .unwrap_or(0)
+            );
 
             let state_health = match health_status {
                 HealthStatus::Healthy => crate::state::HealthStatus::Healthy,

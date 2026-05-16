@@ -10,16 +10,16 @@
 
 use super::{Middleware, MiddlewareResult};
 use crate::http::ResponseBody;
-use hyper::{Request, Response, StatusCode, header};
+use bytes::Bytes;
+use dashmap::DashMap;
+use http_body_util::Full;
+use hyper::{header, Request, Response, StatusCode};
 use std::future::Future;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use dashmap::DashMap;
-use tracing::{warn, debug};
-use std::net::IpAddr;
-use bytes::Bytes;
-use http_body_util::Full;
+use tracing::{debug, warn};
 
 /// DDoS protection configuration
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ impl Default for DdosProtectionConfig {
             max_requests_per_second: 50,
             burst_size: 100,
             slowloris_timeout: Duration::from_secs(30),
-            ban_duration: Duration::from_secs(300),  // 5 minutes
+            ban_duration: Duration::from_secs(300), // 5 minutes
             ban_threshold: 10,
             whitelist: vec![],
             blacklist: vec![],
@@ -74,7 +74,7 @@ impl DdosProtectionConfig {
             max_requests_per_second: 10,
             burst_size: 20,
             slowloris_timeout: Duration::from_secs(15),
-            ban_duration: Duration::from_secs(600),  // 10 minutes
+            ban_duration: Duration::from_secs(600), // 10 minutes
             ban_threshold: 5,
             whitelist: vec![],
             blacklist: vec![],
@@ -91,7 +91,7 @@ impl DdosProtectionConfig {
             max_requests_per_second: 200,
             burst_size: 500,
             slowloris_timeout: Duration::from_secs(120),
-            ban_duration: Duration::from_secs(60),  // 1 minute
+            ban_duration: Duration::from_secs(60), // 1 minute
             ban_threshold: 50,
             whitelist: vec![],
             blacklist: vec![],
@@ -316,9 +316,10 @@ impl DdosProtectionMiddleware {
             .status(StatusCode::TOO_MANY_REQUESTS)
             .header(header::RETRY_AFTER, "60")
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Full::new(Bytes::from(
-                format!(r#"{{"error":"Rate limit exceeded","reason":"{}"}}"#, reason)
-            )))
+            .body(Full::new(Bytes::from(format!(
+                r#"{{"error":"Rate limit exceeded","reason":"{}"}}"#,
+                reason
+            ))))
             .unwrap()
     }
 
@@ -330,7 +331,7 @@ impl DdosProtectionMiddleware {
             .status(StatusCode::FORBIDDEN)
             .header(header::CONTENT_TYPE, "application/json")
             .body(Full::new(Bytes::from(
-                r#"{"error":"Access forbidden","reason":"IP temporarily banned"}"#
+                r#"{"error":"Access forbidden","reason":"IP temporarily banned"}"#,
             )))
             .unwrap()
     }
@@ -344,7 +345,12 @@ impl Middleware for DdosProtectionMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         let config = self.config.clone();
         let tracking = self.tracking.clone();
         let whitelist = self.config.whitelist.clone();
@@ -352,8 +358,7 @@ impl Middleware for DdosProtectionMiddleware {
 
         Box::pin(async move {
             // Extract client IP
-            let client_ip = Self::extract_client_ip(&req)
-                .unwrap_or_else(|| "unknown".to_string());
+            let client_ip = Self::extract_client_ip(&req).unwrap_or_else(|| "unknown".to_string());
 
             // Check whitelist
             if let Ok(addr) = client_ip.parse::<IpAddr>() {
@@ -370,7 +375,9 @@ impl Middleware for DdosProtectionMiddleware {
             }
 
             // Get or create tracking data
-            let mut entry = tracking.entry(client_ip.clone()).or_insert_with(IpTrackingData::new);
+            let mut entry = tracking
+                .entry(client_ip.clone())
+                .or_insert_with(IpTrackingData::new);
 
             // Check if banned
             if entry.is_banned() {
@@ -380,13 +387,17 @@ impl Middleware for DdosProtectionMiddleware {
             // Check connection limit
             if entry.connections >= config.max_connections_per_ip {
                 entry.record_violation(config.ban_duration, config.ban_threshold);
-                return Err(Self::create_rate_limit_response("Too many concurrent connections"));
+                return Err(Self::create_rate_limit_response(
+                    "Too many concurrent connections",
+                ));
             }
 
             // Check rate limit
             if !entry.check_rate_limit(config.max_requests_per_second, config.burst_size) {
                 entry.record_violation(config.ban_duration, config.ban_threshold);
-                return Err(Self::create_rate_limit_response("Request rate limit exceeded"));
+                return Err(Self::create_rate_limit_response(
+                    "Request rate limit exceeded",
+                ));
             }
 
             // Increment connection count
@@ -394,7 +405,9 @@ impl Middleware for DdosProtectionMiddleware {
 
             debug!(
                 "DDoS protection passed for IP {}: {} connections, {} requests in window",
-                client_ip, entry.connections, entry.requests.len()
+                client_ip,
+                entry.connections,
+                entry.requests.len()
             );
 
             Ok(req)

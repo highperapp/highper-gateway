@@ -30,11 +30,11 @@
 //! assert!(config.enabled);
 //! ```
 
-pub mod engine;
-pub mod custom_engine;
-pub mod coraza_engine;
-pub mod modsecurity_engine;
 pub mod aws_engine;
+pub mod coraza_engine;
+pub mod custom_engine;
+pub mod engine;
+pub mod modsecurity_engine;
 
 use crate::middleware::Middleware;
 use bytes::Bytes;
@@ -44,11 +44,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-pub use engine::*;
-pub use custom_engine::{CustomWafConfig, CustomWafEngine};
+pub use aws_engine::{AwsWafConfig, AwsWafEngine, FallbackAction, ManagedRuleGroup};
 pub use coraza_engine::{CorazaConfig, CorazaWafEngine};
-pub use modsecurity_engine::{ModSecurityConfig, ModSecurityEngine, DetectionMode};
-pub use aws_engine::{AwsWafConfig, AwsWafEngine, ManagedRuleGroup, FallbackAction};
+pub use custom_engine::{CustomWafConfig, CustomWafEngine};
+pub use engine::*;
+pub use modsecurity_engine::{DetectionMode, ModSecurityConfig, ModSecurityEngine};
 
 /// WAF mode selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -231,7 +231,11 @@ impl WafMiddleware {
     }
 
     /// Create block response
-    fn create_block_response(reason: &str, rule_id: Option<&str>, severity: WafSeverity) -> Response<Full<Bytes>> {
+    fn create_block_response(
+        reason: &str,
+        rule_id: Option<&str>,
+        severity: WafSeverity,
+    ) -> Response<Full<Bytes>> {
         let body = serde_json::json!({
             "error": "Forbidden",
             "reason": reason,
@@ -315,7 +319,12 @@ impl Middleware for WafMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         let config = self.config.clone();
         let engine = self.engine.clone();
 
@@ -332,7 +341,11 @@ impl Middleware for WafMiddleware {
 
             match decision {
                 WafDecision::Allow => Ok(req),
-                WafDecision::Block { reason, rule_id, severity } => {
+                WafDecision::Block {
+                    reason,
+                    rule_id,
+                    severity,
+                } => {
                     if config.block_mode {
                         tracing::warn!(
                             "WAF blocked request: {} (rule: {:?}, severity: {:?})",
@@ -340,7 +353,11 @@ impl Middleware for WafMiddleware {
                             rule_id,
                             severity
                         );
-                        Err(Self::create_block_response(&reason, rule_id.as_deref(), severity))
+                        Err(Self::create_block_response(
+                            &reason,
+                            rule_id.as_deref(),
+                            severity,
+                        ))
                     } else {
                         tracing::info!(
                             "WAF detected threat (log-only): {} (rule: {:?})",

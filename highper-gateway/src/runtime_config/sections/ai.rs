@@ -138,10 +138,7 @@ pub(crate) fn load() -> Result<AiRuntimeConfig, RuntimeConfigError> {
 
     let cache_backend = parse_cache_backend(env_string("AI_CACHE_BACKEND").as_deref())?;
     let vector_backend = parse_vector_backend(env_string("AI_VECTOR_BACKEND").as_deref())?;
-    let vector_addrs = parse_addr_list(
-        "HIGHPER_AI_VECTOR_ADDRS",
-        env_string("AI_VECTOR_ADDRS"),
-    )?;
+    let vector_addrs = parse_addr_list("HIGHPER_AI_VECTOR_ADDRS", env_string("AI_VECTOR_ADDRS"))?;
     let vector_auth = env_string("AI_VECTOR_AUTH")
         .map(|v| SecretRef::parse("HIGHPER_AI_VECTOR_AUTH", &v))
         .transpose()?;
@@ -263,8 +260,10 @@ fn load_pricing() -> Result<AiPricingRuntimeConfig, RuntimeConfigError> {
 fn validate_ai(cfg: &AiRuntimeConfig) -> Result<(), RuntimeConfigError> {
     // Vector backend != None requires addrs non-empty (HNSW is local; skip).
     let vb = *cfg.vector_backend.get();
-    let needs_addrs =
-        matches!(vb, AiVectorBackend::Qdrant | AiVectorBackend::RedisStack | AiVectorBackend::PgVector);
+    let needs_addrs = matches!(
+        vb,
+        AiVectorBackend::Qdrant | AiVectorBackend::RedisStack | AiVectorBackend::PgVector
+    );
     if needs_addrs && cfg.vector_addrs.get().is_empty() {
         return Err(RuntimeConfigError::MissingRequired {
             env_var: "HIGHPER_AI_VECTOR_ADDRS".into(),
@@ -400,11 +399,13 @@ fn parse_u32_in_range(
 ) -> Result<u32, RuntimeConfigError> {
     let value = match raw {
         None => default,
-        Some(s) => s.parse::<u32>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u32",
-        })?,
+        Some(s) => s
+            .parse::<u32>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u32",
+            })?,
     };
     if !range.contains(&value) {
         return Err(RuntimeConfigError::OutOfRange {
@@ -416,25 +417,20 @@ fn parse_u32_in_range(
     Ok(value)
 }
 
-fn parse_u64(
-    env_var: &str,
-    raw: Option<&str>,
-    default: u64,
-) -> Result<u64, RuntimeConfigError> {
+fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 
-fn parse_bool_default_true(
-    env_var: &str,
-    raw: Option<&str>,
-) -> Result<bool, RuntimeConfigError> {
+fn parse_bool_default_true(env_var: &str, raw: Option<&str>) -> Result<bool, RuntimeConfigError> {
     match raw {
         None => Ok(true),
         Some(s) => match s.to_lowercase().as_str() {
@@ -449,10 +445,7 @@ fn parse_bool_default_true(
     }
 }
 
-fn parse_bool_default_false(
-    env_var: &str,
-    raw: Option<&str>,
-) -> Result<bool, RuntimeConfigError> {
+fn parse_bool_default_false(env_var: &str, raw: Option<&str>) -> Result<bool, RuntimeConfigError> {
     match raw {
         None => Ok(false),
         Some(s) => match s.to_lowercase().as_str() {
@@ -471,7 +464,9 @@ fn parse_addr_list(
     env_var: &str,
     raw: Option<String>,
 ) -> Result<Vec<SocketAddr>, RuntimeConfigError> {
-    let Some(value) = raw else { return Ok(Vec::new()) };
+    let Some(value) = raw else {
+        return Ok(Vec::new());
+    };
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -480,11 +475,12 @@ fn parse_addr_list(
         .split(',')
         .map(|s| {
             let s = s.trim();
-            s.parse::<SocketAddr>().map_err(|_| RuntimeConfigError::ParseError {
-                env_var: env_var.into(),
-                value: s.into(),
-                expected: "host:port (comma-separated)",
-            })
+            s.parse::<SocketAddr>()
+                .map_err(|_| RuntimeConfigError::ParseError {
+                    env_var: env_var.into(),
+                    value: s.into(),
+                    expected: "host:port (comma-separated)",
+                })
         })
         .collect()
 }
@@ -537,7 +533,10 @@ mod tests {
         assert_eq!(*cfg.retry_budget.get(), 3);
         assert_eq!(*cfg.cooldown_backend.get(), AiCooldownBackend::Auto);
         assert_eq!(*cfg.stream_buffer_depth.get(), 64);
-        assert_eq!(*cfg.stream_buffer_overflow.get(), StreamOverflow::DropOldest);
+        assert_eq!(
+            *cfg.stream_buffer_overflow.get(),
+            StreamOverflow::DropOldest
+        );
         assert!(*cfg.default_cancel_on_close.get());
         assert!(!*cfg.default_tpm_hard_stop.get());
         assert_eq!(cfg.token_quota_key_shards, 1);
@@ -605,7 +604,10 @@ mod tests {
         std::env::set_var("HIGHPER_AI_DEFAULT_BACKOFF_MS_MIN", "200");
         std::env::set_var("HIGHPER_AI_DEFAULT_BACKOFF_MS_MAX", "100");
         let r = load();
-        assert!(matches!(r, Err(RuntimeConfigError::InvalidCombination { .. })));
+        assert!(matches!(
+            r,
+            Err(RuntimeConfigError::InvalidCombination { .. })
+        ));
         clear_ai_env();
     }
 
@@ -625,7 +627,10 @@ mod tests {
         clear_ai_env();
         std::env::set_var("HIGHPER_AI_PRICING_REFRESH_FAIL_MODE", "fail_closed");
         let cfg = load().unwrap();
-        assert_eq!(*cfg.pricing.refresh_fail_mode.get(), PricingFailMode::FailClosed);
+        assert_eq!(
+            *cfg.pricing.refresh_fail_mode.get(),
+            PricingFailMode::FailClosed
+        );
         clear_ai_env();
     }
 }

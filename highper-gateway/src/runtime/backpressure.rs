@@ -32,10 +32,10 @@
 //! manager.on_connection_closed();
 //! ```
 
-use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
-use std::sync::Arc;
-use tracing::{debug, warn, info};
 use crate::observability::system::MemoryStats;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 /// Backpressure manager for graceful degradation
 pub struct BackpressureManager {
@@ -124,7 +124,8 @@ impl BackpressureManager {
                 "Rejecting connection: at max capacity ({}/{})",
                 current, max
             );
-            self.connections_rejected_capacity.fetch_add(1, Ordering::Relaxed);
+            self.connections_rejected_capacity
+                .fetch_add(1, Ordering::Relaxed);
             let _ = metrics::counter!("connections_rejected_total", "reason" => "max_capacity");
             return false;
         }
@@ -136,15 +137,20 @@ impl BackpressureManager {
                 self.get_current_memory_mb(),
                 self.memory_limit_mb
             );
-            self.connections_rejected_memory.fetch_add(1, Ordering::Relaxed);
+            self.connections_rejected_memory
+                .fetch_add(1, Ordering::Relaxed);
             let _ = metrics::counter!("connections_rejected_total", "reason" => "memory_pressure");
             return false;
         }
 
         // Check CPU saturation (if adaptive is enabled)
         if self.adaptive && self.is_cpu_saturated() {
-            debug!("Rejecting connection: CPU saturation (>{}%)", self.cpu_threshold);
-            self.connections_rejected_cpu.fetch_add(1, Ordering::Relaxed);
+            debug!(
+                "Rejecting connection: CPU saturation (>{}%)",
+                self.cpu_threshold
+            );
+            self.connections_rejected_cpu
+                .fetch_add(1, Ordering::Relaxed);
             let _ = metrics::counter!("connections_rejected_total", "reason" => "cpu_saturation");
             return false;
         }
@@ -157,7 +163,11 @@ impl BackpressureManager {
         let prev = self.current_connections.fetch_add(1, Ordering::Relaxed);
         let new = prev + 1;
 
-        debug!("Connection accepted ({}/{})", new, self.max_connections.load(Ordering::Relaxed));
+        debug!(
+            "Connection accepted ({}/{})",
+            new,
+            self.max_connections.load(Ordering::Relaxed)
+        );
         metrics::gauge!("active_connections").set(new as f64);
 
         // Warn if approaching capacity
@@ -182,7 +192,11 @@ impl BackpressureManager {
         let prev = self.current_connections.fetch_sub(1, Ordering::Relaxed);
         let new = prev.saturating_sub(1);
 
-        debug!("Connection closed ({}/{})", new, self.max_connections.load(Ordering::Relaxed));
+        debug!(
+            "Connection closed ({}/{})",
+            new,
+            self.max_connections.load(Ordering::Relaxed)
+        );
         metrics::gauge!("active_connections").set(new as f64);
     }
 
@@ -242,7 +256,9 @@ impl BackpressureManager {
             usage_percent: self.usage_percent(),
             memory_usage_mb: self.get_current_memory_mb(),
             memory_limit_mb: self.memory_limit_mb,
-            connections_rejected_capacity: self.connections_rejected_capacity.load(Ordering::Relaxed),
+            connections_rejected_capacity: self
+                .connections_rejected_capacity
+                .load(Ordering::Relaxed),
             connections_rejected_memory: self.connections_rejected_memory.load(Ordering::Relaxed),
             connections_rejected_cpu: self.connections_rejected_cpu.load(Ordering::Relaxed),
         }
@@ -253,14 +269,13 @@ impl BackpressureManager {
         let stats = self.stats();
 
         info!("=== Backpressure Statistics ===");
-        info!("Active connections: {}/{} ({:.1}%)",
-            stats.current_connections,
-            stats.max_connections,
-            stats.usage_percent
+        info!(
+            "Active connections: {}/{} ({:.1}%)",
+            stats.current_connections, stats.max_connections, stats.usage_percent
         );
-        info!("Memory usage: {}MB / {}MB",
-            stats.memory_usage_mb,
-            stats.memory_limit_mb
+        info!(
+            "Memory usage: {}MB / {}MB",
+            stats.memory_usage_mb, stats.memory_limit_mb
         );
         info!("Connections rejected:");
         info!("  - Capacity: {}", stats.connections_rejected_capacity);

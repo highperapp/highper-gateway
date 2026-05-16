@@ -30,16 +30,10 @@ impl CaManager {
     ///
     /// # Returns
     /// * `Result<Self>` - CA manager on success, error on failure
-    pub fn new<P: AsRef<Path>>(
-        ca_cert_path: P,
-        additional_cas: &[String],
-    ) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(ca_cert_path: P, additional_cas: &[String]) -> Result<Self> {
         let ca_cert_path = ca_cert_path.as_ref();
 
-        info!(
-            "Loading CA certificates from: {}",
-            ca_cert_path.display()
-        );
+        info!("Loading CA certificates from: {}", ca_cert_path.display());
 
         let mut root_store = RootCertStore::empty();
         let mut ca_count = 0;
@@ -115,7 +109,8 @@ impl CaManager {
         // Add certificates to root store
         // rustls RootCertStore::add() expects owned CertificateDer
         for cert in certs {
-            root_store.add(cert)
+            root_store
+                .add(cert)
                 .map_err(|e| anyhow!("Failed to add CA certificate to store: {:?}", e))?;
         }
 
@@ -192,7 +187,10 @@ Zg==
             }
             Err(e) => {
                 // Test cert might be rejected - that's ok for this test
-                println!("CA manager creation failed (expected with test cert): {}", e);
+                println!(
+                    "CA manager creation failed (expected with test cert): {}",
+                    e
+                );
             }
         }
     }

@@ -606,8 +606,8 @@ impl TcpConnectionPool {
                     }
                 }
             }
-            Ok(Err(_)) => false,  // Error checking readability
-            Err(_) => true, // Timeout is OK - means no data, connection likely valid
+            Ok(Err(_)) => false, // Error checking readability
+            Err(_) => true,      // Timeout is OK - means no data, connection likely valid
         }
     }
 

@@ -82,8 +82,8 @@ impl Default for ProxyStreamConfig {
         Self {
             max_bandwidth: None,
             track_progress: true,
-            buffer_size: 65536,  // 64 KB
-            chunk_size: 8192,    // 8 KB chunks
+            buffer_size: 65536, // 64 KB
+            chunk_size: 8192,   // 8 KB chunks
         }
     }
 }
@@ -226,7 +226,8 @@ where
 
                     if let Some(sleep_duration) = should_sleep {
                         debug!("Throttling stream for {:?}", sleep_duration);
-                        this.throttle_sleep.set(Some(tokio::time::sleep(sleep_duration)));
+                        this.throttle_sleep
+                            .set(Some(tokio::time::sleep(sleep_duration)));
                         // Wake up to check throttle
                         cx.waker().wake_by_ref();
                     } else {

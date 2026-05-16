@@ -104,24 +104,25 @@ pub async fn list_backends(
             let backend_id = format!("{}_{}", upstream.name, index);
 
             // Get state from ProxyState if available
-            let (active_connections, health_status, enabled, draining) = if let Some(ref state) = state {
-                if let Some(backend_state) = state.get_backend(&backend_id).await {
-                    (
-                        backend_state.active_connections,
-                        match backend_state.health_status {
-                            crate::state::HealthStatus::Healthy => HealthStatus::Healthy,
-                            crate::state::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
-                            crate::state::HealthStatus::Unknown => HealthStatus::Unknown,
-                        },
-                        backend_state.enabled,
-                        backend_state.draining,
-                    )
+            let (active_connections, health_status, enabled, draining) =
+                if let Some(ref state) = state {
+                    if let Some(backend_state) = state.get_backend(&backend_id).await {
+                        (
+                            backend_state.active_connections,
+                            match backend_state.health_status {
+                                crate::state::HealthStatus::Healthy => HealthStatus::Healthy,
+                                crate::state::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
+                                crate::state::HealthStatus::Unknown => HealthStatus::Unknown,
+                            },
+                            backend_state.enabled,
+                            backend_state.draining,
+                        )
+                    } else {
+                        (0, HealthStatus::Unknown, true, false)
+                    }
                 } else {
                     (0, HealthStatus::Unknown, true, false)
-                }
-            } else {
-                (0, HealthStatus::Unknown, true, false)
-            };
+                };
 
             backends.push(BackendStatus {
                 id: backend_id,
@@ -133,9 +134,10 @@ pub async fn list_backends(
                 health_status,
                 enabled,
                 draining,
-                location: server.location.as_ref().map(|loc| {
-                    format!("{:.4}, {:.4}", loc.lat, loc.lon)
-                }),
+                location: server
+                    .location
+                    .as_ref()
+                    .map(|loc| format!("{:.4}, {:.4}", loc.lat, loc.lon)),
                 region: server.region.clone(),
             });
         }
@@ -151,10 +153,7 @@ pub async fn list_backends(
 }
 
 /// Get details for a specific backend
-pub async fn get_backend(
-    config: Arc<RwLock<Config>>,
-    backend_id: &str,
-) -> Response<Full<Bytes>> {
+pub async fn get_backend(config: Arc<RwLock<Config>>, backend_id: &str) -> Response<Full<Bytes>> {
     let config = config.read().await;
 
     // Parse backend ID (format: "upstream_index")
@@ -172,10 +171,7 @@ pub async fn get_backend(
     let index: usize = match index_str.parse() {
         Ok(i) => i,
         Err(_) => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "Invalid backend index",
-            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid backend index");
         }
     };
 
@@ -196,7 +192,10 @@ pub async fn get_backend(
         None => {
             return error_response(
                 StatusCode::NOT_FOUND,
-                &format!("Backend index {} not found in upstream '{}'", index, upstream_name),
+                &format!(
+                    "Backend index {} not found in upstream '{}'",
+                    index, upstream_name
+                ),
             );
         }
     };
@@ -207,13 +206,14 @@ pub async fn get_backend(
         url: server.url.clone(),
         weight: server.weight,
         max_connections: server.max_conns,
-        active_connections: 0, // TODO: Get from load balancer
+        active_connections: 0,                // TODO: Get from load balancer
         health_status: HealthStatus::Unknown, // TODO: Get from health checker
-        enabled: true, // TODO: Track enabled state
-        draining: false, // TODO: Track drain state
-        location: server.location.as_ref().map(|loc| {
-            format!("{:.4}, {:.4}", loc.lat, loc.lon)
-        }),
+        enabled: true,                        // TODO: Track enabled state
+        draining: false,                      // TODO: Track drain state
+        location: server
+            .location
+            .as_ref()
+            .map(|loc| format!("{:.4}, {:.4}", loc.lat, loc.lon)),
         region: server.region.clone(),
     };
 
@@ -234,10 +234,7 @@ pub async fn enable_backend(
     let (upstream_name, index_str) = match backend_id.rsplit_once('_') {
         Some((name, idx)) => (name, idx),
         None => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "Invalid backend ID format",
-            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid backend ID format");
         }
     };
 
@@ -258,7 +255,9 @@ pub async fn enable_backend(
 
     // Update state if available
     if let Some(state) = state {
-        let success = state.set_backend_enabled(backend_id, true, request.reason.clone()).await;
+        let success = state
+            .set_backend_enabled(backend_id, true, request.reason.clone())
+            .await;
         if !success {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -291,10 +290,7 @@ pub async fn disable_backend(
     let (upstream_name, index_str) = match backend_id.rsplit_once('_') {
         Some((name, idx)) => (name, idx),
         None => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "Invalid backend ID format",
-            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid backend ID format");
         }
     };
 
@@ -314,11 +310,15 @@ pub async fn disable_backend(
     }
 
     let drain_timeout = request.drain_timeout_seconds.unwrap_or(30);
-    let reason = request.reason.unwrap_or_else(|| "No reason provided".to_string());
+    let reason = request
+        .reason
+        .unwrap_or_else(|| "No reason provided".to_string());
 
     // Update state if available
     if let Some(state) = state {
-        let success = state.set_backend_enabled(backend_id, false, Some(reason.clone())).await;
+        let success = state
+            .set_backend_enabled(backend_id, false, Some(reason.clone()))
+            .await;
         if !success {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -354,10 +354,7 @@ pub async fn drain_backend(
     let (upstream_name, index_str) = match backend_id.rsplit_once('_') {
         Some((name, idx)) => (name, idx),
         None => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "Invalid backend ID format",
-            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid backend ID format");
         }
     };
 
@@ -381,12 +378,14 @@ pub async fn drain_backend(
 
     // Update state if available
     if let Some(ref state) = state {
-        let success = state.set_backend_draining_with_timeout(
-            backend_id,
-            true,
-            Some(drain_timeout),
-            reason.clone(),
-        ).await;
+        let success = state
+            .set_backend_draining_with_timeout(
+                backend_id,
+                true,
+                Some(drain_timeout),
+                reason.clone(),
+            )
+            .await;
         if !success {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -439,7 +438,10 @@ async fn monitor_drain_progress(state: Arc<ProxyState>, backend_id: String, time
             }
             Some(status) => {
                 if status.drain_completed {
-                    info!("Drain completed for backend {} (already marked complete)", backend_id);
+                    info!(
+                        "Drain completed for backend {} (already marked complete)",
+                        backend_id
+                    );
                     return;
                 }
 
@@ -466,9 +468,7 @@ async fn monitor_drain_progress(state: Arc<ProxyState>, backend_id: String, time
 
                 debug!(
                     "Drain in progress for {}: {} active connections, {:.0}s remaining",
-                    backend_id,
-                    status.active_connections,
-                    status.remaining_secs
+                    backend_id, status.active_connections, status.remaining_secs
                 );
             }
         }
@@ -483,10 +483,7 @@ pub async fn get_drain_status(
     let state = match state {
         Some(s) => s,
         None => {
-            return error_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Proxy state not available",
-            );
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "Proxy state not available");
         }
     };
 
@@ -520,10 +517,7 @@ pub async fn cancel_drain(
     let state = match state {
         Some(s) => s,
         None => {
-            return error_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Proxy state not available",
-            );
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "Proxy state not available");
         }
     };
 
@@ -556,10 +550,7 @@ pub async fn cancel_drain(
             }),
         )
     } else {
-        error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to cancel drain",
-        )
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to cancel drain")
     }
 }
 
@@ -575,10 +566,7 @@ pub async fn force_health_check(
     let (upstream_name, index_str) = match backend_id.rsplit_once('_') {
         Some((name, idx)) => (name, idx),
         None => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "Invalid backend ID format",
-            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid backend ID format");
         }
     };
 
@@ -635,40 +623,40 @@ fn error_response(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ServerDef, UpstreamConfig, LoadBalancingConfig, LoadBalancingAlgorithm, HealthCheckConfig};
+    use crate::config::{
+        HealthCheckConfig, LoadBalancingAlgorithm, LoadBalancingConfig, ServerDef, UpstreamConfig,
+    };
 
     fn create_test_config() -> Config {
         Config {
             server: Default::default(),
             tls: None,
-            upstreams: vec![
-                UpstreamConfig {
-                    name: "test_upstream".to_string(),
-                    servers: vec![
-                        ServerDef {
-                            url: "http://backend1:8080".to_string(),
-                            weight: 100,
-                            max_conns: 1000,
-                            location: None,
-                            region: None,
-                        },
-                        ServerDef {
-                            url: "http://backend2:8080".to_string(),
-                            weight: 50,
-                            max_conns: 500,
-                            location: None,
-                            region: Some("us-west-1".to_string()),
-                        },
-                    ],
-                    load_balancing: LoadBalancingConfig {
-                        algorithm: LoadBalancingAlgorithm::RoundRobin,
-                        ..Default::default()
+            upstreams: vec![UpstreamConfig {
+                name: "test_upstream".to_string(),
+                servers: vec![
+                    ServerDef {
+                        url: "http://backend1:8080".to_string(),
+                        weight: 100,
+                        max_conns: 1000,
+                        location: None,
+                        region: None,
                     },
-                    health_check: HealthCheckConfig::default(),
-                    connection: Default::default(),
-                    slow_start: None,
+                    ServerDef {
+                        url: "http://backend2:8080".to_string(),
+                        weight: 50,
+                        max_conns: 500,
+                        location: None,
+                        region: Some("us-west-1".to_string()),
+                    },
+                ],
+                load_balancing: LoadBalancingConfig {
+                    algorithm: LoadBalancingAlgorithm::RoundRobin,
+                    ..Default::default()
                 },
-            ],
+                health_check: HealthCheckConfig::default(),
+                connection: Default::default(),
+                slow_start: None,
+            }],
             routes: vec![],
             observability: Default::default(),
             websocket: Default::default(),

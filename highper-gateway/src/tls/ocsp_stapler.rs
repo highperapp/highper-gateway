@@ -51,10 +51,8 @@ impl Stapler {
     pub fn new(inner: Arc<dyn ResolvesServerCert>, config: OcspStaplerConfig) -> Arc<Self> {
         info!("Creating OCSP stapler");
 
-        let fetcher = Arc::new(
-            OcspFetcher::new(config.timeout)
-                .expect("Failed to create OCSP fetcher"),
-        );
+        let fetcher =
+            Arc::new(OcspFetcher::new(config.timeout).expect("Failed to create OCSP fetcher"));
 
         Arc::new(Self {
             inner,
@@ -124,7 +122,10 @@ impl Stapler {
                 // TODO: Once Rustls supports OCSP stapling, attach the response here
                 // For now, we just cache it and it can be retrieved via the admin API
 
-                info!("OCSP response cached for {} (stapling support pending)", sni_name);
+                info!(
+                    "OCSP response cached for {} (stapling support pending)",
+                    sni_name
+                );
             } else {
                 warn!("No OCSP response available for {}", sni_name);
             }
@@ -168,7 +169,9 @@ impl ResolvesServerCert for Stapler {
 /// Get OCSP cache statistics for admin API
 ///
 /// This can be used by the admin API to expose OCSP stapling status
-pub async fn get_ocsp_stats(stapler: &Stapler) -> HashMap<String, crate::tls::ocsp_cache::OcspCacheStats> {
+pub async fn get_ocsp_stats(
+    stapler: &Stapler,
+) -> HashMap<String, crate::tls::ocsp_cache::OcspCacheStats> {
     let caches = stapler.caches.read().await;
     let mut stats = HashMap::new();
 

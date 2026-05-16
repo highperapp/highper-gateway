@@ -6,10 +6,10 @@
 use crate::config::{RequestValidation, ResponseValidation, ValidationAction};
 use bytes::Bytes;
 use jsonschema::JSONSchema;
+use parking_lot::RwLock;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use tracing::{debug, warn};
 
 /// Validation error details
@@ -97,7 +97,10 @@ impl SchemaCache {
     /// Compile an inline schema
     pub fn compile_inline(&self, schema: &Value) -> Result<Arc<JSONSchema>, String> {
         // Generate a cache key from the schema
-        let key = format!("inline:{}", serde_json::to_string(schema).unwrap_or_default());
+        let key = format!(
+            "inline:{}",
+            serde_json::to_string(schema).unwrap_or_default()
+        );
 
         // Check cache first
         {
@@ -154,9 +157,10 @@ impl RequestValidator {
     ) -> ValidationResult {
         // Check if content type should be validated
         if let Some(ct) = content_type {
-            let should_validate = config.content_types.iter().any(|allowed| {
-                ct.starts_with(allowed) || ct.contains(allowed)
-            });
+            let should_validate = config
+                .content_types
+                .iter()
+                .any(|allowed| ct.starts_with(allowed) || ct.contains(allowed));
 
             if !should_validate {
                 debug!("Skipping validation for content type: {}", ct);
@@ -329,7 +333,10 @@ impl ResponseValidator {
 }
 
 /// Create a JSON error response for validation failures
-pub fn create_validation_error_response(errors: &[ValidationErrorDetail], include_details: bool) -> String {
+pub fn create_validation_error_response(
+    errors: &[ValidationErrorDetail],
+    include_details: bool,
+) -> String {
     if include_details {
         let error_list: Vec<serde_json::Value> = errors
             .iter()
@@ -345,12 +352,14 @@ pub fn create_validation_error_response(errors: &[ValidationErrorDetail], includ
             "error": "Validation failed",
             "code": "VALIDATION_ERROR",
             "details": error_list
-        }).to_string()
+        })
+        .to_string()
     } else {
         serde_json::json!({
             "error": "Request validation failed",
             "code": "VALIDATION_ERROR"
-        }).to_string()
+        })
+        .to_string()
     }
 }
 

@@ -115,8 +115,8 @@ impl CipherSuite {
     #[cfg(target_os = "linux")]
     pub fn cipher_type(&self) -> u16 {
         match self {
-            CipherSuite::Aes128Gcm => 51,  // TLS_CIPHER_AES_GCM_128
-            CipherSuite::Aes256Gcm => 52,  // TLS_CIPHER_AES_GCM_256
+            CipherSuite::Aes128Gcm => 51,        // TLS_CIPHER_AES_GCM_128
+            CipherSuite::Aes256Gcm => 52,        // TLS_CIPHER_AES_GCM_256
             CipherSuite::Chacha20Poly1305 => 54, // TLS_CIPHER_CHACHA20_POLY1305
         }
     }
@@ -124,8 +124,8 @@ impl CipherSuite {
     /// Get key size in bytes
     pub fn key_size(&self) -> usize {
         match self {
-            CipherSuite::Aes128Gcm => 16,      // 128 bits
-            CipherSuite::Aes256Gcm => 32,      // 256 bits
+            CipherSuite::Aes128Gcm => 16,        // 128 bits
+            CipherSuite::Aes256Gcm => 32,        // 256 bits
             CipherSuite::Chacha20Poly1305 => 32, // 256 bits
         }
     }
@@ -133,7 +133,7 @@ impl CipherSuite {
     /// Get IV (Initialization Vector) size in bytes
     pub fn iv_size(&self) -> usize {
         match self {
-            CipherSuite::Aes128Gcm => 8,       // TLS 1.2 explicit nonce
+            CipherSuite::Aes128Gcm => 8, // TLS 1.2 explicit nonce
             CipherSuite::Aes256Gcm => 8,
             CipherSuite::Chacha20Poly1305 => 12, // Full nonce
         }

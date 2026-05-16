@@ -76,22 +76,10 @@ pub fn describe_tls_metrics() {
     );
 
     // TLS errors
-    describe_counter!(
-        "tls_errors_total",
-        "TLS errors by type"
-    );
-    describe_counter!(
-        "tls_protocol_errors_total",
-        "TLS protocol errors"
-    );
-    describe_counter!(
-        "tls_certificate_errors_total",
-        "TLS certificate errors"
-    );
-    describe_counter!(
-        "tls_handshake_timeout_total",
-        "TLS handshake timeouts"
-    );
+    describe_counter!("tls_errors_total", "TLS errors by type");
+    describe_counter!("tls_protocol_errors_total", "TLS protocol errors");
+    describe_counter!("tls_certificate_errors_total", "TLS certificate errors");
+    describe_counter!("tls_handshake_timeout_total", "TLS handshake timeouts");
 
     // Session resumption
     describe_counter!(
@@ -108,16 +96,10 @@ pub fn describe_tls_metrics() {
     );
 
     // ALPN (Application-Layer Protocol Negotiation)
-    describe_counter!(
-        "tls_alpn_negotiated_total",
-        "ALPN protocols negotiated"
-    );
+    describe_counter!("tls_alpn_negotiated_total", "ALPN protocols negotiated");
 
     // SNI (Server Name Indication)
-    describe_counter!(
-        "tls_sni_total",
-        "SNI requests by server name"
-    );
+    describe_counter!("tls_sni_total", "SNI requests by server name");
 }
 
 /// Record a TLS handshake
@@ -135,34 +117,37 @@ pub fn record_handshake(
         "tls_handshakes_total",
         "server_name" => server_name.to_string(),
         "result" => if success { "success" } else { "failure" }.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     if success {
         counter!(
             "tls_handshakes_success_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
+        )
+        .increment(1);
 
         // Record protocol version
         counter!(
             "tls_protocol_version_total",
             "version" => protocol_version.to_string(),
             "server_name" => server_name.to_string(),
-        ).increment(1);
+        )
+        .increment(1);
 
         // Record cipher suite
         counter!(
             "tls_cipher_suite_usage_total",
             "cipher" => cipher_suite.to_string(),
             "server_name" => server_name.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     } else {
         counter!(
             "tls_handshakes_failure_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     }
 
     // Record duration
@@ -170,7 +155,8 @@ pub fn record_handshake(
         "tls_handshake_duration_seconds",
         "server_name" => server_name.to_string(),
         "result" => if success { "success" } else { "failure" }.to_string(),
-    ).record(duration_secs);
+    )
+    .record(duration_secs);
 }
 
 /// Update certificate expiry gauge
@@ -178,7 +164,8 @@ pub fn update_certificate_expiry(server_name: &str, seconds_until_expiry: i64) {
     gauge!(
         "tls_certificate_expiry_seconds",
         "server_name" => server_name.to_string(),
-    ).set(seconds_until_expiry as f64);
+    )
+    .set(seconds_until_expiry as f64);
 
     // Track certificates expiring soon (within 30 days)
     if seconds_until_expiry > 0 && seconds_until_expiry < (30 * 24 * 60 * 60) {
@@ -192,13 +179,15 @@ pub fn record_certificate_reload(server_name: &str, success: bool) {
         "tls_certificate_reload_total",
         "server_name" => server_name.to_string(),
         "result" => if success { "success" } else { "failure" }.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     if !success {
         counter!(
             "tls_certificate_reload_errors_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
+        )
+        .increment(1);
     }
 }
 
@@ -214,21 +203,22 @@ pub fn record_client_cert_validation(
         "tls_client_cert_validations_total",
         "server_name" => server_name.to_string(),
         "result" => result.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     if success {
         counter!(
             "tls_client_cert_success_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     } else {
         counter!(
             "tls_client_cert_failure_total",
             "server_name" => server_name.to_string(),
             "reason" => failure_reason.unwrap_or("unknown").to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     }
 }
 
@@ -238,31 +228,28 @@ pub fn record_tls_error(server_name: &str, error_type: &str) {
         "tls_errors_total",
         "server_name" => server_name.to_string(),
         "error" => error_type.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     // Record specific error types
     match error_type {
-        "protocol_error" => {
-            counter!(
-                "tls_protocol_errors_total",
-                "server_name" => server_name.to_string(),
-            ).increment(1)
-        }
-        "certificate_error" => {
-            counter!(
-                "tls_certificate_errors_total",
-                "server_name" => server_name.to_string(),
-            ).increment(1)
-        }
-        "handshake_timeout" => {
-            counter!(
-                "tls_handshake_timeout_total",
-                "server_name" => server_name.to_string(),
-            ).increment(1)
-        }
+        "protocol_error" => counter!(
+            "tls_protocol_errors_total",
+            "server_name" => server_name.to_string(),
+        )
+        .increment(1),
+        "certificate_error" => counter!(
+            "tls_certificate_errors_total",
+            "server_name" => server_name.to_string(),
+        )
+        .increment(1),
+        "handshake_timeout" => counter!(
+            "tls_handshake_timeout_total",
+            "server_name" => server_name.to_string(),
+        )
+        .increment(1),
         _ => {}
     }
-
 }
 
 /// Record TLS session resumption
@@ -271,20 +258,21 @@ pub fn record_session_resumption(server_name: &str, success: bool) {
         "tls_session_resumptions_total",
         "server_name" => server_name.to_string(),
         "result" => if success { "success" } else { "failure" }.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     if success {
         counter!(
             "tls_session_resumption_success_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     } else {
         counter!(
             "tls_session_resumption_failure_total",
             "server_name" => server_name.to_string(),
-        ).increment(1);
-
+        )
+        .increment(1);
     }
 }
 
@@ -294,8 +282,8 @@ pub fn record_alpn_negotiated(server_name: &str, protocol: &str) {
         "tls_alpn_negotiated_total",
         "server_name" => server_name.to_string(),
         "protocol" => protocol.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record SNI request
@@ -303,8 +291,8 @@ pub fn record_sni(server_name: &str) {
     counter!(
         "tls_sni_total",
         "server_name" => server_name.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 #[cfg(test)]
@@ -325,13 +313,7 @@ mod tests {
             "TLS_AES_256_GCM_SHA384",
         );
 
-        record_handshake(
-            "api.example.com",
-            false,
-            Duration::from_millis(200),
-            "",
-            "",
-        );
+        record_handshake("api.example.com", false, Duration::from_millis(200), "", "");
 
         // Test certificate metrics
         update_certificate_expiry("api.example.com", 7776000); // 90 days

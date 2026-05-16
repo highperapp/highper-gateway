@@ -201,11 +201,7 @@ pub struct ResponseLog {
 
 impl ResponseLog {
     /// Create response log
-    pub fn new(
-        correlation_id: &CorrelationId,
-        status: StatusCode,
-        duration: Duration,
-    ) -> Self {
+    pub fn new(correlation_id: &CorrelationId, status: StatusCode, duration: Duration) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -382,8 +378,8 @@ impl RequestLogger {
     pub fn log_error(&self, status: StatusCode, error: String) {
         let duration = self.start_time.elapsed().unwrap_or_default();
 
-        let response_log = ResponseLog::new(&self.correlation_id, status, duration)
-            .with_error(error);
+        let response_log =
+            ResponseLog::new(&self.correlation_id, status, duration).with_error(error);
 
         response_log.log();
     }
@@ -492,7 +488,10 @@ mod tests {
         logger.log_response(StatusCode::CREATED, Some(512), None, None);
 
         // Log error
-        logger.log_error(StatusCode::INTERNAL_SERVER_ERROR, "Database connection failed".to_string());
+        logger.log_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database connection failed".to_string(),
+        );
     }
 
     #[test]

@@ -14,13 +14,13 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone)]
 pub struct CacheRuntimeConfig {
-    pub default_ttl_secs: Reloadable<u64>,             // HIGHPER_CACHE_DEFAULT_TTL (default 300)
-    pub health_check_ttl_secs: Reloadable<u64>,        // HIGHPER_CACHE_HEALTH_CHECK_TTL (default 5)
-    pub cleanup_interval_secs: Reloadable<u64>,        // HIGHPER_CACHE_CLEANUP_INTERVAL (default 60)
-    pub disk_cleanup_interval_secs: Reloadable<u64>,   // HIGHPER_CACHE_DISK_CLEANUP_INTERVAL (default 300)
-    pub multi_tier_l1_ttl_secs: Reloadable<u64>,       // HIGHPER_CACHE_MULTI_TIER_L1_TTL (default 300)
-    pub multi_tier_l1_max_ttl_secs: Reloadable<u64>,   // HIGHPER_CACHE_MULTI_TIER_L1_MAX_TTL (default 300)
-    pub tiered_hot_ttl_secs: Reloadable<u64>,          // HIGHPER_CACHE_TIERED_HOT_TTL (default 300)
+    pub default_ttl_secs: Reloadable<u64>, // HIGHPER_CACHE_DEFAULT_TTL (default 300)
+    pub health_check_ttl_secs: Reloadable<u64>, // HIGHPER_CACHE_HEALTH_CHECK_TTL (default 5)
+    pub cleanup_interval_secs: Reloadable<u64>, // HIGHPER_CACHE_CLEANUP_INTERVAL (default 60)
+    pub disk_cleanup_interval_secs: Reloadable<u64>, // HIGHPER_CACHE_DISK_CLEANUP_INTERVAL (default 300)
+    pub multi_tier_l1_ttl_secs: Reloadable<u64>, // HIGHPER_CACHE_MULTI_TIER_L1_TTL (default 300)
+    pub multi_tier_l1_max_ttl_secs: Reloadable<u64>, // HIGHPER_CACHE_MULTI_TIER_L1_MAX_TTL (default 300)
+    pub tiered_hot_ttl_secs: Reloadable<u64>,        // HIGHPER_CACHE_TIERED_HOT_TTL (default 300)
 }
 
 impl Default for CacheRuntimeConfig {
@@ -80,11 +80,14 @@ pub(crate) fn load() -> Result<CacheRuntimeConfig, RuntimeConfigError> {
 fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 

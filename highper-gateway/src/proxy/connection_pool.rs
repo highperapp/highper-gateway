@@ -253,8 +253,7 @@ impl ConnectionPoolManager {
         // Configure keep-alive if enabled
         if pool.config.keep_alive {
             let sock_ref = socket2::SockRef::from(&stream);
-            let keepalive = socket2::TcpKeepalive::new()
-                .with_time(pool.config.keep_alive_timeout);
+            let keepalive = socket2::TcpKeepalive::new().with_time(pool.config.keep_alive_timeout);
             sock_ref.set_tcp_keepalive(&keepalive)?;
         }
 

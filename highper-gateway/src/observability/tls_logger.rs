@@ -51,11 +51,7 @@ pub struct TlsHandshakeContext {
 }
 
 impl TlsHandshakeContext {
-    pub fn new(
-        session_id: TlsSessionId,
-        client_addr: SocketAddr,
-        server_name: String,
-    ) -> Self {
+    pub fn new(session_id: TlsSessionId, client_addr: SocketAddr, server_name: String) -> Self {
         Self {
             session_id: session_id.to_string(),
             client_addr: client_addr.to_string(),
@@ -224,11 +220,7 @@ pub fn log_certificate_reload(
 }
 
 /// Log TLS session resumption
-pub fn log_session_resumption(
-    ctx: &TlsHandshakeContext,
-    success: bool,
-    session_ticket: bool,
-) {
+pub fn log_session_resumption(ctx: &TlsHandshakeContext, success: bool, session_ticket: bool) {
     if success {
         debug!(
             event = "tls_session_resumed",
@@ -250,11 +242,7 @@ pub fn log_session_resumption(
 }
 
 /// Log ALPN negotiation
-pub fn log_alpn_negotiated(
-    ctx: &TlsHandshakeContext,
-    protocol: &str,
-    client_protocols: &[String],
-) {
+pub fn log_alpn_negotiated(ctx: &TlsHandshakeContext, protocol: &str, client_protocols: &[String]) {
     debug!(
         event = "tls_alpn_negotiated",
         session_id = %ctx.session_id,
@@ -267,11 +255,7 @@ pub fn log_alpn_negotiated(
 }
 
 /// Log SNI request
-pub fn log_sni_request(
-    session_id: &TlsSessionId,
-    client_addr: SocketAddr,
-    server_name: &str,
-) {
+pub fn log_sni_request(session_id: &TlsSessionId, client_addr: SocketAddr, server_name: &str) {
     trace!(
         event = "tls_sni_request",
         session_id = %session_id,
@@ -282,11 +266,7 @@ pub fn log_sni_request(
 }
 
 /// Log TLS protocol error
-pub fn log_protocol_error(
-    ctx: &TlsHandshakeContext,
-    error_type: &str,
-    error_message: &str,
-) {
+pub fn log_protocol_error(ctx: &TlsHandshakeContext, error_type: &str, error_message: &str) {
     error!(
         event = "tls_protocol_error",
         session_id = %ctx.session_id,
@@ -333,10 +313,7 @@ pub fn log_cipher_suite_mismatch(
 }
 
 /// Log ACME certificate request
-pub fn log_acme_certificate_request(
-    server_name: &str,
-    challenge_type: &str,
-) {
+pub fn log_acme_certificate_request(server_name: &str, challenge_type: &str) {
     info!(
         event = "tls_acme_certificate_request",
         server_name = server_name,
@@ -346,10 +323,7 @@ pub fn log_acme_certificate_request(
 }
 
 /// Log ACME certificate issued
-pub fn log_acme_certificate_issued(
-    server_name: &str,
-    valid_days: i64,
-) {
+pub fn log_acme_certificate_issued(server_name: &str, valid_days: i64) {
     info!(
         event = "tls_acme_certificate_issued",
         server_name = server_name,
@@ -359,11 +333,7 @@ pub fn log_acme_certificate_issued(
 }
 
 /// Log ACME certificate renewal
-pub fn log_acme_certificate_renewal(
-    server_name: &str,
-    days_until_expiry: i64,
-    success: bool,
-) {
+pub fn log_acme_certificate_renewal(server_name: &str, days_until_expiry: i64, success: bool) {
     if success {
         info!(
             event = "tls_acme_certificate_renewed",

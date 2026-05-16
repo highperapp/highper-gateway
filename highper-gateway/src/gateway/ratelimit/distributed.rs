@@ -105,7 +105,10 @@ impl DistributedRateLimiter {
             let count = results.get(2).copied().unwrap_or(0);
 
             if count as u32 <= self.config.max_requests {
-                debug!("Rate limit check passed: {}/{}", count, self.config.max_requests);
+                debug!(
+                    "Rate limit check passed: {}/{}",
+                    count, self.config.max_requests
+                );
                 Ok(RateLimitResult::Allowed)
             } else {
                 let ttl: i64 = self.connection.ttl(base_key).await.unwrap_or(window_secs);
@@ -113,7 +116,9 @@ impl DistributedRateLimiter {
                     "Rate limit exceeded: {}/{}, retry after {}s",
                     count, self.config.max_requests, ttl
                 );
-                Ok(RateLimitResult::Limited { retry_after: ttl as u64 })
+                Ok(RateLimitResult::Limited {
+                    retry_after: ttl as u64,
+                })
             }
         } else {
             // Sharded path — INCR one shard, sum all.
@@ -129,11 +134,7 @@ impl DistributedRateLimiter {
             let results: Vec<i64> = pipe.query_async(&mut self.connection).await?;
             // results[0] = INCR new value, results[1] = EXPIRE (1/0),
             // results[2..2+key_shards] = per-shard counts.
-            let total: i64 = results
-                .iter()
-                .skip(2)
-                .take(key_shards as usize)
-                .sum();
+            let total: i64 = results.iter().skip(2).take(key_shards as usize).sum();
 
             if total as u32 <= self.config.max_requests {
                 debug!(
@@ -151,7 +152,9 @@ impl DistributedRateLimiter {
                     "Rate limit exceeded (sharded x{}): {}/{}, retry after {}s",
                     key_shards, total, self.config.max_requests, ttl
                 );
-                Ok(RateLimitResult::Limited { retry_after: ttl as u64 })
+                Ok(RateLimitResult::Limited {
+                    retry_after: ttl as u64,
+                })
             }
         }
     }
@@ -342,12 +345,7 @@ impl DistributedTokenBucketLimiter {
             }
             RedisFailMode::LocalFallback => {
                 warn!(error = %err, "Redis token bucket check failed; local_fallback: best-effort per-replica window counter");
-                local_check(
-                    &self.local_fallback,
-                    key,
-                    self.capacity,
-                    self.config.window,
-                )
+                local_check(&self.local_fallback, key, self.capacity, self.config.window)
             }
         }
     }
@@ -371,12 +369,10 @@ fn local_check(
     window: Duration,
 ) -> RateLimitResult {
     let now = Instant::now();
-    let mut entry = store
-        .entry(key.to_string())
-        .or_insert(LocalBucket {
-            count: 0,
-            window_start: now,
-        });
+    let mut entry = store.entry(key.to_string()).or_insert(LocalBucket {
+        count: 0,
+        window_start: now,
+    });
 
     if now.duration_since(entry.window_start) >= window {
         entry.count = 0;

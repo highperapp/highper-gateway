@@ -42,7 +42,10 @@ pub async fn get_pool_metrics(
             error!("Failed to serialize pool metrics: {}", e);
             Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Full::new(Bytes::from(format!("Failed to serialize metrics: {}", e))))
+                .body(Full::new(Bytes::from(format!(
+                    "Failed to serialize metrics: {}",
+                    e
+                ))))
                 .unwrap())
         }
     }
@@ -101,7 +104,10 @@ pub async fn get_host_pool_metrics<B>(
                 error!("Failed to serialize host metrics: {}", e);
                 Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Full::new(Bytes::from(format!("Failed to serialize metrics: {}", e))))
+                    .body(Full::new(Bytes::from(format!(
+                        "Failed to serialize metrics: {}",
+                        e
+                    ))))
                     .unwrap())
             }
         },
@@ -109,7 +115,10 @@ pub async fn get_host_pool_metrics<B>(
             debug!("No metrics found for host: {}", host);
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(Full::new(Bytes::from(format!("No metrics found for host: {}", host))))
+                .body(Full::new(Bytes::from(format!(
+                    "No metrics found for host: {}",
+                    host
+                ))))
                 .unwrap())
         }
     }
@@ -128,7 +137,9 @@ pub async fn reset_pool_metrics(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .body(Full::new(Bytes::from("Connection pool metrics reset successfully")))
+        .body(Full::new(Bytes::from(
+            "Connection pool metrics reset successfully",
+        )))
         .unwrap())
 }
 

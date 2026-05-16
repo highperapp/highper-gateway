@@ -2,12 +2,12 @@
 //!
 //! Handles client detection, route resolution, and request processing.
 
-use super::config::*;
 use super::super::aggregation::AggregationConfig;
-use hyper::{Request, Method, HeaderMap, header::USER_AGENT};
-use std::sync::Arc;
-use std::collections::HashMap;
+use super::config::*;
+use hyper::{header::USER_AGENT, HeaderMap, Method, Request};
 use regex::Regex;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// BFF Handler for processing client-specific requests
 pub struct BffHandler {
@@ -108,18 +108,10 @@ impl BffHandler {
     /// Detect client type from request
     pub fn detect_client<B>(&self, request: &Request<B>) -> ClientType {
         match self.config.detection.method {
-            DetectionMethod::Header => {
-                self.detect_from_header(request.headers())
-            }
-            DetectionMethod::UserAgent => {
-                self.detect_from_user_agent(request.headers())
-            }
-            DetectionMethod::QueryParam => {
-                self.detect_from_query(request.uri().query())
-            }
-            DetectionMethod::PathPrefix => {
-                self.detect_from_path(request.uri().path())
-            }
+            DetectionMethod::Header => self.detect_from_header(request.headers()),
+            DetectionMethod::UserAgent => self.detect_from_user_agent(request.headers()),
+            DetectionMethod::QueryParam => self.detect_from_query(request.uri().query()),
+            DetectionMethod::PathPrefix => self.detect_from_path(request.uri().path()),
         }
     }
 
@@ -181,11 +173,12 @@ impl BffHandler {
     pub fn get_profile(&self, client_type: &ClientType) -> Option<&ClientProfile> {
         let profile_name = client_type.to_string();
 
-        self.config.profiles.get(&profile_name)
-            .or_else(|| {
-                self.config.default_profile.as_ref()
-                    .and_then(|default| self.config.profiles.get(default))
-            })
+        self.config.profiles.get(&profile_name).or_else(|| {
+            self.config
+                .default_profile
+                .as_ref()
+                .and_then(|default| self.config.profiles.get(default))
+        })
     }
 
     /// Resolve route for request
@@ -228,7 +221,7 @@ impl BffHandler {
 
         for (pattern_part, path_part) in pattern_parts.iter().zip(path_parts.iter()) {
             if pattern_part.starts_with('{') && pattern_part.ends_with('}') {
-                let param_name = &pattern_part[1..pattern_part.len()-1];
+                let param_name = &pattern_part[1..pattern_part.len() - 1];
                 params.insert(param_name.to_string(), path_part.to_string());
             } else if *pattern_part == "*" {
                 // Wildcard matches anything
@@ -298,20 +291,13 @@ impl BffHandler {
         let mut headers = profile.response_headers.clone();
 
         // Add standard BFF headers
-        headers.insert(
-            "X-BFF-Profile".to_string(),
-            profile.name.clone(),
-        );
+        headers.insert("X-BFF-Profile".to_string(), profile.name.clone());
 
         headers
     }
 
     /// Check if request is authorized for route
-    pub fn check_authorization(
-        &self,
-        route: &BffRoute,
-        scopes: &[String],
-    ) -> bool {
+    pub fn check_authorization(&self, route: &BffRoute, scopes: &[String]) -> bool {
         if !route.auth_required {
             return true;
         }
@@ -320,9 +306,10 @@ impl BffHandler {
             return true;
         }
 
-        route.required_scopes.iter().all(|required| {
-            scopes.iter().any(|s| s == required)
-        })
+        route
+            .required_scopes
+            .iter()
+            .all(|required| scopes.iter().any(|s| s == required))
     }
 
     /// Get aggregation config for route with path parameters substituted
@@ -352,11 +339,12 @@ mod tests {
     fn test_config() -> BffConfig {
         let mut profiles = HashMap::new();
 
-        profiles.insert("mobile".to_string(), ClientProfile {
-            name: "mobile".to_string(),
-            description: "Mobile profile".to_string(),
-            routes: vec![
-                BffRoute {
+        profiles.insert(
+            "mobile".to_string(),
+            ClientProfile {
+                name: "mobile".to_string(),
+                description: "Mobile profile".to_string(),
+                routes: vec![BffRoute {
                     path: "/api/users/{id}".to_string(),
                     methods: vec!["GET".to_string()],
                     aggregation: AggregationConfig::default(),
@@ -364,23 +352,26 @@ mod tests {
                     cache_ttl: Some(60),
                     auth_required: false,
                     required_scopes: vec![],
-                },
-            ],
-            transformations: ResponseTransformConfig::default(),
-            cache: ClientCacheConfig::default(),
-            rate_limit: None,
-            response_headers: HashMap::new(),
-        });
+                }],
+                transformations: ResponseTransformConfig::default(),
+                cache: ClientCacheConfig::default(),
+                rate_limit: None,
+                response_headers: HashMap::new(),
+            },
+        );
 
-        profiles.insert("web".to_string(), ClientProfile {
-            name: "web".to_string(),
-            description: "Web profile".to_string(),
-            routes: vec![],
-            transformations: ResponseTransformConfig::default(),
-            cache: ClientCacheConfig::default(),
-            rate_limit: None,
-            response_headers: HashMap::new(),
-        });
+        profiles.insert(
+            "web".to_string(),
+            ClientProfile {
+                name: "web".to_string(),
+                description: "Web profile".to_string(),
+                routes: vec![],
+                transformations: ResponseTransformConfig::default(),
+                cache: ClientCacheConfig::default(),
+                rate_limit: None,
+                response_headers: HashMap::new(),
+            },
+        );
 
         BffConfig {
             profiles,
@@ -395,7 +386,10 @@ mod tests {
         assert_eq!(ClientType::from("ios"), ClientType::Mobile);
         assert_eq!(ClientType::from("web"), ClientType::Web);
         assert_eq!(ClientType::from("desktop"), ClientType::Desktop);
-        assert_eq!(ClientType::from("custom_app"), ClientType::Custom("custom_app".to_string()));
+        assert_eq!(
+            ClientType::from("custom_app"),
+            ClientType::Custom("custom_app".to_string())
+        );
     }
 
     #[test]
@@ -493,7 +487,10 @@ mod tests {
         let mut config = test_config();
         if let Some(profile) = config.profiles.get_mut("mobile") {
             profile.transformations.remove_fields = vec!["internal_id".to_string()];
-            profile.transformations.rename_fields.insert("userName".to_string(), "name".to_string());
+            profile
+                .transformations
+                .rename_fields
+                .insert("userName".to_string(), "name".to_string());
         }
 
         let handler = BffHandler::new(config);

@@ -6,7 +6,7 @@
 //! - Add/remove backend servers to upstreams
 //! - Update load balancing configuration
 
-use crate::admin::{UpstreamDefinition, BackendServer, LoadBalancingConfig, HealthCheckConfig};
+use crate::admin::{BackendServer, HealthCheckConfig, LoadBalancingConfig, UpstreamDefinition};
 use crate::config::Config;
 use crate::state::ProxyState;
 use bytes::Bytes;
@@ -86,7 +86,10 @@ impl UpstreamManager {
                     servers_count: server_count,
                     healthy_count,
                     algorithm: upstream.load_balancing.algorithm.clone(),
-                    health_check_enabled: upstream.health_checks.as_ref().map_or(false, |hc| hc.enabled),
+                    health_check_enabled: upstream
+                        .health_checks
+                        .as_ref()
+                        .map_or(false, |hc| hc.enabled),
                     source: UpstreamSource::Runtime,
                 });
             }
@@ -105,15 +108,21 @@ impl UpstreamManager {
 
         // Then check config upstreams
         let config = self.config.read().await;
-        config.upstreams.iter()
+        config
+            .upstreams
+            .iter()
             .find(|u| u.name == name)
             .map(|u| UpstreamDefinition {
                 name: u.name.clone(),
-                servers: u.servers.iter().map(|s| BackendServer {
-                    url: s.url.clone(),
-                    weight: s.weight,
-                    max_conns: Some(s.max_conns as u32),
-                }).collect(),
+                servers: u
+                    .servers
+                    .iter()
+                    .map(|s| BackendServer {
+                        url: s.url.clone(),
+                        weight: s.weight,
+                        max_conns: Some(s.max_conns as u32),
+                    })
+                    .collect(),
                 load_balancing: LoadBalancingConfig {
                     algorithm: format!("{:?}", u.load_balancing.algorithm).to_lowercase(),
                 },
@@ -133,13 +142,19 @@ impl UpstreamManager {
 
         // Check if already exists in runtime
         if upstreams.contains_key(&upstream.name) {
-            return Err(format!("Upstream '{}' already exists in runtime", upstream.name));
+            return Err(format!(
+                "Upstream '{}' already exists in runtime",
+                upstream.name
+            ));
         }
 
         // Check if exists in config
         let config = self.config.read().await;
         if config.upstreams.iter().any(|u| u.name == upstream.name) {
-            return Err(format!("Upstream '{}' already exists in config", upstream.name));
+            return Err(format!(
+                "Upstream '{}' already exists in config",
+                upstream.name
+            ));
         }
         drop(config);
 
@@ -152,7 +167,11 @@ impl UpstreamManager {
     }
 
     /// Update an existing upstream
-    pub async fn update_upstream(&self, name: &str, upstream: UpstreamDefinition) -> Result<(), String> {
+    pub async fn update_upstream(
+        &self,
+        name: &str,
+        upstream: UpstreamDefinition,
+    ) -> Result<(), String> {
         let mut upstreams = self.upstreams.write().await;
 
         // Check if exists
@@ -206,7 +225,11 @@ impl UpstreamManager {
     }
 
     /// Add a server to an upstream
-    pub async fn add_server(&self, upstream_name: &str, server: BackendServer) -> Result<(), String> {
+    pub async fn add_server(
+        &self,
+        upstream_name: &str,
+        server: BackendServer,
+    ) -> Result<(), String> {
         let mut upstreams = self.upstreams.write().await;
 
         // Get or create runtime upstream
@@ -219,12 +242,16 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name)
+        let upstream = upstreams
+            .get_mut(upstream_name)
             .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
 
         // Check if server already exists
         if upstream.servers.iter().any(|s| s.url == server.url) {
-            return Err(format!("Server '{}' already exists in upstream '{}'", server.url, upstream_name));
+            return Err(format!(
+                "Server '{}' already exists in upstream '{}'",
+                server.url, upstream_name
+            ));
         }
 
         info!("Adding server {} to upstream {}", server.url, upstream_name);
@@ -248,17 +275,24 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name)
+        let upstream = upstreams
+            .get_mut(upstream_name)
             .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
 
         let initial_len = upstream.servers.len();
         upstream.servers.retain(|s| s.url != server_url);
 
         if upstream.servers.len() == initial_len {
-            return Err(format!("Server '{}' not found in upstream '{}'", server_url, upstream_name));
+            return Err(format!(
+                "Server '{}' not found in upstream '{}'",
+                server_url, upstream_name
+            ));
         }
 
-        info!("Removed server {} from upstream {}", server_url, upstream_name);
+        info!(
+            "Removed server {} from upstream {}",
+            server_url, upstream_name
+        );
 
         // TODO: Trigger live update to proxy
 
@@ -266,7 +300,11 @@ impl UpstreamManager {
     }
 
     /// Update load balancing configuration
-    pub async fn update_load_balancing(&self, upstream_name: &str, lb_config: LoadBalancingConfig) -> Result<(), String> {
+    pub async fn update_load_balancing(
+        &self,
+        upstream_name: &str,
+        lb_config: LoadBalancingConfig,
+    ) -> Result<(), String> {
         let mut upstreams = self.upstreams.write().await;
 
         // Get or create runtime upstream
@@ -278,7 +316,8 @@ impl UpstreamManager {
             }
         }
 
-        let upstream = upstreams.get_mut(upstream_name)
+        let upstream = upstreams
+            .get_mut(upstream_name)
             .ok_or_else(|| format!("Upstream '{}' unexpectedly missing", upstream_name))?;
         upstream.load_balancing = lb_config;
 
@@ -362,9 +401,7 @@ pub struct UpdateLoadBalancingRequest {
 // HTTP handlers
 
 /// List all upstreams
-pub async fn list_upstreams_handler(
-    manager: Arc<UpstreamManager>,
-) -> Response<Full<Bytes>> {
+pub async fn list_upstreams_handler(manager: Arc<UpstreamManager>) -> Response<Full<Bytes>> {
     let upstreams = manager.list_upstreams().await;
 
     json_response(
@@ -384,7 +421,10 @@ pub async fn get_upstream_handler(
     match manager.get_upstream(name).await {
         Some(upstream) => match serde_json::to_value(upstream) {
             Ok(value) => json_response(StatusCode::OK, value),
-            Err(e) => json_response(StatusCode::INTERNAL_SERVER_ERROR, json!({"error": e.to_string()})),
+            Err(e) => json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": e.to_string()}),
+            ),
         },
         None => json_response(
             StatusCode::NOT_FOUND,
@@ -526,7 +566,10 @@ pub async fn update_load_balancing_handler(
         algorithm: request.algorithm.clone(),
     };
 
-    match manager.update_load_balancing(upstream_name, lb_config).await {
+    match manager
+        .update_load_balancing(upstream_name, lb_config)
+        .await
+    {
         Ok(()) => json_response(
             StatusCode::OK,
             json!({
@@ -663,7 +706,9 @@ mod tests {
         manager.create_upstream(upstream).await.unwrap();
 
         // Remove server
-        let result = manager.remove_server("test-upstream", "http://localhost:8080").await;
+        let result = manager
+            .remove_server("test-upstream", "http://localhost:8080")
+            .await;
         assert!(result.is_ok());
 
         // Verify server was removed
@@ -688,12 +733,14 @@ mod tests {
         manager.create_upstream(upstream).await.unwrap();
 
         // Update load balancing
-        let result = manager.update_load_balancing(
-            "test-upstream",
-            LoadBalancingConfig {
-                algorithm: "least_conn".to_string(),
-            },
-        ).await;
+        let result = manager
+            .update_load_balancing(
+                "test-upstream",
+                LoadBalancingConfig {
+                    algorithm: "least_conn".to_string(),
+                },
+            )
+            .await;
         assert!(result.is_ok());
 
         // Verify change

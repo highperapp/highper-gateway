@@ -51,11 +51,11 @@
 //! ```
 
 pub mod backend;
-pub mod manager;
 pub mod backends;
 pub mod disk;
+pub mod manager;
 
 pub use backend::{CacheBackend, CacheEntry, CacheError, CacheStats};
-pub use manager::{CacheManager, CacheBackendType};
 pub use backends::*;
 pub use disk::{DiskBackend, DiskCacheConfig, TieredBackend};
+pub use manager::{CacheBackendType, CacheManager};

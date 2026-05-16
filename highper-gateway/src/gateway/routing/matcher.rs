@@ -29,9 +29,8 @@ fn extract_path_components_simd(path: &[u8]) -> Vec<&str> {
                 // Extract component if non-empty
                 if slash_pos > start {
                     // Safety: path comes from valid UTF-8 str
-                    let component = unsafe {
-                        std::str::from_utf8_unchecked(&path[start..slash_pos])
-                    };
+                    let component =
+                        unsafe { std::str::from_utf8_unchecked(&path[start..slash_pos]) };
                     if !component.is_empty() {
                         components.push(component);
                     }
@@ -43,9 +42,7 @@ fn extract_path_components_simd(path: &[u8]) -> Vec<&str> {
             None => {
                 // No more slashes, add final component
                 if start < path.len() {
-                    let component = unsafe {
-                        std::str::from_utf8_unchecked(&path[start..])
-                    };
+                    let component = unsafe { std::str::from_utf8_unchecked(&path[start..]) };
                     if !component.is_empty() {
                         components.push(component);
                     }
@@ -215,7 +212,9 @@ fn normalize_path_simd(path: &[u8]) -> String {
 pub fn matches_any_route(path: &str, patterns: &[&str]) -> Option<usize> {
     // For small pattern sets, just iterate
     if patterns.len() <= 4 {
-        return patterns.iter().position(|&pattern| matches_prefix(path, pattern));
+        return patterns
+            .iter()
+            .position(|&pattern| matches_prefix(path, pattern));
     }
 
     // For larger pattern sets, use hash-based pre-filtering
@@ -268,7 +267,11 @@ impl RouteCache {
         let hash = compute_path_hash(path);
 
         // Check if already exists and update
-        if let Some(entry) = self.entries.iter_mut().find(|(h, p, _)| *h == hash && p == path) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|(h, p, _)| *h == hash && p == path)
+        {
             entry.2 = route_index;
             return;
         }
@@ -318,10 +321,19 @@ mod tests {
 
     #[test]
     fn test_wildcard_hostname() {
-        assert!(matches_wildcard_hostname("*.example.com", "api.example.com"));
-        assert!(matches_wildcard_hostname("*.example.com", "staging.example.com"));
+        assert!(matches_wildcard_hostname(
+            "*.example.com",
+            "api.example.com"
+        ));
+        assert!(matches_wildcard_hostname(
+            "*.example.com",
+            "staging.example.com"
+        ));
         assert!(!matches_wildcard_hostname("*.example.com", "example.org"));
-        assert!(matches_wildcard_hostname("exact.example.com", "exact.example.com"));
+        assert!(matches_wildcard_hostname(
+            "exact.example.com",
+            "exact.example.com"
+        ));
     }
 
     #[test]

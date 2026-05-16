@@ -514,8 +514,12 @@ upstream = "test-backend"
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 
     // Read response body to verify custom error message
-    let body_bytes = response.into_body().collect().await
-        .expect("Failed to read body").to_bytes();
+    let body_bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("Failed to read body")
+        .to_bytes();
     let body_text = String::from_utf8_lossy(&body_bytes);
 
     assert!(

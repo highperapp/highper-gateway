@@ -127,6 +127,10 @@ mod tests {
         );
 
         // For monitoring - log actual size
-        println!("MaybeTlsStream actual size: {} bytes ({:.1} KB)", size, size as f64 / 1024.0);
+        println!(
+            "MaybeTlsStream actual size: {} bytes ({:.1} KB)",
+            size,
+            size as f64 / 1024.0
+        );
     }
 }

@@ -41,10 +41,18 @@ pub struct CertValidatorConfig {
     pub fetch_timeout_secs: u64,
 }
 
-fn default_max_chain_depth() -> usize { 10 }
-fn default_true() -> bool { true }
-fn default_expiry_warning_days() -> i64 { 30 }
-fn default_fetch_timeout() -> u64 { 10 }
+fn default_max_chain_depth() -> usize {
+    10
+}
+fn default_true() -> bool {
+    true
+}
+fn default_expiry_warning_days() -> i64 {
+    30
+}
+fn default_fetch_timeout() -> u64 {
+    10
+}
 
 impl Default for CertValidatorConfig {
     fn default() -> Self {
@@ -124,19 +132,15 @@ impl CertificateValidator {
         debug!("Validating private key: {:?}", key_path);
 
         // Load certificate chain
-        let cert_file = fs::File::open(cert_path).map_err(|e| {
-            anyhow!("Failed to open certificate file {:?}: {}", cert_path, e)
-        })?;
+        let cert_file = fs::File::open(cert_path)
+            .map_err(|e| anyhow!("Failed to open certificate file {:?}: {}", cert_path, e))?;
         let mut reader = std::io::BufReader::new(cert_file);
         let mut certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut reader)
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| anyhow!("Failed to parse certificate: {}", e))?;
 
         if certs.is_empty() {
-            return Err(anyhow!(
-                "No certificates found in file {:?}",
-                cert_path
-            ));
+            return Err(anyhow!("No certificates found in file {:?}", cert_path));
         }
 
         info!("Loaded {} certificate(s) from {:?}", certs.len(), cert_path);
@@ -154,16 +158,18 @@ impl CertificateValidator {
         if certs.len() == 1 && self.config.allow_partial_chains {
             if let Ok(built_chain) = self.try_build_chain(&certs[0]) {
                 if built_chain.len() > 1 {
-                    info!("Built certificate chain from AIA ({} certs)", built_chain.len());
+                    info!(
+                        "Built certificate chain from AIA ({} certs)",
+                        built_chain.len()
+                    );
                     certs = built_chain;
                 }
             }
         }
 
         // Load private key
-        let key_file = fs::File::open(key_path).map_err(|e| {
-            anyhow!("Failed to open private key file {:?}: {}", key_path, e)
-        })?;
+        let key_file = fs::File::open(key_path)
+            .map_err(|e| anyhow!("Failed to open private key file {:?}: {}", key_path, e))?;
         let mut reader = std::io::BufReader::new(key_file);
         let key = rustls_pemfile::private_key(&mut reader)
             .map_err(|e| anyhow!("Failed to parse private key: {}", e))?
@@ -186,7 +192,10 @@ impl CertificateValidator {
     }
 
     /// Try to build certificate chain from AIA (Authority Information Access)
-    fn try_build_chain(&self, leaf_cert: &CertificateDer<'_>) -> Result<Vec<CertificateDer<'static>>> {
+    fn try_build_chain(
+        &self,
+        leaf_cert: &CertificateDer<'_>,
+    ) -> Result<Vec<CertificateDer<'static>>> {
         use x509_parser::prelude::*;
 
         let mut chain = vec![CertificateDer::from(leaf_cert.as_ref().to_vec())];
@@ -245,9 +254,12 @@ impl CertificateValidator {
     }
 
     /// Extract CA Issuers URL from certificate's AIA extension
-    fn extract_ca_issuer_url(&self, cert: &x509_parser::certificate::X509Certificate<'_>) -> Result<Option<String>> {
-        use x509_parser::prelude::*;
+    fn extract_ca_issuer_url(
+        &self,
+        cert: &x509_parser::certificate::X509Certificate<'_>,
+    ) -> Result<Option<String>> {
         use x509_parser::oid_registry;
+        use x509_parser::prelude::*;
 
         // OID for CA Issuers (1.3.6.1.5.5.7.48.2)
         let oid_ca_issuers = oid_registry::OID_PKIX_ACCESS_DESCRIPTOR_CA_ISSUERS.clone();
@@ -284,18 +296,27 @@ impl CertificateValidator {
         use std::net::TcpStream;
 
         // Parse URL
-        let url_parsed = url::Url::parse(url)
-            .map_err(|e| anyhow!("Invalid URL {}: {}", url, e))?;
+        let url_parsed = url::Url::parse(url).map_err(|e| anyhow!("Invalid URL {}: {}", url, e))?;
 
-        let host = url_parsed.host_str()
+        let host = url_parsed
+            .host_str()
             .ok_or_else(|| anyhow!("No host in URL: {}", url))?;
-        let port = url_parsed.port().unwrap_or(if url_parsed.scheme() == "https" { 443 } else { 80 });
+        let port = url_parsed
+            .port()
+            .unwrap_or(if url_parsed.scheme() == "https" {
+                443
+            } else {
+                80
+            });
         let path = url_parsed.path();
 
         // For HTTPS, we'd need TLS - for now, only support HTTP for AIA fetching
         // Most CA issuers URLs are HTTP anyway
         if url_parsed.scheme() == "https" {
-            warn!("HTTPS AIA URLs not supported for chain building, skipping: {}", url);
+            warn!(
+                "HTTPS AIA URLs not supported for chain building, skipping: {}",
+                url
+            );
             return Err(anyhow!("HTTPS AIA URLs not yet supported"));
         }
 
@@ -303,7 +324,10 @@ impl CertificateValidator {
         let mut stream = TcpStream::connect(&addr)
             .map_err(|e| anyhow!("Failed to connect to {}: {}", addr, e))?;
 
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(self.config.fetch_timeout_secs)))
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(
+                self.config.fetch_timeout_secs,
+            )))
             .map_err(|e| anyhow!("Failed to set timeout: {}", e))?;
 
         // Send HTTP request
@@ -313,17 +337,20 @@ impl CertificateValidator {
         );
 
         use std::io::Write;
-        stream.write_all(request.as_bytes())
+        stream
+            .write_all(request.as_bytes())
             .map_err(|e| anyhow!("Failed to send request: {}", e))?;
 
         // Read response
         let mut response = Vec::new();
-        stream.read_to_end(&mut response)
+        stream
+            .read_to_end(&mut response)
             .map_err(|e| anyhow!("Failed to read response: {}", e))?;
 
         // Parse HTTP response (simple parsing)
         let response_str = String::from_utf8_lossy(&response);
-        let body_start = response_str.find("\r\n\r\n")
+        let body_start = response_str
+            .find("\r\n\r\n")
             .ok_or_else(|| anyhow!("Invalid HTTP response"))?;
 
         let bytes = response[body_start + 4..].to_vec();
@@ -451,10 +478,7 @@ impl CertificateValidator {
     /// 1. Extract the public key from the certificate
     /// 2. Verify it matches the private key
     /// 3. Use ring or openssl for the actual verification
-    fn verify_cert_key_match(
-        _cert: &CertificateDer,
-        _key: &PrivateKeyDer,
-    ) -> Result<()> {
+    fn verify_cert_key_match(_cert: &CertificateDer, _key: &PrivateKeyDer) -> Result<()> {
         // TODO: Implement proper cert/key matching using ring or openssl
         // For now, we trust rustls to catch mismatches when building ServerConfig
         debug!("Certificate/key matching validation skipped (delegated to rustls)");
@@ -510,7 +534,9 @@ impl CertificateValidator {
 
         // Validate chain relationships
         if let Err(e) = self.validate_chain(chain) {
-            result.warnings.push(format!("Chain validation issue: {}", e));
+            result
+                .warnings
+                .push(format!("Chain validation issue: {}", e));
         }
 
         result
@@ -528,10 +554,8 @@ mod tests {
 
     #[test]
     fn test_validate_nonexistent_certificate() {
-        let result = CertificateValidator::validate(
-            "/nonexistent/cert.pem",
-            "/nonexistent/key.pem",
-        );
+        let result =
+            CertificateValidator::validate("/nonexistent/cert.pem", "/nonexistent/key.pem");
         assert!(result.is_err());
     }
 

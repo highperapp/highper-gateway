@@ -17,12 +17,18 @@ use crate::runtime_config::error::RuntimeConfigError;
 #[derive(Clone)]
 pub enum SecretRef {
     Literal(String),
-    File { path: PathBuf, lazy: bool },
+    File {
+        path: PathBuf,
+        lazy: bool,
+    },
     /// Resolved via the secrets-resolver selected by `SecretsRuntimeConfig`
     /// (Stage 2 ships the parse path + struct field; actual Vault / AWS /
     /// K8s clients ship in Phase 1.4 — `resolve_eager` returns a clear
     /// "not implemented" error until then).
-    Secrets { uri: String, lazy: bool },
+    Secrets {
+        uri: String,
+        lazy: bool,
+    },
 }
 
 /// Custom `Debug` redacts secret values so `format!("{:?}", cfg)` and
@@ -52,14 +58,12 @@ impl PartialEq for SecretRef {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (SecretRef::Literal(a), SecretRef::Literal(b)) => a == b,
-            (
-                SecretRef::File { path: a, lazy: la },
-                SecretRef::File { path: b, lazy: lb },
-            ) => a == b && la == lb,
-            (
-                SecretRef::Secrets { uri: a, lazy: la },
-                SecretRef::Secrets { uri: b, lazy: lb },
-            ) => a == b && la == lb,
+            (SecretRef::File { path: a, lazy: la }, SecretRef::File { path: b, lazy: lb }) => {
+                a == b && la == lb
+            }
+            (SecretRef::Secrets { uri: a, lazy: la }, SecretRef::Secrets { uri: b, lazy: lb }) => {
+                a == b && la == lb
+            }
             _ => false,
         }
     }

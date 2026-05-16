@@ -3,15 +3,14 @@
 //! This middleware integrates the compression adapter system into the middleware chain.
 //! It automatically compresses responses based on Accept-Encoding headers and content type.
 
-use super::{Middleware, MiddlewareResult};
 use super::compression::{
-    select_compressor, is_compressible, is_already_compressed,
-    CompressorConfig,
+    is_already_compressed, is_compressible, select_compressor, CompressorConfig,
 };
+use super::{Middleware, MiddlewareResult};
 use crate::http::ResponseBody;
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::{Response, header};
+use hyper::{header, Response};
 use std::future::Future;
 use std::pin::Pin;
 use tracing::{debug, warn};
@@ -90,7 +89,13 @@ impl Middleware for CompressionMiddleware {
     fn process_request(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<hyper::Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<hyper::Request<hyper::body::Incoming>, Response<Full<Bytes>>>,
+                > + Send,
+        >,
+    > {
         let accept_encoding = self.accept_encoding.clone();
 
         Box::pin(async move {
@@ -198,7 +203,10 @@ impl Middleware for CompressionMiddleware {
                     body_bytes.len(),
                     config.compressor_config.min_size
                 );
-                return Ok(Response::from_parts(parts, ResponseBody::buffered(body_bytes)));
+                return Ok(Response::from_parts(
+                    parts,
+                    ResponseBody::buffered(body_bytes),
+                ));
             }
 
             // Compress
@@ -214,29 +222,45 @@ impl Middleware for CompressionMiddleware {
                         );
 
                         // Build new response with compressed body
-                        let mut new_response = Response::from_parts(parts, ResponseBody::buffered(Bytes::from(result.data)));
+                        let mut new_response = Response::from_parts(
+                            parts,
+                            ResponseBody::buffered(Bytes::from(result.data)),
+                        );
 
                         // Add Content-Encoding header
                         new_response.headers_mut().insert(
                             header::CONTENT_ENCODING,
-                            compressor.encoding().parse().expect("encoding name is valid header value"),
+                            compressor
+                                .encoding()
+                                .parse()
+                                .expect("encoding name is valid header value"),
                         );
 
                         // Update Content-Length
                         new_response.headers_mut().insert(
                             header::CONTENT_LENGTH,
-                            result.compressed_size.to_string().parse().expect("numeric content-length is valid"),
+                            result
+                                .compressed_size
+                                .to_string()
+                                .parse()
+                                .expect("numeric content-length is valid"),
                         );
 
                         Ok(new_response)
                     } else {
                         debug!("Compression not beneficial, sending uncompressed");
-                        Ok(Response::from_parts(parts, ResponseBody::buffered(body_bytes)))
+                        Ok(Response::from_parts(
+                            parts,
+                            ResponseBody::buffered(body_bytes),
+                        ))
                     }
                 }
                 Err(e) => {
                     warn!("Compression failed: {:?}, sending uncompressed", e);
-                    Ok(Response::from_parts(parts, ResponseBody::buffered(body_bytes)))
+                    Ok(Response::from_parts(
+                        parts,
+                        ResponseBody::buffered(body_bytes),
+                    ))
                 }
             }
         })

@@ -29,9 +29,9 @@
 //! └──────────────────────────────────────┘
 //! ```
 
+use crossbeam::queue::{ArrayQueue, SegQueue};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use crossbeam::queue::{ArrayQueue, SegQueue};
 
 /// Lock-free atomic counter for statistics
 ///
@@ -290,7 +290,8 @@ impl ConcurrentStats {
         self.requests.increment();
         self.bytes_in.add(bytes_in);
         self.bytes_out.add(bytes_out);
-        self.total_latency_us.fetch_add(latency_us, Ordering::Relaxed);
+        self.total_latency_us
+            .fetch_add(latency_us, Ordering::Relaxed);
 
         // Update min latency
         let mut current_min = self.min_latency_us.load(Ordering::Relaxed);
@@ -451,8 +452,8 @@ impl<T> Clone for BoundedQueue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_atomic_counter() {

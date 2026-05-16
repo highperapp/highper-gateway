@@ -5,8 +5,7 @@ use crate::tls::storage::{Certificate, CertificateStorage};
 use crate::tls::ChallengeStore;
 use crate::Result;
 use instant_acme::{
-    Account, AuthorizationStatus, ChallengeType, Identifier,
-    NewAccount, NewOrder, OrderStatus,
+    Account, AuthorizationStatus, ChallengeType, Identifier, NewAccount, NewOrder, OrderStatus,
 };
 use rcgen::{CertificateParams, KeyPair};
 use std::sync::Arc;
@@ -109,7 +108,10 @@ impl AcmeClient {
 
                     // Store challenge in the challenge store
                     if let Some(store) = &self.challenge_store {
-                        store.store(challenge_token.clone(), key_authorization.as_str().to_string());
+                        store.store(
+                            challenge_token.clone(),
+                            key_authorization.as_str().to_string(),
+                        );
                         info!("Stored HTTP-01 challenge for token: {}", challenge_token);
                     } else {
                         warn!(
@@ -180,7 +182,10 @@ impl AcmeClient {
             }
         };
 
-        let cert_pem = cert_chain.ok_or_else(|| anyhow::anyhow!("No certificate in response"))?.as_bytes().to_vec();
+        let cert_pem = cert_chain
+            .ok_or_else(|| anyhow::anyhow!("No certificate in response"))?
+            .as_bytes()
+            .to_vec();
         let key_pem = key_pair.serialize_pem().as_bytes().to_vec();
 
         let certificate = Certificate {

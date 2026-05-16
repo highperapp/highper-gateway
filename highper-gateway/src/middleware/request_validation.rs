@@ -9,13 +9,13 @@
 //! - Suspicious header validation
 
 use super::Middleware;
-use hyper::{Request, Response, StatusCode, header};
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::{header, Request, Response, StatusCode};
+use regex::Regex;
 use std::future::Future;
 use std::pin::Pin;
 use tracing::debug;
-use regex::Regex;
-use bytes::Bytes;
-use http_body_util::Full;
 
 /// Request validation configuration
 #[derive(Debug, Clone)]
@@ -46,9 +46,9 @@ impl Default for RequestValidationConfig {
             sql_injection_detection: true,
             xss_detection: true,
             path_traversal_detection: true,
-            max_body_size: 10485760,  // 10 MB default
-            max_header_size: 8192,     // 8 KB
-            max_url_length: 2048,      // 2 KB
+            max_body_size: 10485760, // 10 MB default
+            max_header_size: 8192,   // 8 KB
+            max_url_length: 2048,    // 2 KB
             block_suspicious_user_agents: true,
             null_byte_detection: true,
             command_injection_detection: true,
@@ -63,9 +63,9 @@ impl RequestValidationConfig {
             sql_injection_detection: true,
             xss_detection: true,
             path_traversal_detection: true,
-            max_body_size: 1048576,    // 1 MB
-            max_header_size: 4096,     // 4 KB
-            max_url_length: 1024,      // 1 KB
+            max_body_size: 1048576, // 1 MB
+            max_header_size: 4096,  // 4 KB
+            max_url_length: 1024,   // 1 KB
             block_suspicious_user_agents: true,
             null_byte_detection: true,
             command_injection_detection: true,
@@ -78,9 +78,9 @@ impl RequestValidationConfig {
             sql_injection_detection: true,
             xss_detection: true,
             path_traversal_detection: true,
-            max_body_size: 104857600,  // 100 MB
-            max_header_size: 16384,    // 16 KB
-            max_url_length: 4096,      // 4 KB
+            max_body_size: 104857600, // 100 MB
+            max_header_size: 16384,   // 16 KB
+            max_url_length: 4096,     // 4 KB
             block_suspicious_user_agents: false,
             null_byte_detection: true,
             command_injection_detection: true,
@@ -93,9 +93,9 @@ impl RequestValidationConfig {
             sql_injection_detection: true,
             xss_detection: true,
             path_traversal_detection: true,
-            max_body_size: 524288,     // 512 KB (JSON payloads)
-            max_header_size: 4096,     // 4 KB
-            max_url_length: 1024,      // 1 KB
+            max_body_size: 524288, // 512 KB (JSON payloads)
+            max_header_size: 4096, // 4 KB
+            max_url_length: 1024,  // 1 KB
             block_suspicious_user_agents: true,
             null_byte_detection: true,
             command_injection_detection: true,
@@ -152,7 +152,11 @@ impl RequestValidationMiddleware {
 
         // Check URL length
         if url.len() > self.config.max_url_length {
-            return Err(format!("URL too long: {} > {}", url.len(), self.config.max_url_length));
+            return Err(format!(
+                "URL too long: {} > {}",
+                url.len(),
+                self.config.max_url_length
+            ));
         }
 
         // URL-decode for pattern matching (attackers often use URL encoding to bypass filters)
@@ -167,7 +171,10 @@ impl RequestValidationMiddleware {
         if self.config.path_traversal_detection {
             for pattern in &self.path_traversal_patterns {
                 if pattern.is_match(&url) || pattern.is_match(&decoded_url) {
-                    return Err(format!("Path traversal pattern detected: {}", pattern.as_str()));
+                    return Err(format!(
+                        "Path traversal pattern detected: {}",
+                        pattern.as_str()
+                    ));
                 }
             }
         }
@@ -196,12 +203,16 @@ impl RequestValidationMiddleware {
     /// Validate request headers
     fn validate_headers(&self, headers: &hyper::HeaderMap) -> Result<(), String> {
         // Calculate total header size
-        let total_size: usize = headers.iter()
+        let total_size: usize = headers
+            .iter()
             .map(|(name, value)| name.as_str().len() + value.len())
             .sum();
 
         if total_size > self.config.max_header_size {
-            return Err(format!("Headers too large: {} > {}", total_size, self.config.max_header_size));
+            return Err(format!(
+                "Headers too large: {} > {}",
+                total_size, self.config.max_header_size
+            ));
         }
 
         // Validate User-Agent
@@ -236,7 +247,10 @@ impl RequestValidationMiddleware {
             if let Ok(length_str) = content_length.to_str() {
                 if let Ok(length) = length_str.parse::<usize>() {
                     if self.config.max_body_size > 0 && length > self.config.max_body_size {
-                        return Err(format!("Request body too large: {} > {}", length, self.config.max_body_size));
+                        return Err(format!(
+                            "Request body too large: {} > {}",
+                            length, self.config.max_body_size
+                        ));
                     }
                 }
             }
@@ -309,7 +323,8 @@ impl RequestValidationMiddleware {
     /// Compile suspicious user agent patterns
     fn compile_suspicious_user_agents() -> Vec<Regex> {
         vec![
-            Regex::new(r"(?i)(sqlmap|nikto|nmap|masscan|acunetix|nessus|openvas|metasploit)").unwrap(),
+            Regex::new(r"(?i)(sqlmap|nikto|nmap|masscan|acunetix|nessus|openvas|metasploit)")
+                .unwrap(),
             Regex::new(r"(?i)(havij|pangolin|jsql|bsqlbf)").unwrap(),
             Regex::new(r"(?i)(w3af|skipfish|wapiti|whatweb)").unwrap(),
         ]
@@ -324,7 +339,12 @@ impl Middleware for RequestValidationMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         // Perform validation synchronously before async block
         let url_validation = self.validate_url(req.uri());
         let header_validation = self.validate_headers(req.headers());
@@ -373,7 +393,9 @@ mod tests {
         let middleware = RequestValidationMiddleware::default_validation();
 
         // URL-encode special characters for valid URIs
-        let uri: hyper::Uri = "http://example.com/user?id=1%27%20OR%20%271%27=%271".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/user?id=1%27%20OR%20%271%27=%271"
+            .parse()
+            .unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
         let uri: hyper::Uri = "http://example.com/user?name=admin%27--".parse().unwrap();
@@ -385,10 +407,15 @@ mod tests {
         let middleware = RequestValidationMiddleware::default_validation();
 
         // URL-encode special characters for valid URIs
-        let uri: hyper::Uri = "http://example.com/search?q=%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E".parse().unwrap();
+        let uri: hyper::Uri =
+            "http://example.com/search?q=%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E"
+                .parse()
+                .unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
-        let uri: hyper::Uri = "http://example.com/page?redirect=javascript%3Aalert%281%29".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/page?redirect=javascript%3Aalert%281%29"
+            .parse()
+            .unwrap();
         assert!(middleware.validate_url(&uri).is_err());
     }
 
@@ -396,7 +423,9 @@ mod tests {
     fn test_path_traversal_detection() {
         let middleware = RequestValidationMiddleware::default_validation();
 
-        let uri: hyper::Uri = "http://example.com/file?path=..%2F..%2Fetc%2Fpasswd".parse().unwrap();
+        let uri: hyper::Uri = "http://example.com/file?path=..%2F..%2Fetc%2Fpasswd"
+            .parse()
+            .unwrap();
         assert!(middleware.validate_url(&uri).is_err());
 
         let uri: hyper::Uri = "http://example.com/file?path=%2e%2e%2f".parse().unwrap();

@@ -65,17 +65,13 @@ impl Body for ResponseBody {
         match self.get_mut() {
             ResponseBody::Empty => Poll::Ready(None),
 
-            ResponseBody::Buffered(full) => {
-                Pin::new(full)
-                    .poll_frame(cx)
-                    .map_err(|never| match never {})
-            }
+            ResponseBody::Buffered(full) => Pin::new(full)
+                .poll_frame(cx)
+                .map_err(|never| match never {}),
 
-            ResponseBody::Stream(stream) => {
-                Pin::new(stream)
-                    .poll_frame(cx)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+            ResponseBody::Stream(stream) => Pin::new(stream)
+                .poll_frame(cx)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
         }
     }
 

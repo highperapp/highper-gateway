@@ -6,10 +6,10 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerRuntimeConfig {
-    pub failure_threshold: Reloadable<u32>,         // HIGHPER_CIRCUIT_BREAKER_FAILURE_THRESHOLD (default 5)
-    pub success_threshold: Reloadable<u32>,         // HIGHPER_CIRCUIT_BREAKER_SUCCESS_THRESHOLD (default 2)
-    pub timeout_secs: Reloadable<u64>,              // HIGHPER_CIRCUIT_BREAKER_TIMEOUT (default 30)
-    pub half_open_max_requests: Reloadable<u32>,    // HIGHPER_CIRCUIT_BREAKER_HALF_OPEN_MAX (default 3)
+    pub failure_threshold: Reloadable<u32>, // HIGHPER_CIRCUIT_BREAKER_FAILURE_THRESHOLD (default 5)
+    pub success_threshold: Reloadable<u32>, // HIGHPER_CIRCUIT_BREAKER_SUCCESS_THRESHOLD (default 2)
+    pub timeout_secs: Reloadable<u64>,      // HIGHPER_CIRCUIT_BREAKER_TIMEOUT (default 30)
+    pub half_open_max_requests: Reloadable<u32>, // HIGHPER_CIRCUIT_BREAKER_HALF_OPEN_MAX (default 3)
 }
 
 impl Default for CircuitBreakerRuntimeConfig {
@@ -64,22 +64,28 @@ pub(crate) fn load() -> Result<CircuitBreakerRuntimeConfig, RuntimeConfigError> 
 fn parse_u32(env_var: &str, raw: Option<&str>, default: u32) -> Result<u32, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u32>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u32",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u32",
+            }),
     }
 }
 
 fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 

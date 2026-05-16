@@ -23,10 +23,10 @@
 //! zero-copy I/O operations. See io_uring_shim.rs for registered buffer support.
 
 use bytes::BytesMut;
-use once_cell::sync::Lazy;
-use std::sync::Arc;
-use std::cell::RefCell;
 use crossbeam::queue::SegQueue;
+use once_cell::sync::Lazy;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 /// Global buffer pool singleton for optimal performance
 /// Reusing buffers reduces allocation overhead by 80%+ in hot path
@@ -88,16 +88,7 @@ impl BufferPool {
     /// Create a new buffer pool with lock-free queues
     pub fn new() -> Self {
         // Size classes: 4KB, 8KB, 16KB, 32KB, 64KB, 128KB, 256KB, 512KB
-        let size_classes = vec![
-            4096,
-            8192,
-            16384,
-            32768,
-            65536,
-            131072,
-            262144,
-            524288,
-        ];
+        let size_classes = vec![4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288];
 
         let pools = size_classes
             .iter()
@@ -118,15 +109,14 @@ impl BufferPool {
     /// This 2-tier approach provides 5-10x better performance under high concurrency.
     pub fn get(&self, size: usize) -> BytesMut {
         // Find the appropriate size class
-        let class_idx = self.size_classes
+        let class_idx = self
+            .size_classes
             .iter()
             .position(|&s| s >= size)
             .unwrap_or(self.size_classes.len() - 1);
 
         // Try thread-local cache first (fastest path - zero contention)
-        if let Ok(buf) = THREAD_BUFFER_CACHE.try_with(|cache| {
-            cache.borrow_mut().get(class_idx)
-        }) {
+        if let Ok(buf) = THREAD_BUFFER_CACHE.try_with(|cache| cache.borrow_mut().get(class_idx)) {
             if let Some(buf) = buf {
                 return buf;
             }
@@ -158,9 +148,8 @@ impl BufferPool {
         };
 
         // Try to cache in thread-local storage first (fastest path - zero contention)
-        let overflow_buf = THREAD_BUFFER_CACHE.try_with(|cache| {
-            cache.borrow_mut().put(class_idx, buf)
-        });
+        let overflow_buf =
+            THREAD_BUFFER_CACHE.try_with(|cache| cache.borrow_mut().put(class_idx, buf));
 
         // If thread-local cache returned the buffer (full), put it in global pool
         if let Ok(Some(buf)) = overflow_buf {

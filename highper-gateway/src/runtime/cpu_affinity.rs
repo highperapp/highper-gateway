@@ -199,10 +199,7 @@ pub fn get_numa_node(_cpu_id: usize) -> std::io::Result<usize> {
 pub fn pin_workers_to_cores() -> std::io::Result<()> {
     let topology = CpuTopology::detect();
 
-    info!(
-        "Pinning {} worker threads to CPUs",
-        topology.num_cpus
-    );
+    info!("Pinning {} worker threads to CPUs", topology.num_cpus);
 
     // Enable CPU affinity
     CPU_AFFINITY_ENABLED.store(true, Ordering::Release);
@@ -253,7 +250,9 @@ pub fn pin_worker(worker_id: usize) -> std::io::Result<()> {
 /// Check if the current CPU is on a specific NUMA node
 #[cfg(target_os = "linux")]
 pub fn is_numa_node(cpu_id: usize, numa_node: usize) -> bool {
-    get_numa_node(cpu_id).map(|n| n == numa_node).unwrap_or(false)
+    get_numa_node(cpu_id)
+        .map(|n| n == numa_node)
+        .unwrap_or(false)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -297,7 +296,10 @@ pub fn print_affinity_info() {
     #[cfg(target_os = "linux")]
     if let Ok(current_cpu) = get_current_cpu() {
         let numa_node = topology.cpu_to_numa.get(current_cpu).copied().unwrap_or(0);
-        info!("Current thread running on CPU {} (NUMA node {})", current_cpu, numa_node);
+        info!(
+            "Current thread running on CPU {} (NUMA node {})",
+            current_cpu, numa_node
+        );
     }
 }
 

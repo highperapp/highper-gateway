@@ -127,10 +127,7 @@ pub enum SiteAddress {
         base_path: Option<String>,
     },
     /// TCP-only site: port, protocol
-    Tcp {
-        port: u16,
-        protocol: TcpProtocol,
-    },
+    Tcp { port: u16, protocol: TcpProtocol },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,15 +246,10 @@ pub enum Directive {
     },
 
     /// Add header
-    HeaderAdd {
-        name: String,
-        value: String,
-    },
+    HeaderAdd { name: String, value: String },
 
     /// Remove header
-    HeaderRemove {
-        name: String,
-    },
+    HeaderRemove { name: String },
 
     /// Header passthrough
     HeaderPassthrough(Vec<String>),
@@ -497,7 +489,12 @@ impl Default for CorsConfig {
     fn default() -> Self {
         Self {
             origins: Some(vec!["*".to_string()]),
-            methods: Some(vec!["GET".to_string(), "POST".to_string(), "PUT".to_string(), "DELETE".to_string()]),
+            methods: Some(vec![
+                "GET".to_string(),
+                "POST".to_string(),
+                "PUT".to_string(),
+                "DELETE".to_string(),
+            ]),
             headers: Some(vec!["*".to_string()]),
             credentials: false,
         }
@@ -1391,8 +1388,14 @@ mod tests {
 
     #[test]
     fn test_lb_algorithm_display() {
-        assert_eq!(LoadBalancingAlgorithm::RoundRobin.to_string(), "round_robin");
-        assert_eq!(LoadBalancingAlgorithm::LeastConnections.to_string(), "least_conn");
+        assert_eq!(
+            LoadBalancingAlgorithm::RoundRobin.to_string(),
+            "round_robin"
+        );
+        assert_eq!(
+            LoadBalancingAlgorithm::LeastConnections.to_string(),
+            "least_conn"
+        );
         assert_eq!(LoadBalancingAlgorithm::IpHash.to_string(), "ip_hash");
     }
 

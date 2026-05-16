@@ -27,15 +27,18 @@ impl WasmPluginLoader {
             config.cranelift_opt_level(OptLevel::Speed);
             config.epoch_interruption(true); // For timeout support
 
-            let engine = Engine::new(&config)
-                .map_err(|e| PluginError::LoadError(format!("Failed to create WASM engine: {}", e)))?;
+            let engine = Engine::new(&config).map_err(|e| {
+                PluginError::LoadError(format!("Failed to create WASM engine: {}", e))
+            })?;
 
             Ok(Self { engine })
         }
 
         #[cfg(not(feature = "plugin-wasm"))]
         {
-            Err(PluginError::Config("WASM support not compiled in".to_string()))
+            Err(PluginError::Config(
+                "WASM support not compiled in".to_string(),
+            ))
         }
     }
 
@@ -43,18 +46,25 @@ impl WasmPluginLoader {
     pub async fn load(&self, config: &PluginConfig) -> Result<BoxedPlugin> {
         #[cfg(feature = "plugin-wasm")]
         {
-            tracing::info!("Loading WASM plugin: {} from {:?}", config.name, config.path);
+            tracing::info!(
+                "Loading WASM plugin: {} from {:?}",
+                config.name,
+                config.path
+            );
 
             // Read WASM file
             let wasm_bytes = std::fs::read(&config.path)
                 .map_err(|e| PluginError::LoadError(format!("Failed to read WASM file: {}", e)))?;
 
             // Compile module
-            let module = Module::new(&self.engine, &wasm_bytes)
-                .map_err(|e| PluginError::LoadError(format!("Failed to compile WASM module: {}", e)))?;
+            let module = Module::new(&self.engine, &wasm_bytes).map_err(|e| {
+                PluginError::LoadError(format!("Failed to compile WASM module: {}", e))
+            })?;
 
             // Get limits
-            let limits = config.limits.as_ref()
+            let limits = config
+                .limits
+                .as_ref()
                 .cloned()
                 .unwrap_or_else(PluginLimits::default);
 
@@ -73,7 +83,9 @@ impl WasmPluginLoader {
         #[cfg(not(feature = "plugin-wasm"))]
         {
             let _ = config;
-            Err(PluginError::Config("WASM support not compiled in".to_string()))
+            Err(PluginError::Config(
+                "WASM support not compiled in".to_string(),
+            ))
         }
     }
 }
@@ -119,7 +131,6 @@ impl WasmPlugin {
         })
     }
 
-
     /// Execute a plugin function
     async fn call_plugin_function(
         &self,
@@ -131,7 +142,8 @@ impl WasmPlugin {
         let mut store = Store::new(&self.engine, host_state);
 
         // Set resource limits
-        store.set_fuel(self.limits.fuel)
+        store
+            .set_fuel(self.limits.fuel)
             .map_err(|e| PluginError::Runtime(format!("Failed to set fuel: {}", e)))?;
         store.set_epoch_deadline(1);
 
@@ -142,16 +154,22 @@ impl WasmPlugin {
         super::host_functions::add_host_functions(&mut linker)?;
 
         // Instantiate module
-        let instance = linker.instantiate_async(&mut store, &self.module).await
+        let instance = linker
+            .instantiate_async(&mut store, &self.module)
+            .await
             .map_err(|e| PluginError::Runtime(format!("Failed to instantiate module: {}", e)))?;
 
         // Look up the function
         let func = instance
             .get_typed_func::<(), i32>(&mut store, func_name)
-            .map_err(|e| PluginError::Runtime(format!("Function '{}' not found: {}", func_name, e)))?;
+            .map_err(|e| {
+                PluginError::Runtime(format!("Function '{}' not found: {}", func_name, e))
+            })?;
 
         // Call the function
-        let result = func.call_async(&mut store, ()).await
+        let result = func
+            .call_async(&mut store, ())
+            .await
             .map_err(|e| PluginError::Runtime(format!("Function call failed: {}", e)))?;
 
         // Copy modifications back to original context

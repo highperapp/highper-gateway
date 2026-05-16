@@ -214,7 +214,8 @@ impl CorazaWafEngine {
                 phase: RulePhase::Request,
                 severity: WafSeverity::Critical,
                 category: RuleCategory::SqlInjection,
-                pattern: r"(?i)(\bunion\b.{1,100}?\bselect\b|\bselect\b.{1,100}?\bfrom\b)".to_string(),
+                pattern: r"(?i)(\bunion\b.{1,100}?\bselect\b|\bselect\b.{1,100}?\bfrom\b)"
+                    .to_string(),
                 targets: vec![WafRuleTarget::Query, WafRuleTarget::Body],
                 score: 5,
                 paranoia_level: 1,
@@ -326,7 +327,8 @@ impl CorazaWafEngine {
                 phase: RulePhase::Request,
                 severity: WafSeverity::Critical,
                 category: RuleCategory::Rce,
-                pattern: r"(?i)(\||;|`|\$\(|\$\{).{0,20}?(cat|ls|whoami|id|uname|wget|curl)".to_string(),
+                pattern: r"(?i)(\||;|`|\$\(|\$\{).{0,20}?(cat|ls|whoami|id|uname|wget|curl)"
+                    .to_string(),
                 targets: vec![WafRuleTarget::All],
                 score: 5,
                 paranoia_level: 1,
@@ -376,53 +378,49 @@ impl CorazaWafEngine {
 
     /// Remote File Inclusion (RFI) detection rules
     fn rfi_rules(paranoia_level: u8) -> Vec<CorazaRule> {
-        vec![
-            CorazaRule {
-                id: "931100".to_string(),
-                phase: RulePhase::Request,
-                severity: WafSeverity::High,
-                category: RuleCategory::Rfi,
-                pattern: r"(?i)(https?|ftps?)://[^\s]+".to_string(),
-                targets: vec![WafRuleTarget::Query],
-                score: 4,
-                paranoia_level: 1,
-                enabled: true,
-            },
-        ]
+        vec![CorazaRule {
+            id: "931100".to_string(),
+            phase: RulePhase::Request,
+            severity: WafSeverity::High,
+            category: RuleCategory::Rfi,
+            pattern: r"(?i)(https?|ftps?)://[^\s]+".to_string(),
+            targets: vec![WafRuleTarget::Query],
+            score: 4,
+            paranoia_level: 1,
+            enabled: true,
+        }]
     }
 
     /// Session Fixation detection rules
     fn session_fixation_rules(paranoia_level: u8) -> Vec<CorazaRule> {
-        vec![
-            CorazaRule {
-                id: "943100".to_string(),
-                phase: RulePhase::Request,
-                severity: WafSeverity::Medium,
-                category: RuleCategory::SessionFixation,
-                pattern: r"(?i)(session_id|sessionid|phpsessid)=".to_string(),
-                targets: vec![WafRuleTarget::Query],
-                score: 3,
-                paranoia_level: if paranoia_level >= 2 { 2 } else { 255 },
-                enabled: paranoia_level >= 2,
-            },
-        ]
+        vec![CorazaRule {
+            id: "943100".to_string(),
+            phase: RulePhase::Request,
+            severity: WafSeverity::Medium,
+            category: RuleCategory::SessionFixation,
+            pattern: r"(?i)(session_id|sessionid|phpsessid)=".to_string(),
+            targets: vec![WafRuleTarget::Query],
+            score: 3,
+            paranoia_level: if paranoia_level >= 2 { 2 } else { 255 },
+            enabled: paranoia_level >= 2,
+        }]
     }
 
     /// Protocol Attack detection rules
     fn protocol_attack_rules(paranoia_level: u8) -> Vec<CorazaRule> {
-        vec![
-            CorazaRule {
-                id: "920100".to_string(),
-                phase: RulePhase::Request,
-                severity: WafSeverity::Medium,
-                category: RuleCategory::ProtocolAttack,
-                pattern: r"(?i)(content-length|transfer-encoding).*\n.*(content-length|transfer-encoding)".to_string(),
-                targets: vec![WafRuleTarget::Headers],
-                score: 4,
-                paranoia_level: 1,
-                enabled: true,
-            },
-        ]
+        vec![CorazaRule {
+            id: "920100".to_string(),
+            phase: RulePhase::Request,
+            severity: WafSeverity::Medium,
+            category: RuleCategory::ProtocolAttack,
+            pattern:
+                r"(?i)(content-length|transfer-encoding).*\n.*(content-length|transfer-encoding)"
+                    .to_string(),
+            targets: vec![WafRuleTarget::Headers],
+            score: 4,
+            paranoia_level: 1,
+            enabled: true,
+        }]
     }
 
     /// Evaluate rules and calculate anomaly score
@@ -470,9 +468,7 @@ impl CorazaWafEngine {
                         false
                     }
                 }
-                WafRuleTarget::Headers => {
-                    context.headers.values().any(|v| regex.is_match(v))
-                }
+                WafRuleTarget::Headers => context.headers.values().any(|v| regex.is_match(v)),
                 WafRuleTarget::Body => {
                     if let Some(ref body) = context.body {
                         if let Ok(body_str) = std::str::from_utf8(body) {
@@ -495,7 +491,10 @@ impl CorazaWafEngine {
                     regex.is_match(&context.path)
                         || context.query.as_ref().map_or(false, |q| regex.is_match(q))
                         || context.headers.values().any(|v| regex.is_match(v))
-                        || context.user_agent.as_ref().map_or(false, |ua| regex.is_match(ua))
+                        || context
+                            .user_agent
+                            .as_ref()
+                            .map_or(false, |ua| regex.is_match(ua))
                 }
             };
 
@@ -514,7 +513,8 @@ impl CorazaWafEngine {
         }
 
         let regex = Regex::new(pattern)?;
-        self.compiled_patterns.insert(rule_id.to_string(), regex.clone());
+        self.compiled_patterns
+            .insert(rule_id.to_string(), regex.clone());
         Ok(regex)
     }
 
@@ -523,7 +523,9 @@ impl CorazaWafEngine {
         for rule_id in triggered_rules {
             // Extract category from rule ID prefix
             if rule_id.starts_with("942") {
-                self.stats.sql_injection_blocks.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .sql_injection_blocks
+                    .fetch_add(1, Ordering::Relaxed);
             } else if rule_id.starts_with("941") {
                 self.stats.xss_blocks.fetch_add(1, Ordering::Relaxed);
             } else if rule_id.starts_with("932") {
@@ -533,9 +535,13 @@ impl CorazaWafEngine {
             } else if rule_id.starts_with("931") {
                 self.stats.rfi_blocks.fetch_add(1, Ordering::Relaxed);
             } else if rule_id.starts_with("943") {
-                self.stats.session_fixation_blocks.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .session_fixation_blocks
+                    .fetch_add(1, Ordering::Relaxed);
             } else if rule_id.starts_with("920") {
-                self.stats.protocol_attack_blocks.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .protocol_attack_blocks
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
     }

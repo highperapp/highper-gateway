@@ -4,19 +4,26 @@
 //! Uses existing TLS infrastructure for secure connections.
 //! Supports sticky sessions for proper load balancing and per-connection state tracking.
 
-pub mod handler;
-pub mod session;
 pub mod connection;
-pub mod shutdown;
+pub mod handler;
 pub mod keepalive;
 pub mod recovery;
+pub mod session;
+pub mod shutdown;
 
+pub use connection::{
+    ConnectionId, ConnectionInfo, ConnectionMetrics, ConnectionMetricsSnapshot, ConnectionState,
+    ConnectionTracker,
+};
+pub use keepalive::{
+    send_ping_frame, send_pong_frame, KeepAliveConfig, KeepAliveManager, KeepAliveStats,
+};
+pub use recovery::{
+    BackendRecoveryStats, CircuitState, RecoveryConfig, RecoveryManager, WebSocketError,
+};
 use serde::{Deserialize, Serialize};
 pub use session::{SessionId, SessionManager, WebSocketSession};
-pub use connection::{ConnectionId, ConnectionInfo, ConnectionState, ConnectionTracker, ConnectionMetrics, ConnectionMetricsSnapshot};
-pub use shutdown::{ShutdownCoordinator, ShutdownStats, graceful_close_handshake};
-pub use keepalive::{KeepAliveManager, KeepAliveConfig, KeepAliveStats, send_ping_frame, send_pong_frame};
-pub use recovery::{RecoveryManager, RecoveryConfig, WebSocketError, CircuitState, BackendRecoveryStats};
+pub use shutdown::{graceful_close_handshake, ShutdownCoordinator, ShutdownStats};
 
 /// WebSocket configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

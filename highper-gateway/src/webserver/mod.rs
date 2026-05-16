@@ -48,18 +48,18 @@
 //! - Persistent connections: **No connect() syscall overhead**
 //! - FastCGI protocol: **Binary protocol, low overhead**
 
-pub mod static_files;
-pub mod php_fpm;
-pub mod mime;
 pub mod config;
-pub mod security;
-pub mod resource_limits;
+pub mod mime;
 pub mod observability;
+pub mod php_fpm;
+pub mod resource_limits;
+pub mod security;
+pub mod static_files;
 
-pub use static_files::*;
-pub use php_fpm::*;
-pub use mime::*;
 pub use config::*;
-pub use security::*;
-pub use resource_limits::*;
+pub use mime::*;
 pub use observability::*;
+pub use php_fpm::*;
+pub use resource_limits::*;
+pub use security::*;
+pub use static_files::*;

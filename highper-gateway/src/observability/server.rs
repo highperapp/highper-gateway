@@ -37,13 +37,20 @@ impl ObservabilityServer {
             dashboard_clone.start(metrics_clone).await;
         });
 
-        Self { metrics, dashboard, addr }
+        Self {
+            metrics,
+            dashboard,
+            addr,
+        }
     }
 
     /// Start the observability server
     pub async fn run(self) -> crate::Result<()> {
         let listener = TcpListener::bind(self.addr).await?;
-        info!("Observability server listening on {} (metrics, health, dashboard)", self.addr);
+        info!(
+            "Observability server listening on {} (metrics, health, dashboard)",
+            self.addr
+        );
 
         loop {
             match listener.accept().await {

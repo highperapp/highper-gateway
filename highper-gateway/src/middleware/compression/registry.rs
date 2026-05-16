@@ -57,7 +57,10 @@ impl CompressorRegistry {
             warn!(
                 "Overwriting existing compressor for encoding '{}' (was: {})",
                 encoding,
-                compressors.get(&encoding).map(|c| c.name()).unwrap_or("unknown")
+                compressors
+                    .get(&encoding)
+                    .map(|c| c.name())
+                    .unwrap_or("unknown")
             );
         }
 
@@ -79,10 +82,16 @@ impl CompressorRegistry {
         let removed = compressors.remove(encoding);
 
         if let Some(ref compressor) = removed {
-            info!("Unregistered compressor: {} (encoding: {})",
-                  compressor.name(), encoding);
+            info!(
+                "Unregistered compressor: {} (encoding: {})",
+                compressor.name(),
+                encoding
+            );
         } else {
-            debug!("Attempted to unregister non-existent compressor: {}", encoding);
+            debug!(
+                "Attempted to unregister non-existent compressor: {}",
+                encoding
+            );
         }
 
         removed
@@ -276,12 +285,11 @@ fn parse_accept_encoding(header: &str) -> HashMap<String, f32> {
 /// ```
 use once_cell::sync::Lazy;
 
-pub static GLOBAL_COMPRESSOR_REGISTRY: Lazy<CompressorRegistry> =
-    Lazy::new(|| {
-        let registry = CompressorRegistry::with_defaults();
-        info!("Global compressor registry initialized");
-        registry
-    });
+pub static GLOBAL_COMPRESSOR_REGISTRY: Lazy<CompressorRegistry> = Lazy::new(|| {
+    let registry = CompressorRegistry::with_defaults();
+    info!("Global compressor registry initialized");
+    registry
+});
 
 #[cfg(test)]
 mod tests {
@@ -312,8 +320,10 @@ mod tests {
             &self,
             _data: &[u8],
             _config: &super::super::compressor::CompressorConfig,
-        ) -> Result<super::super::compressor::CompressionResult, super::super::compressor::CompressionError>
-        {
+        ) -> Result<
+            super::super::compressor::CompressionResult,
+            super::super::compressor::CompressionError,
+        > {
             Ok(super::super::compressor::CompressionResult {
                 data: vec![],
                 original_size: 0,

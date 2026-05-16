@@ -165,9 +165,7 @@ async fn test_db_03_connection_hijacking() {
     println!("  Testing if connections can be intercepted");
 
     // Establish initial connection
-    let mut stream1 = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream1 = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // Get initial response (if any)
     let mut buf = vec![0u8; 1024];
@@ -175,9 +173,7 @@ async fn test_db_03_connection_hijacking() {
 
     // Try to inject into established session
     // This tests TCP session injection resistance
-    let mut stream2 = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream2 = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // Send data that might interfere with stream1's session
     let injection_attempts = vec![
@@ -191,10 +187,7 @@ async fn test_db_03_connection_hijacking() {
 
     // Verify stream1 is still usable
     let result = stream1.write_all(b"\x01\x00\x00\x00\x01").await;
-    println!(
-        "  Original connection still usable: {}",
-        result.is_ok()
-    );
+    println!("  Original connection still usable: {}", result.is_ok());
 }
 
 /// Test DB-04: Connection Pool Exhaustion
@@ -273,9 +266,7 @@ async fn test_db_05_protocol_confusion() {
     println!("  Testing with non-MySQL traffic:");
 
     // Test HTTP traffic
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let http_request = b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
     let _ = stream.write_all(http_request).await;
@@ -286,9 +277,7 @@ async fn test_db_05_protocol_confusion() {
     println!("  HTTP request handled (should be rejected or forwarded)");
 
     // Test PostgreSQL protocol
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // PostgreSQL startup message
     let pg_startup = vec![
@@ -303,9 +292,7 @@ async fn test_db_05_protocol_confusion() {
     println!("  PostgreSQL request handled (should be rejected or forwarded)");
 
     // Test random binary data
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     let random_data: Vec<u8> = (0..100).map(|i| (i * 7) as u8).collect();
     let _ = stream.write_all(&random_data).await;

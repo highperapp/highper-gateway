@@ -137,8 +137,8 @@ impl MysqlProtocol {
     pub fn ping_packet() -> Vec<u8> {
         vec![
             0x01, 0x00, 0x00, // Length: 1 byte
-            0x00,             // Sequence: 0
-            0x0e,             // COM_PING command
+            0x00, // Sequence: 0
+            0x0e, // COM_PING command
         ]
     }
 
@@ -327,7 +327,10 @@ mod tests {
     #[test]
     fn test_detect_from_port() {
         assert_eq!(ProtocolDetector::detect_from_port(3306), Protocol::Mysql);
-        assert_eq!(ProtocolDetector::detect_from_port(5432), Protocol::Postgresql);
+        assert_eq!(
+            ProtocolDetector::detect_from_port(5432),
+            Protocol::Postgresql
+        );
         assert_eq!(ProtocolDetector::detect_from_port(6379), Protocol::Redis);
         assert_eq!(ProtocolDetector::detect_from_port(8080), Protocol::Generic);
     }

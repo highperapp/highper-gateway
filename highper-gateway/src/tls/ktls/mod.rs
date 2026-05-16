@@ -81,14 +81,14 @@
 //! | Sendfile | Copy required | Zero-copy | Huge improvement for static files |
 
 pub mod config;
-pub mod socket;
 pub mod crypto;
 pub mod sendfile;
+pub mod socket;
 
 pub use config::*;
-pub use socket::*;
 pub use crypto::*;
 pub use sendfile::*;
+pub use socket::*;
 
 use std::io;
 use tracing::{info, warn};
@@ -101,14 +101,19 @@ pub fn init_ktls() -> Result<(), io::Error> {
 
         // Check kernel version
         let kernel_version = get_kernel_version()?;
-        info!("Detected Linux kernel version: {}.{}.{}", kernel_version.0, kernel_version.1, kernel_version.2);
+        info!(
+            "Detected Linux kernel version: {}.{}.{}",
+            kernel_version.0, kernel_version.1, kernel_version.2
+        );
 
         if kernel_version < (4, 13, 0) {
-            warn!("kTLS requires Linux kernel 4.13+, detected: {}.{}.{}",
-                  kernel_version.0, kernel_version.1, kernel_version.2);
+            warn!(
+                "kTLS requires Linux kernel 4.13+, detected: {}.{}.{}",
+                kernel_version.0, kernel_version.1, kernel_version.2
+            );
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "Kernel version too old for kTLS"
+                "Kernel version too old for kTLS",
             ));
         }
 
@@ -126,7 +131,7 @@ pub fn init_ktls() -> Result<(), io::Error> {
         warn!("kTLS is only supported on Linux");
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "kTLS requires Linux"
+            "kTLS requires Linux",
         ))
     }
 }
@@ -156,7 +161,7 @@ fn get_kernel_version() -> io::Result<(u32, u32, u32)> {
     if parts.len() < 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Could not parse kernel version"
+            "Could not parse kernel version",
         ));
     }
 
@@ -165,18 +170,21 @@ fn get_kernel_version() -> io::Result<(u32, u32, u32)> {
     if version_parts.len() < 3 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Invalid kernel version format"
+            "Invalid kernel version format",
         ));
     }
 
-    let major = version_parts[0].parse::<u32>()
+    let major = version_parts[0]
+        .parse::<u32>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid major version"))?;
-    let minor = version_parts[1].parse::<u32>()
+    let minor = version_parts[1]
+        .parse::<u32>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid minor version"))?;
 
     // Parse patch version (may contain additional text like "76-generic")
     let patch_str = version_parts[2].split('-').next().unwrap_or("0");
-    let patch = patch_str.parse::<u32>()
+    let patch = patch_str
+        .parse::<u32>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid patch version"))?;
 
     Ok((major, minor, patch))

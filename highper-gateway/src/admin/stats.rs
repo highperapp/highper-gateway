@@ -225,9 +225,7 @@ impl StatsCollector {
 pub enum StatsMessage {
     /// Initial snapshot
     #[serde(rename = "snapshot")]
-    Snapshot {
-        data: StatsSnapshot,
-    },
+    Snapshot { data: StatsSnapshot },
 
     /// Incremental update
     #[serde(rename = "update")]
@@ -247,7 +245,5 @@ pub enum StatsMessage {
 
     /// Heartbeat
     #[serde(rename = "heartbeat")]
-    Heartbeat {
-        timestamp: String,
-    },
+    Heartbeat { timestamp: String },
 }

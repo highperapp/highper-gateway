@@ -21,10 +21,7 @@ pub enum RuntimeConfigError {
         valid_range: &'static str,
     },
     /// Cross-subsystem invariant violated.
-    InvalidCombination {
-        rule: &'static str,
-        details: String,
-    },
+    InvalidCombination { rule: &'static str, details: String },
     /// Required env var missing for the enabled feature set.
     MissingRequired {
         env_var: String,
@@ -35,21 +32,29 @@ pub enum RuntimeConfigError {
 impl fmt::Display for RuntimeConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ParseError { env_var, value, expected } => write!(
+            Self::ParseError {
+                env_var,
+                value,
+                expected,
+            } => write!(
                 f,
                 "{env_var}={value:?} could not be parsed (expected {expected})"
             ),
-            Self::OutOfRange { env_var, value, valid_range } => write!(
+            Self::OutOfRange {
+                env_var,
+                value,
+                valid_range,
+            } => write!(
                 f,
                 "{env_var}={value:?} is out of range (valid: {valid_range})"
             ),
             Self::InvalidCombination { rule, details } => {
                 write!(f, "invalid configuration combination: {rule} ({details})")
             }
-            Self::MissingRequired { env_var, required_because } => write!(
-                f,
-                "{env_var} is required because {required_because}"
-            ),
+            Self::MissingRequired {
+                env_var,
+                required_because,
+            } => write!(f, "{env_var} is required because {required_because}"),
         }
     }
 }

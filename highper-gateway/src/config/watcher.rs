@@ -29,9 +29,7 @@ pub enum ConfigEvent {
 
 impl ConfigWatcher {
     /// Create a new config watcher
-    pub fn new<P: AsRef<Path>>(
-        path: P,
-    ) -> anyhow::Result<(Self, mpsc::Receiver<ConfigEvent>)> {
+    pub fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<(Self, mpsc::Receiver<ConfigEvent>)> {
         let path = path.as_ref().to_path_buf();
         // B11.3: bounded file-event channel; capacity tunable via
         // HIGHPER_CONFIG_WATCHER_FILE_EVENT_CAPACITY (default 32). Drop
@@ -163,7 +161,10 @@ mod tests {
             }
         }
 
-        assert!(received_event, "Should have received Modified or Created event");
+        assert!(
+            received_event,
+            "Should have received Modified or Created event"
+        );
 
         // Cleanup
         watcher.stop().ok();
@@ -201,7 +202,10 @@ mod tests {
             }
         }
 
-        assert!(received_deletion, "Should have received Deleted or Modified event");
+        assert!(
+            received_deletion,
+            "Should have received Deleted or Modified event"
+        );
 
         // Cleanup
         watcher.stop().ok();

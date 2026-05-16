@@ -52,7 +52,10 @@ async fn test_hyb_01_protocol_confusion() {
         // MySQL handshake
         (vec![0x4a, 0x00, 0x00, 0x00, 0x0a], "MySQL"),
         // PostgreSQL startup
-        (vec![0x00, 0x00, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00], "PostgreSQL"),
+        (
+            vec![0x00, 0x00, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00],
+            "PostgreSQL",
+        ),
         // SSH version string
         (b"SSH-2.0-Test\r\n".to_vec(), "SSH"),
         // SMTP HELO
@@ -72,17 +75,17 @@ async fn test_hyb_01_protocol_confusion() {
         let _ = stream.write_all(&data).await;
 
         let mut response = vec![0u8; 1024];
-        let result = tokio::time::timeout(
-            Duration::from_secs(1),
-            stream.read(&mut response),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_secs(1), stream.read(&mut response)).await;
 
         match result {
             Ok(Ok(n)) if n > 0 => {
                 let resp_preview = String::from_utf8_lossy(&response[..n.min(50)]);
-                println!("  {} protocol on HTTP port: {} bytes - '{}'",
-                    protocol, n, resp_preview.replace('\n', "\\n"));
+                println!(
+                    "  {} protocol on HTTP port: {} bytes - '{}'",
+                    protocol,
+                    n,
+                    resp_preview.replace('\n', "\\n")
+                );
             }
             Ok(Ok(0)) => {
                 println!("  {} protocol: Connection closed (expected)", protocol);
@@ -119,13 +122,14 @@ async fn test_hyb_02_cross_protocol_smuggling() {
           Connection: Upgrade\r\n\
           Sec-WebSocket-Key: test\r\n\
           Sec-WebSocket-Version: 13\r\n\r\n\
-          SMUGGLED_DATA".to_vec(),
-
+          SMUGGLED_DATA"
+            .to_vec(),
         // HTTP/2 preface in HTTP/1.1 body
         b"POST / HTTP/1.1\r\n\
           Host: localhost\r\n\
           Content-Length: 24\r\n\r\n\
-          PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".to_vec(),
+          PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+            .to_vec(),
     ];
 
     for attempt in smuggling_attempts {
@@ -137,11 +141,7 @@ async fn test_hyb_02_cross_protocol_smuggling() {
         let _ = stream.write_all(&attempt).await;
 
         let mut response = vec![0u8; 2048];
-        let result = tokio::time::timeout(
-            Duration::from_secs(2),
-            stream.read(&mut response),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut response)).await;
 
         if let Ok(Ok(n)) = result {
             let resp_str = String::from_utf8_lossy(&response[..n]);
@@ -218,11 +218,7 @@ async fn test_hyb_protocol_detection_bypass() {
         let _ = stream.write_all(&data).await;
 
         let mut response = vec![0u8; 1024];
-        let _ = tokio::time::timeout(
-            Duration::from_secs(1),
-            stream.read(&mut response),
-        )
-        .await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), stream.read(&mut response)).await;
     }
 }
 

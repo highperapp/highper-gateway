@@ -5,11 +5,11 @@ use crate::runtime_config::{Reloadable, RuntimeConfigError};
 
 #[derive(Debug, Clone)]
 pub struct TlsRuntimeConfig {
-    pub session_cache_size: Reloadable<u32>,             // HIGHPER_TLS_SESSION_CACHE_SIZE (default 4096)
-    pub session_ticket_lifetime_secs: Reloadable<u64>,   // HIGHPER_TLS_SESSION_TICKET_LIFETIME (default 86400)
-    pub ocsp_cache_ttl_secs: Reloadable<u64>,            // HIGHPER_TLS_OCSP_CACHE_TTL (default 3600)
-    pub acme_renew_check_secs: Reloadable<u64>,          // HIGHPER_TLS_ACME_RENEW_CHECK (default 3600)
-    pub min_version: TlsMinVersion,                       // HIGHPER_TLS_MIN_VERSION (default 1.2; Restart)
+    pub session_cache_size: Reloadable<u32>, // HIGHPER_TLS_SESSION_CACHE_SIZE (default 4096)
+    pub session_ticket_lifetime_secs: Reloadable<u64>, // HIGHPER_TLS_SESSION_TICKET_LIFETIME (default 86400)
+    pub ocsp_cache_ttl_secs: Reloadable<u64>,          // HIGHPER_TLS_OCSP_CACHE_TTL (default 3600)
+    pub acme_renew_check_secs: Reloadable<u64>, // HIGHPER_TLS_ACME_RENEW_CHECK (default 3600)
+    pub min_version: TlsMinVersion,             // HIGHPER_TLS_MIN_VERSION (default 1.2; Restart)
     /// `HIGHPER_TLS_CERT_WATCHER_CHANNEL_CAPACITY` — bounded channel
     /// capacity for cert-file-modified events. Default 32; events drop on
     /// full (file-watch is idempotent — the next change re-triggers). B11
@@ -81,31 +81,35 @@ pub(crate) fn load() -> Result<TlsRuntimeConfig, RuntimeConfigError> {
         ocsp_cache_ttl_secs: Reloadable::new(ocsp_cache_ttl_secs),
         acme_renew_check_secs: Reloadable::new(acme_renew_check_secs),
         min_version,
-        cert_watcher_event_channel_capacity: Reloadable::new(
-            cert_watcher_event_channel_capacity,
-        ),
+        cert_watcher_event_channel_capacity: Reloadable::new(cert_watcher_event_channel_capacity),
     })
 }
 
 fn parse_u32(env_var: &str, raw: Option<&str>, default: u32) -> Result<u32, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u32>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u32",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u32",
+            }),
     }
 }
 
 fn parse_u64(env_var: &str, raw: Option<&str>, default: u64) -> Result<u64, RuntimeConfigError> {
     match raw {
         None => Ok(default),
-        Some(s) => s.trim().parse::<u64>().map_err(|_| RuntimeConfigError::ParseError {
-            env_var: env_var.into(),
-            value: s.into(),
-            expected: "u64",
-        }),
+        Some(s) => s
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RuntimeConfigError::ParseError {
+                env_var: env_var.into(),
+                value: s.into(),
+                expected: "u64",
+            }),
     }
 }
 

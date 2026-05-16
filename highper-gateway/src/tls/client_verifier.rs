@@ -342,7 +342,8 @@ mod tests {
         };
 
         assert!(verifier.matches_dn("CN=test.example.com", "CN=test.example.com"));
-        assert!(verifier.matches_dn("CN=Test.Example.Com", "cn=test.example.com")); // Case-insensitive
+        assert!(verifier.matches_dn("CN=Test.Example.Com", "cn=test.example.com"));
+        // Case-insensitive
     }
 
     #[test]

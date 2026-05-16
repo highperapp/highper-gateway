@@ -294,13 +294,22 @@ impl AwsWafClient {
                 // Extract name from ARN: arn:aws:wafv2:region:account:scope/webacl/name/id
                 let parts: Vec<&str> = arn.split('/').collect();
                 if parts.len() >= 3 {
-                    (parts[parts.len() - 2].to_string(), parts[parts.len() - 1].to_string())
+                    (
+                        parts[parts.len() - 2].to_string(),
+                        parts[parts.len() - 1].to_string(),
+                    )
                 } else {
-                    return Err(AwsWafError::ConfigurationError("Invalid ARN format".to_string()));
+                    return Err(AwsWafError::ConfigurationError(
+                        "Invalid ARN format".to_string(),
+                    ));
                 }
             }
             (None, Some(id)) => ("unknown".to_string(), id.clone()),
-            _ => return Err(AwsWafError::ConfigurationError("No Web ACL configured".to_string())),
+            _ => {
+                return Err(AwsWafError::ConfigurationError(
+                    "No Web ACL configured".to_string(),
+                ))
+            }
         };
 
         // For now, we'll use CheckCapacity as a health check
@@ -332,7 +341,9 @@ impl AwsWafClient {
                             .cloud_watch_metrics_enabled(true)
                             .metric_name("health-check")
                             .build()
-                            .map_err(|e| AwsWafError::ApiError(format!("Visibility config error: {:?}", e)))?,
+                            .map_err(|e| {
+                                AwsWafError::ApiError(format!("Visibility config error: {:?}", e))
+                            })?,
                     )
                     .build()
                     .map_err(|e| AwsWafError::ApiError(format!("Rule build error: {:?}", e)))?,
@@ -341,10 +352,16 @@ impl AwsWafClient {
             .map_err(|e| AwsWafError::ApiError(format!("Input build error: {:?}", e)))?;
 
         // Make API call with timeout and retry
-        let result = tokio::time::timeout(Duration::from_secs(5), self.client.check_capacity().set_input(Some(check_input)).send())
-            .await
-            .map_err(|_| AwsWafError::NetworkError("Request timeout".to_string()))?
-            .map_err(|e| AwsWafError::ApiError(format!("API call failed: {:?}", e)))?;
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.client
+                .check_capacity()
+                .set_input(Some(check_input))
+                .send(),
+        )
+        .await
+        .map_err(|_| AwsWafError::NetworkError("Request timeout".to_string()))?
+        .map_err(|e| AwsWafError::ApiError(format!("API call failed: {:?}", e)))?;
 
         tracing::debug!(
             "AWS WAF CheckCapacity result for {}: capacity={}",
@@ -536,12 +553,12 @@ impl WafEngine for AwsWafEngine {
 
         let decision_result = if let Ok(handle) = rt_handle {
             // We're already in a tokio runtime, spawn and block
-            tokio::task::block_in_place(|| {
-                handle.block_on(self.check_with_aws_waf(context))
-            })
+            tokio::task::block_in_place(|| handle.block_on(self.check_with_aws_waf(context)))
         } else {
             // No runtime available, use fallback
-            Err(AwsWafError::ConfigurationError("No tokio runtime available".to_string()))
+            Err(AwsWafError::ConfigurationError(
+                "No tokio runtime available".to_string(),
+            ))
         };
 
         match decision_result {
@@ -850,7 +867,9 @@ mod tests {
         let config = AwsWafConfig {
             enabled: true,
             region: "us-east-1".to_string(),
-            web_acl_arn: Some("arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc123".to_string()),
+            web_acl_arn: Some(
+                "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc123".to_string(),
+            ),
             web_acl_id: None,
             managed_rule_groups: vec![ManagedRuleGroup::AwsCommonRules],
             use_local_cache: true,

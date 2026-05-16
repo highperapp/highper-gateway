@@ -3,10 +3,10 @@
 //! Implements token bucket algorithm for rate limiting requests per IP address.
 //! Prevents abuse and ensures fair resource allocation.
 
-use dashmap::DashMap;
-use hyper::{Request, Response, StatusCode, body::Incoming};
-use http_body_util::Full;
 use bytes::Bytes;
+use dashmap::DashMap;
+use http_body_util::Full;
+use hyper::{body::Incoming, Request, Response, StatusCode};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::debug;
@@ -111,12 +111,12 @@ impl RateLimiter {
         }
 
         // Get or create bucket for this client
-        let mut entry = self.buckets.entry(client_ip.to_string()).or_insert_with(|| {
-            TokenBucket::new(
-                self.config.requests_per_window,
-                self.config.window_duration,
-            )
-        });
+        let mut entry = self
+            .buckets
+            .entry(client_ip.to_string())
+            .or_insert_with(|| {
+                TokenBucket::new(self.config.requests_per_window, self.config.window_duration)
+            });
 
         entry.try_consume()
     }
@@ -131,28 +131,33 @@ impl RateLimiter {
 
     /// Get current bucket stats for a client
     pub fn get_client_stats(&self, client_ip: &str) -> Option<(f64, f64)> {
-        self.buckets.get(client_ip).map(|bucket| {
-            (bucket.tokens, bucket.capacity)
-        })
+        self.buckets
+            .get(client_ip)
+            .map(|bucket| (bucket.tokens, bucket.capacity))
     }
 
     /// Clean up old buckets (call periodically)
     pub fn cleanup_old_buckets(&self, max_age: Duration) {
         let now = Instant::now();
-        self.buckets.retain(|_, bucket| {
-            now.duration_since(bucket.last_refill) < max_age
-        });
+        self.buckets
+            .retain(|_, bucket| now.duration_since(bucket.last_refill) < max_age);
     }
 
     /// Create rate limit exceeded response
     pub fn rate_limit_response(&self) -> Response<Full<Bytes>> {
-        let message = self.config.rate_limit_message.clone()
+        let message = self
+            .config
+            .rate_limit_message
+            .clone()
             .unwrap_or_else(|| "Rate limit exceeded. Please try again later.".to_string());
 
         Response::builder()
             .status(StatusCode::TOO_MANY_REQUESTS)
             .header("Content-Type", "text/plain")
-            .header("Retry-After", self.config.window_duration.as_secs().to_string())
+            .header(
+                "Retry-After",
+                self.config.window_duration.as_secs().to_string(),
+            )
             .body(Full::new(Bytes::from(message)))
             .unwrap()
     }

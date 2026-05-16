@@ -1,8 +1,8 @@
 //! HTTP server implementation
 
 use crate::config::{Config, Protocol};
-use crate::proxy::Handler;
 use crate::proxy::connection_pool::{ConnectionPoolManager, PoolConfig, PoolStats};
+use crate::proxy::Handler;
 use crate::runtime::GLOBAL_IO;
 use crate::tls::acceptor::TlsAcceptor;
 use crate::tls::ktls;
@@ -17,8 +17,8 @@ use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{copy_bidirectional, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::io::{AsyncWriteExt, copy_bidirectional};
 use tracing::{debug, error, info, warn};
 
 /// HTTP server
@@ -35,7 +35,10 @@ impl Server {
         let mut handler = Handler::new(config.clone());
 
         // Check if any route has webserver configuration
-        let has_static_files = config.routes.iter().any(|r| r.static_files || r.root.is_some());
+        let has_static_files = config
+            .routes
+            .iter()
+            .any(|r| r.static_files || r.root.is_some());
         let has_php_fpm = config.routes.iter().any(|r| r.php_fpm.is_some());
 
         // Initialize static file handler if needed
@@ -44,7 +47,9 @@ impl Server {
             use std::path::PathBuf;
 
             // Get document root from first route that has one, or use default
-            let default_root = config.routes.iter()
+            let default_root = config
+                .routes
+                .iter()
                 .find_map(|r| r.root.as_ref())
                 .cloned()
                 .unwrap_or_else(|| "/var/www/html".to_string());
@@ -52,17 +57,23 @@ impl Server {
             // Create webserver config
             let webserver_config = WebServerConfig::default();
 
-            info!("Static file handler initialized with root: {}", default_root);
-            let static_handler = StaticFileHandler::new(PathBuf::from(default_root), webserver_config);
+            info!(
+                "Static file handler initialized with root: {}",
+                default_root
+            );
+            let static_handler =
+                StaticFileHandler::new(PathBuf::from(default_root), webserver_config);
             handler = handler.with_static_file_handler(Arc::new(static_handler));
         }
 
         // Initialize PHP-FPM pool if needed
         if has_php_fpm {
-            use crate::webserver::{PhpFpmPool, PhpFpmConfig as WebserverPhpFpmConfig};
+            use crate::webserver::{PhpFpmConfig as WebserverPhpFpmConfig, PhpFpmPool};
 
             // Use the first PHP-FPM configuration from routes
-            if let Some(route_php_config) = config.routes.iter()
+            if let Some(route_php_config) = config
+                .routes
+                .iter()
                 .find_map(|r| r.php_fpm.as_ref())
                 .filter(|php| php.enabled)
             {
@@ -80,8 +91,10 @@ impl Server {
                     document_root: route_php_config.document_root.clone(),
                 };
 
-                info!("PHP-FPM pool initialized: socket={}, pool_size={}",
-                    webserver_php_config.socket, webserver_php_config.pool_size);
+                info!(
+                    "PHP-FPM pool initialized: socket={}, pool_size={}",
+                    webserver_php_config.socket, webserver_php_config.pool_size
+                );
                 let php_pool = PhpFpmPool::new(webserver_php_config);
                 handler = handler.with_php_fpm_pool(Arc::new(php_pool));
             }
@@ -138,8 +151,11 @@ impl Server {
             keep_alive_timeout: Duration::from_secs(60),
         };
         let connection_pool = Arc::new(ConnectionPoolManager::new(pool_config));
-        info!("Connection pool initialized: max_per_upstream={}, idle_timeout={:?}",
-            100, Duration::from_secs(90));
+        info!(
+            "Connection pool initialized: max_per_upstream={}, idle_timeout={:?}",
+            100,
+            Duration::from_secs(90)
+        );
 
         Self {
             config,
@@ -170,7 +186,11 @@ impl Server {
 
         // Log which I/O backend is being used
         let backend_stats = GLOBAL_IO.stats();
-        info!("I/O backend: {} ({})", GLOBAL_IO.name(), backend_stats.backend_info);
+        info!(
+            "I/O backend: {} ({})",
+            GLOBAL_IO.name(),
+            backend_stats.backend_info
+        );
 
         // Use production-optimized socket configuration
         let socket_config = SocketConfig::production();
@@ -182,21 +202,19 @@ impl Server {
                 Ok(addr) => {
                     // Create optimized socket with SO_REUSEADDR, SO_REUSEPORT, TCP_FASTOPEN, etc.
                     match create_optimized_socket(addr, &socket_config) {
-                        Ok(socket) => {
-                            match socket_to_listener(socket) {
-                                Ok(listener) => {
-                                    info!(
+                        Ok(socket) => match socket_to_listener(socket) {
+                            Ok(listener) => {
+                                info!(
                                         "HTTP listening on {} (optimized: reuse_addr, reuse_port, fastopen, linger=0)",
                                         addr
                                     );
-                                    http_listeners.push((listener, false));
-                                }
-                                Err(e) => {
-                                    error!("Failed to convert socket to listener for {}: {}", addr, e);
-                                    return Err(e.into());
-                                }
+                                http_listeners.push((listener, false));
                             }
-                        }
+                            Err(e) => {
+                                error!("Failed to convert socket to listener for {}: {}", addr, e);
+                                return Err(e.into());
+                            }
+                        },
                         Err(e) => {
                             error!("Failed to create optimized socket for {}: {}", addr, e);
                             return Err(e.into());
@@ -218,21 +236,22 @@ impl Server {
                     Ok(addr) => {
                         // Create optimized socket for HTTPS
                         match create_optimized_socket(addr, &socket_config) {
-                            Ok(socket) => {
-                                match socket_to_listener(socket) {
-                                    Ok(listener) => {
-                                        info!(
+                            Ok(socket) => match socket_to_listener(socket) {
+                                Ok(listener) => {
+                                    info!(
                                             "HTTPS listening on {} (optimized: reuse_addr, reuse_port, fastopen, linger=0)",
                                             addr
                                         );
-                                        https_listeners.push((listener, true));
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to convert socket to listener for {}: {}", addr, e);
-                                        return Err(e.into());
-                                    }
+                                    https_listeners.push((listener, true));
                                 }
-                            }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to convert socket to listener for {}: {}",
+                                        addr, e
+                                    );
+                                    return Err(e.into());
+                                }
+                            },
                             Err(e) => {
                                 error!("Failed to create optimized socket for {}: {}", addr, e);
                                 return Err(e.into());
@@ -260,7 +279,8 @@ impl Server {
         // Determine which protocols are enabled
         let supports_http1 = self.config.server.protocols.contains(&Protocol::Http1);
         let supports_http2 = self.config.server.protocols.contains(&Protocol::Http2);
-        let supports_http3 = self.config.server.protocols.contains(&Protocol::Http3) && self.config.server.http3.enabled;
+        let supports_http3 = self.config.server.protocols.contains(&Protocol::Http3)
+            && self.config.server.http3.enabled;
 
         info!(
             "Enabled protocols: HTTP/1.1={}, HTTP/2={}, HTTP/3={}",
@@ -297,8 +317,11 @@ impl Server {
                     match accept_result {
                         Ok((stream, remote_addr)) => {
                             // Log backend stats periodically (every 1000 connections)
-                            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                            if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 1000 == 0 {
+                            static COUNTER: std::sync::atomic::AtomicU64 =
+                                std::sync::atomic::AtomicU64::new(0);
+                            if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 1000
+                                == 0
+                            {
                                 let stats = GLOBAL_IO.stats();
                                 debug!(
                                     "I/O backend stats: {} pending ops, {} total ops, backend: {}",
@@ -330,19 +353,24 @@ impl Server {
                                                 if supports_http1 && supports_http2 {
                                                     // Both protocols enabled, ALPN will negotiate
                                                     debug!("Serving HTTPS connection from {} with ALPN negotiation", remote_addr);
-                                                    if let Err(_e) = http2::Builder::new(TokioExecutor::new())
-                                                        .serve_connection(io, service)
-                                                        .await
+                                                    if let Err(_e) =
+                                                        http2::Builder::new(TokioExecutor::new())
+                                                            .serve_connection(io, service)
+                                                            .await
                                                     {
                                                         // Try HTTP/1.1 if HTTP/2 fails
-                                                        debug!("HTTP/2 failed for {}, trying HTTP/1.1", remote_addr);
+                                                        debug!(
+                                                            "HTTP/2 failed for {}, trying HTTP/1.1",
+                                                            remote_addr
+                                                        );
                                                     }
                                                 } else if supports_http2 {
                                                     // HTTP/2 only
                                                     debug!("Serving HTTPS connection from {} with HTTP/2", remote_addr);
-                                                    if let Err(e) = http2::Builder::new(TokioExecutor::new())
-                                                        .serve_connection(io, service)
-                                                        .await
+                                                    if let Err(e) =
+                                                        http2::Builder::new(TokioExecutor::new())
+                                                            .serve_connection(io, service)
+                                                            .await
                                                     {
                                                         warn!("Error serving HTTP/2 connection from {}: {}", remote_addr, e);
                                                     }
@@ -358,7 +386,10 @@ impl Server {
                                                 }
                                             }
                                             Err(e) => {
-                                                warn!("TLS handshake failed for {}: {}", remote_addr, e);
+                                                warn!(
+                                                    "TLS handshake failed for {}: {}",
+                                                    remote_addr, e
+                                                );
                                             }
                                         }
                                     } else {
@@ -377,7 +408,10 @@ impl Server {
                                             .with_upgrades()
                                             .await
                                         {
-                                            warn!("Error serving connection from {}: {}", remote_addr, e);
+                                            warn!(
+                                                "Error serving connection from {}: {}",
+                                                remote_addr, e
+                                            );
                                         }
                                     } else if supports_http2 {
                                         // HTTP/2 only (for gRPC, h2c, etc.)
@@ -387,16 +421,25 @@ impl Server {
                                             .serve_connection(io, service)
                                             .await
                                         {
-                                            warn!("Error serving HTTP/2 connection from {}: {}", remote_addr, e);
+                                            warn!(
+                                                "Error serving HTTP/2 connection from {}: {}",
+                                                remote_addr, e
+                                            );
                                         }
                                     } else {
                                         // HTTP/1.1 only (default)
-                                        debug!("Serving HTTP connection from {} with HTTP/1.1", remote_addr);
+                                        debug!(
+                                            "Serving HTTP connection from {} with HTTP/1.1",
+                                            remote_addr
+                                        );
                                         if let Err(e) = http1::Builder::new()
                                             .serve_connection(io, service)
                                             .await
                                         {
-                                            warn!("Error serving HTTP/1.1 connection from {}: {}", remote_addr, e);
+                                            warn!(
+                                                "Error serving HTTP/1.1 connection from {}: {}",
+                                                remote_addr, e
+                                            );
                                         }
                                     }
                                 }
@@ -464,18 +507,16 @@ impl Server {
         let mut listeners = Vec::new();
         for bind_addr in &passthrough_config.bind {
             match bind_addr.parse::<SocketAddr>() {
-                Ok(addr) => {
-                    match TcpListener::bind(addr).await {
-                        Ok(listener) => {
-                            info!("TLS passthrough listening on {}", addr);
-                            listeners.push(listener);
-                        }
-                        Err(e) => {
-                            error!("Failed to bind passthrough to {}: {}", addr, e);
-                            return Err(e.into());
-                        }
+                Ok(addr) => match TcpListener::bind(addr).await {
+                    Ok(listener) => {
+                        info!("TLS passthrough listening on {}", addr);
+                        listeners.push(listener);
                     }
-                }
+                    Err(e) => {
+                        error!("Failed to bind passthrough to {}: {}", addr, e);
+                        return Err(e.into());
+                    }
+                },
                 Err(e) => {
                     error!("Invalid passthrough bind address '{}': {}", bind_addr, e);
                     return Err(e.into());
@@ -510,7 +551,10 @@ impl Server {
                                     }
                                 };
 
-                                info!("TLS passthrough: SNI={} from {}", sni_info.server_name, remote_addr);
+                                info!(
+                                    "TLS passthrough: SNI={} from {}",
+                                    sni_info.server_name, remote_addr
+                                );
 
                                 // Find matching route
                                 let passthrough_config = match &config.tls {
@@ -521,8 +565,13 @@ impl Server {
                                     None => return,
                                 };
 
-                                let backend_url = passthrough_config.routes.iter()
-                                    .find(|r| r.enabled && matches_sni(&r.server_name, &sni_info.server_name))
+                                let backend_url = passthrough_config
+                                    .routes
+                                    .iter()
+                                    .find(|r| {
+                                        r.enabled
+                                            && matches_sni(&r.server_name, &sni_info.server_name)
+                                    })
                                     .map(|r| &r.upstream)
                                     .or(passthrough_config.default_backend.as_ref());
 
@@ -545,16 +594,20 @@ impl Server {
                                 };
 
                                 // Use connection pool for backend connection (upstream name = backend_url for passthrough)
-                                let mut backend = match pool.get_connection(backend_url, backend_addr).await {
-                                    Ok(s) => {
-                                        debug!("Got connection from pool for {}", backend_url);
-                                        s
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to connect to backend {}: {}", backend_addr, e);
-                                        return;
-                                    }
-                                };
+                                let mut backend =
+                                    match pool.get_connection(backend_url, backend_addr).await {
+                                        Ok(s) => {
+                                            debug!("Got connection from pool for {}", backend_url);
+                                            s
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "Failed to connect to backend {}: {}",
+                                                backend_addr, e
+                                            );
+                                            return;
+                                        }
+                                    };
 
                                 // Replay ClientHello to backend
                                 if let Err(e) = backend.write_all(&sni_info.client_hello).await {

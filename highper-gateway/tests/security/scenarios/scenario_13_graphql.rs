@@ -62,9 +62,8 @@ async fn test_gql_01_introspection_disclosure() {
             .await;
 
         if let Ok((status, body, _)) = result {
-            let has_schema = body.contains("__schema")
-                || body.contains("queryType")
-                || body.contains("types");
+            let has_schema =
+                body.contains("__schema") || body.contains("queryType") || body.contains("types");
 
             if status == StatusCode::OK && has_schema {
                 println!("  [WARN] Introspection enabled - schema exposed");
@@ -239,10 +238,7 @@ async fn test_gql_04_field_enumeration() {
     ];
 
     for (typo, expected) in typos {
-        let query = format!(
-            r#"{{"query": "{{ user {{ {} }} }}"}}"#,
-            typo
-        );
+        let query = format!(r#"{{"query": "{{ user {{ {} }} }}"}}"#, typo);
 
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_string(), "application/json".to_string());
@@ -253,10 +249,7 @@ async fn test_gql_04_field_enumeration() {
 
         if let Ok((_, body, _)) = result {
             if body.contains("Did you mean") || body.contains(expected) {
-                println!(
-                    "  [INFO] '{}' suggests '{}'",
-                    typo, expected
-                );
+                println!("  [INFO] '{}' suggests '{}'", typo, expected);
             } else {
                 println!("  '{}': no suggestion", typo);
             }
@@ -362,10 +355,7 @@ async fn test_gql_06_complexity_attack() {
             || body.contains("exceeded")
             || status == StatusCode::BAD_REQUEST;
 
-        println!(
-            "  High complexity query: {} ({} ms)",
-            status, response_time
-        );
+        println!("  High complexity query: {} ({} ms)", status, response_time);
 
         if blocked {
             println!("  [PASS] Complex query blocked");

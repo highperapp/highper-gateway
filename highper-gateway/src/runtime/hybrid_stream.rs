@@ -84,10 +84,7 @@ impl HybridTcpStream {
     /// ```
     pub fn from_tokio_stream(stream: TcpStream) -> Self {
         let fd = stream.as_raw_fd();
-        Self {
-            inner: stream,
-            fd,
-        }
+        Self { inner: stream, fd }
     }
 
     /// Get a reference to the underlying tokio TcpStream
@@ -157,9 +154,11 @@ mod tests {
     async fn test_hybrid_stream_creation() {
         // Test that we can create a HybridTcpStream
         // (Can't test actual I/O without a server)
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
             .expect("Failed to bind test listener");
-        let addr = listener.local_addr()
+        let addr = listener
+            .local_addr()
             .expect("Failed to get listener address");
 
         // Connect in background
@@ -168,7 +167,9 @@ mod tests {
         });
 
         // Accept and wrap
-        let (stream, _) = listener.accept().await
+        let (stream, _) = listener
+            .accept()
+            .await
             .expect("Failed to accept test connection");
         let hybrid = HybridTcpStream::from_tokio_stream(stream);
 

@@ -242,7 +242,9 @@ impl CircuitBreaker {
 
     /// Record successful request
     pub async fn record_success(&self) {
-        self.stats.successful_requests.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .successful_requests
+            .fetch_add(1, Ordering::Relaxed);
 
         let current_state = CircuitState::from(self.state.load(Ordering::Relaxed));
 
@@ -305,9 +307,8 @@ impl CircuitBreaker {
 
     /// Transition to open state
     async fn open_circuit(&self) {
-        let old_state = CircuitState::from(
-            self.state.swap(CircuitState::Open as u8, Ordering::SeqCst)
-        );
+        let old_state =
+            CircuitState::from(self.state.swap(CircuitState::Open as u8, Ordering::SeqCst));
 
         if old_state != CircuitState::Open {
             self.stats.circuit_opened.fetch_add(1, Ordering::Relaxed);
@@ -320,9 +321,7 @@ impl CircuitBreaker {
 
             warn!(
                 "Circuit breaker OPENED for {} (failures: {}, wait: {:?})",
-                self.backend_addr,
-                self.config.failure_threshold,
-                self.config.wait_duration
+                self.backend_addr, self.config.failure_threshold, self.config.wait_duration
             );
         }
     }
@@ -330,11 +329,14 @@ impl CircuitBreaker {
     /// Transition to half-open state
     async fn try_half_open(&self) {
         let old_state = CircuitState::from(
-            self.state.swap(CircuitState::HalfOpen as u8, Ordering::SeqCst)
+            self.state
+                .swap(CircuitState::HalfOpen as u8, Ordering::SeqCst),
         );
 
         if old_state != CircuitState::HalfOpen {
-            self.stats.circuit_half_opened.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .circuit_half_opened
+                .fetch_add(1, Ordering::Relaxed);
 
             let mut details = self.state_details.write().await;
             details.last_state_change = Instant::now();
@@ -351,7 +353,8 @@ impl CircuitBreaker {
     /// Transition to closed state
     async fn close_circuit(&self) {
         let old_state = CircuitState::from(
-            self.state.swap(CircuitState::Closed as u8, Ordering::SeqCst)
+            self.state
+                .swap(CircuitState::Closed as u8, Ordering::SeqCst),
         );
 
         if old_state != CircuitState::Closed {
@@ -392,7 +395,8 @@ impl CircuitBreaker {
 
     /// Reset circuit breaker to initial state
     pub async fn reset(&self) {
-        self.state.store(CircuitState::Closed as u8, Ordering::SeqCst);
+        self.state
+            .store(CircuitState::Closed as u8, Ordering::SeqCst);
 
         let mut details = self.state_details.write().await;
         details.last_state_change = Instant::now();

@@ -157,7 +157,10 @@ fn main() -> ExitCode {
     }
 
     if violations.is_empty() {
-        println!("lint-runtime-config: clean ({} paths checked)", STAGE_PATHS.len());
+        println!(
+            "lint-runtime-config: clean ({} paths checked)",
+            STAGE_PATHS.len()
+        );
         ExitCode::SUCCESS
     } else {
         eprintln!("lint-runtime-config: {} violation(s):", violations.len());

@@ -48,10 +48,13 @@ impl Default for DiskCacheConfig {
         Self {
             path: PathBuf::from("/var/cache/highper-gateway"),
             max_size: 10 * 1024 * 1024 * 1024, // 10GB
-            min_object_size: 0,                 // Cache everything
+            min_object_size: 0,                // Cache everything
             compression: false,
             cleanup_interval: Duration::from_secs(
-                *crate::runtime_config::current().cache.disk_cleanup_interval_secs.get(),
+                *crate::runtime_config::current()
+                    .cache
+                    .disk_cleanup_interval_secs
+                    .get(),
             ),
         }
     }
@@ -233,21 +236,28 @@ impl DiskBackend {
         let mut read_dir = match fs::read_dir(&self.config.path).await {
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(CacheError::Backend(format!("Failed to read cache dir: {}", e))),
+            Err(e) => {
+                return Err(CacheError::Backend(format!(
+                    "Failed to read cache dir: {}",
+                    e
+                )))
+            }
         };
 
-        while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
-            CacheError::Backend(format!("Failed to read cache dir entry: {}", e))
-        })? {
+        while let Some(entry) = read_dir
+            .next_entry()
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to read cache dir entry: {}", e)))?
+        {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
             }
 
             // Read subdirectory
-            let mut sub_dir = fs::read_dir(&path).await.map_err(|e| {
-                CacheError::Backend(format!("Failed to read cache subdir: {}", e))
-            })?;
+            let mut sub_dir = fs::read_dir(&path)
+                .await
+                .map_err(|e| CacheError::Backend(format!("Failed to read cache subdir: {}", e)))?;
 
             while let Some(file_entry) = sub_dir.next_entry().await.map_err(|e| {
                 CacheError::Backend(format!("Failed to read cache file entry: {}", e))
@@ -274,14 +284,22 @@ impl DiskBackend {
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to read cache metadata {}: {}", file_path.display(), e);
+                        warn!(
+                            "Failed to read cache metadata {}: {}",
+                            file_path.display(),
+                            e
+                        );
                     }
                 }
             }
         }
 
         self.current_size.store(total_size, Ordering::SeqCst);
-        info!("Loaded {} cache entries ({}MB)", entries_loaded, total_size / (1024 * 1024));
+        info!(
+            "Loaded {} cache entries ({}MB)",
+            entries_loaded,
+            total_size / (1024 * 1024)
+        );
 
         Ok(())
     }
@@ -364,7 +382,11 @@ impl DiskBackend {
         }
 
         self.evictions.fetch_add(evicted as u64, Ordering::Relaxed);
-        info!("Evicted {} entries, freed {}MB", evicted, freed / (1024 * 1024));
+        info!(
+            "Evicted {} entries, freed {}MB",
+            evicted,
+            freed / (1024 * 1024)
+        );
 
         Ok(())
     }
@@ -435,11 +457,19 @@ impl CacheBackend for DiskBackend {
                 self.misses.fetch_add(1, Ordering::Relaxed);
                 Ok(None)
             }
-            Err(e) => Err(CacheError::Backend(format!("Failed to read cache file: {}", e))),
+            Err(e) => Err(CacheError::Backend(format!(
+                "Failed to read cache file: {}",
+                e
+            ))),
         }
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         // Skip if below minimum size
         if value.len() < self.config.min_object_size {
             return Ok(());
@@ -463,13 +493,13 @@ impl CacheBackend for DiskBackend {
 
         // Write data atomically (temp file + rename)
         let temp_path = file_path.with_extension("tmp");
-        fs::write(&temp_path, &data).await.map_err(|e| {
-            CacheError::Backend(format!("Failed to write cache file: {}", e))
-        })?;
+        fs::write(&temp_path, &data)
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to write cache file: {}", e)))?;
 
-        fs::rename(&temp_path, &file_path).await.map_err(|e| {
-            CacheError::Backend(format!("Failed to rename cache file: {}", e))
-        })?;
+        fs::rename(&temp_path, &file_path)
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to rename cache file: {}", e)))?;
 
         // Create metadata
         let now = std::time::SystemTime::now()
@@ -488,9 +518,9 @@ impl CacheBackend for DiskBackend {
 
         // Write metadata
         let meta_json = serde_json::to_vec(&meta)?;
-        fs::write(&meta_path, &meta_json).await.map_err(|e| {
-            CacheError::Backend(format!("Failed to write cache metadata: {}", e))
-        })?;
+        fs::write(&meta_path, &meta_json)
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to write cache metadata: {}", e)))?;
 
         // Update index
         if let Some(old) = self.index.insert(key.to_string(), meta) {
@@ -543,13 +573,15 @@ impl CacheBackend for DiskBackend {
         self.current_size.store(0, Ordering::SeqCst);
 
         // Remove all cache files
-        let mut read_dir = fs::read_dir(&self.config.path).await.map_err(|e| {
-            CacheError::Backend(format!("Failed to read cache dir: {}", e))
-        })?;
+        let mut read_dir = fs::read_dir(&self.config.path)
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to read cache dir: {}", e)))?;
 
-        while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
-            CacheError::Backend(format!("Failed to read cache dir entry: {}", e))
-        })? {
+        while let Some(entry) = read_dir
+            .next_entry()
+            .await
+            .map_err(|e| CacheError::Backend(format!("Failed to read cache dir entry: {}", e)))?
+        {
             let path = entry.path();
             if path.is_dir() {
                 let _ = fs::remove_dir_all(&path).await;
@@ -670,7 +702,12 @@ impl CacheBackend for TieredBackend {
         Ok(None)
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         // Always write to warm (disk) tier for persistence
         self.warm.set(key, value.clone(), ttl).await?;
 
@@ -711,13 +748,13 @@ impl CacheBackend for TieredBackend {
             active_entries: hot_stats.active_entries + warm_stats.active_entries,
             expired_entries: hot_stats.expired_entries + warm_stats.expired_entries,
             hit_rate: (hot_stats.hits + warm_stats.hits) as f64
-                / (hot_stats.hits + hot_stats.misses + warm_stats.hits + warm_stats.misses).max(1) as f64,
+                / (hot_stats.hits + hot_stats.misses + warm_stats.hits + warm_stats.misses).max(1)
+                    as f64,
             hits: hot_stats.hits + warm_stats.hits,
             misses: warm_stats.misses, // Only count misses from warm tier
             backend_info: format!(
                 "Tiered (Hot: {} entries, Warm: {})",
-                hot_stats.total_entries,
-                warm_stats.backend_info
+                hot_stats.total_entries, warm_stats.backend_info
             ),
         })
     }

@@ -2,7 +2,7 @@
 //!
 //! Extracts session keys from rustls connections for kTLS configuration
 
-use super::{SessionKeys, CipherSuite, TlsVersion};
+use super::{CipherSuite, SessionKeys, TlsVersion};
 use std::io;
 use tracing::debug;
 
@@ -28,7 +28,7 @@ pub fn extract_session_keys_from_rustls(
 
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "Session key extraction from rustls not yet implemented"
+        "Session key extraction from rustls not yet implemented",
     ))
 }
 
@@ -57,10 +57,7 @@ pub fn map_protocol_version(version: u16) -> Option<TlsVersion> {
 }
 
 /// Helper to create session keys manually (for testing)
-pub fn create_test_session_keys(
-    version: TlsVersion,
-    cipher_suite: CipherSuite,
-) -> SessionKeys {
+pub fn create_test_session_keys(version: TlsVersion, cipher_suite: CipherSuite) -> SessionKeys {
     let key_size = cipher_suite.key_size();
     let iv_size = cipher_suite.iv_size();
     let salt_size = cipher_suite.salt_size();

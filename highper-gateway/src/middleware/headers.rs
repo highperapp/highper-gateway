@@ -111,7 +111,7 @@ impl SecurityHeadersConfig {
     pub fn api() -> Self {
         Self {
             x_content_type_options: true,
-            x_frame_options: None, // Not needed for API endpoints
+            x_frame_options: None,  // Not needed for API endpoints
             x_xss_protection: None, // Not needed for API endpoints
             hsts: Some("max-age=31536000; includeSubDomains".to_string()),
             csp: None,
@@ -179,13 +179,18 @@ impl Middleware for SecurityHeadersMiddleware {
 
             // X-Content-Type-Options
             if config.x_content_type_options {
-                headers.insert("x-content-type-options", "nosniff".parse().expect("static header value"));
+                headers.insert(
+                    "x-content-type-options",
+                    "nosniff".parse().expect("static header value"),
+                );
             }
 
             // X-Frame-Options
             if let Some(value) = &config.x_frame_options {
                 match value.parse() {
-                    Ok(v) => { headers.insert("x-frame-options", v); }
+                    Ok(v) => {
+                        headers.insert("x-frame-options", v);
+                    }
                     Err(e) => warn!("Invalid x-frame-options header value '{}': {}", value, e),
                 }
             }
@@ -193,7 +198,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // X-XSS-Protection
             if let Some(value) = &config.x_xss_protection {
                 match value.parse() {
-                    Ok(v) => { headers.insert("x-xss-protection", v); }
+                    Ok(v) => {
+                        headers.insert("x-xss-protection", v);
+                    }
                     Err(e) => warn!("Invalid x-xss-protection header value '{}': {}", value, e),
                 }
             }
@@ -201,7 +208,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Strict-Transport-Security (HSTS)
             if let Some(value) = &config.hsts {
                 match value.parse() {
-                    Ok(v) => { headers.insert(header::STRICT_TRANSPORT_SECURITY, v); }
+                    Ok(v) => {
+                        headers.insert(header::STRICT_TRANSPORT_SECURITY, v);
+                    }
                     Err(e) => warn!("Invalid HSTS header value '{}': {}", value, e),
                 }
             }
@@ -209,7 +218,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Content-Security-Policy
             if let Some(value) = &config.csp {
                 match value.parse() {
-                    Ok(v) => { headers.insert("content-security-policy", v); }
+                    Ok(v) => {
+                        headers.insert("content-security-policy", v);
+                    }
                     Err(e) => warn!("Invalid CSP header value '{}': {}", value, e),
                 }
             }
@@ -217,7 +228,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Referrer-Policy
             if let Some(value) = &config.referrer_policy {
                 match value.parse() {
-                    Ok(v) => { headers.insert(header::REFERRER_POLICY, v); }
+                    Ok(v) => {
+                        headers.insert(header::REFERRER_POLICY, v);
+                    }
                     Err(e) => warn!("Invalid referrer-policy header value '{}': {}", value, e),
                 }
             }
@@ -225,7 +238,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Permissions-Policy
             if let Some(value) = &config.permissions_policy {
                 match value.parse() {
-                    Ok(v) => { headers.insert("permissions-policy", v); }
+                    Ok(v) => {
+                        headers.insert("permissions-policy", v);
+                    }
                     Err(e) => warn!("Invalid permissions-policy header value '{}': {}", value, e),
                 }
             }
@@ -233,7 +248,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Cross-Origin-Embedder-Policy (COEP)
             if let Some(value) = &config.cross_origin_embedder_policy {
                 match value.parse() {
-                    Ok(v) => { headers.insert("cross-origin-embedder-policy", v); }
+                    Ok(v) => {
+                        headers.insert("cross-origin-embedder-policy", v);
+                    }
                     Err(e) => warn!("Invalid COEP header value '{}': {}", value, e),
                 }
             }
@@ -241,7 +258,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Cross-Origin-Opener-Policy (COOP)
             if let Some(value) = &config.cross_origin_opener_policy {
                 match value.parse() {
-                    Ok(v) => { headers.insert("cross-origin-opener-policy", v); }
+                    Ok(v) => {
+                        headers.insert("cross-origin-opener-policy", v);
+                    }
                     Err(e) => warn!("Invalid COOP header value '{}': {}", value, e),
                 }
             }
@@ -249,7 +268,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // Cross-Origin-Resource-Policy (CORP)
             if let Some(value) = &config.cross_origin_resource_policy {
                 match value.parse() {
-                    Ok(v) => { headers.insert("cross-origin-resource-policy", v); }
+                    Ok(v) => {
+                        headers.insert("cross-origin-resource-policy", v);
+                    }
                     Err(e) => warn!("Invalid CORP header value '{}': {}", value, e),
                 }
             }
@@ -257,7 +278,9 @@ impl Middleware for SecurityHeadersMiddleware {
             // X-Download-Options
             if let Some(value) = &config.x_download_options {
                 match value.parse() {
-                    Ok(v) => { headers.insert("x-download-options", v); }
+                    Ok(v) => {
+                        headers.insert("x-download-options", v);
+                    }
                     Err(e) => warn!("Invalid x-download-options header value '{}': {}", value, e),
                 }
             }
@@ -265,8 +288,13 @@ impl Middleware for SecurityHeadersMiddleware {
             // X-Permitted-Cross-Domain-Policies
             if let Some(value) = &config.x_permitted_cross_domain_policies {
                 match value.parse() {
-                    Ok(v) => { headers.insert("x-permitted-cross-domain-policies", v); }
-                    Err(e) => warn!("Invalid x-permitted-cross-domain-policies header value '{}': {}", value, e),
+                    Ok(v) => {
+                        headers.insert("x-permitted-cross-domain-policies", v);
+                    }
+                    Err(e) => warn!(
+                        "Invalid x-permitted-cross-domain-policies header value '{}': {}",
+                        value, e
+                    ),
                 }
             }
 
@@ -275,7 +303,9 @@ impl Middleware for SecurityHeadersMiddleware {
                 headers.remove(header::SERVER);
             } else if let Some(value) = &config.custom_server_header {
                 match value.parse() {
-                    Ok(v) => { headers.insert(header::SERVER, v); }
+                    Ok(v) => {
+                        headers.insert(header::SERVER, v);
+                    }
                     Err(e) => warn!("Invalid server header value '{}': {}", value, e),
                 }
             }
@@ -284,7 +314,12 @@ impl Middleware for SecurityHeadersMiddleware {
             if config.remove_powered_by {
                 headers.remove("x-powered-by");
             } else {
-                headers.insert("x-powered-by", "highper-gateway/0.1.0".parse().expect("static header value"));
+                headers.insert(
+                    "x-powered-by",
+                    "highper-gateway/0.1.0"
+                        .parse()
+                        .expect("static header value"),
+                );
             }
 
             Ok(response)

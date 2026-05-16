@@ -3,12 +3,15 @@
 //! Handles gRPC proxying including streaming support
 
 use super::{GrpcRequest, GrpcStatusCode};
-use hyper::{Request, Response, StatusCode, header::{self, HeaderValue}};
-use hyper::body::Incoming;
-use http_body_util::Full;
-use tracing::debug;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper::{
+    header::{self, HeaderValue},
+    Request, Response, StatusCode,
+};
+use tracing::debug;
 
 /// Create a gRPC error response
 pub fn create_grpc_error_response(
@@ -21,14 +24,14 @@ pub fn create_grpc_error_response(
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("application/grpc")
+        HeaderValue::from_static("application/grpc"),
     );
 
     // Set grpc-status trailer
     headers.insert(
         "grpc-status",
         HeaderValue::from_str(&(status_code as i32).to_string())
-            .unwrap_or_else(|_| HeaderValue::from_static("13")) // Internal error
+            .unwrap_or_else(|_| HeaderValue::from_static("13")), // Internal error
     );
 
     // Set grpc-message trailer
@@ -51,15 +54,19 @@ pub async fn proxy_grpc_request(
     backend_url: &str,
     client_request: Request<Incoming>,
 ) -> Result<Response<Incoming>> {
-    use hyper_util::client::legacy::Client as HyperClient;
     use hyper_util::client::legacy::connect::HttpConnector;
+    use hyper_util::client::legacy::Client as HyperClient;
     use hyper_util::rt::TokioExecutor;
 
-    debug!("Proxying gRPC request: {} (type: {:?})", grpc_req.path, grpc_req.call_type);
+    debug!(
+        "Proxying gRPC request: {} (type: {:?})",
+        grpc_req.path, grpc_req.call_type
+    );
 
     // Build backend URI
     let backend_uri = format!("{}{}", backend_url.trim_end_matches('/'), grpc_req.path);
-    let uri = backend_uri.parse::<hyper::Uri>()
+    let uri = backend_uri
+        .parse::<hyper::Uri>()
         .map_err(|e| anyhow!("Invalid backend URI: {}", e))?;
 
     // Create request builder
@@ -76,23 +83,18 @@ pub async fn proxy_grpc_request(
 
     // Ensure gRPC content-type is set
     if !client_headers.contains_key(header::CONTENT_TYPE) {
-        backend_req = backend_req.header(
-            header::CONTENT_TYPE,
-            grpc_req.content_type.as_str()
-        );
+        backend_req = backend_req.header(header::CONTENT_TYPE, grpc_req.content_type.as_str());
     }
 
     // Add grpc-timeout if specified
     if let Some(timeout) = grpc_req.timeout {
-        backend_req = backend_req.header(
-            "grpc-timeout",
-            timeout_to_header(timeout)
-        );
+        backend_req = backend_req.header("grpc-timeout", timeout_to_header(timeout));
     }
 
     // Stream the body directly without buffering (zero-copy)
     let body = client_request.into_body();
-    let backend_request = backend_req.body(body)
+    let backend_request = backend_req
+        .body(body)
         .map_err(|e| anyhow!("Failed to build backend request: {}", e))?;
 
     // Create HTTP/2-only client for gRPC
@@ -102,11 +104,16 @@ pub async fn proxy_grpc_request(
         .build(connector);
 
     // Send request and stream response (supports all streaming types)
-    let response = client.request(backend_request).await
+    let response = client
+        .request(backend_request)
+        .await
         .map_err(|e| anyhow!("Backend request failed: {}", e))?;
 
-    debug!("gRPC backend response: status={}, headers={:?}",
-        response.status(), response.headers());
+    debug!(
+        "gRPC backend response: status={}, headers={:?}",
+        response.status(),
+        response.headers()
+    );
 
     // Return streaming response directly (preserves trailers)
     Ok(response)
@@ -114,7 +121,8 @@ pub async fn proxy_grpc_request(
 
 /// Extract gRPC status from response headers
 pub fn extract_grpc_status<B>(response: &Response<B>) -> Option<GrpcStatusCode> {
-    response.headers()
+    response
+        .headers()
         .get("grpc-status")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<i32>().ok())
@@ -142,7 +150,8 @@ pub fn extract_grpc_status<B>(response: &Response<B>) -> Option<GrpcStatusCode> 
 
 /// Extract gRPC message from response headers
 pub fn extract_grpc_message<B>(response: &Response<B>) -> Option<String> {
-    response.headers()
+    response
+        .headers()
         .get("grpc-message")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -156,10 +165,7 @@ pub fn is_grpc_success<B>(response: &Response<B>) -> bool {
 }
 
 /// Add gRPC metadata to request headers
-pub fn add_grpc_metadata<B>(
-    request: &mut Request<B>,
-    metadata: &[(String, String)],
-) -> Result<()> {
+pub fn add_grpc_metadata<B>(request: &mut Request<B>, metadata: &[(String, String)]) -> Result<()> {
     use hyper::header::HeaderName;
     let headers = request.headers_mut();
 
@@ -194,15 +200,12 @@ pub fn timeout_to_header(timeout: std::time::Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http_body_util::Empty;
     use bytes::Bytes;
+    use http_body_util::Empty;
 
     #[test]
     fn test_create_grpc_error_response() {
-        let response = create_grpc_error_response(
-            GrpcStatusCode::NotFound,
-            "Service not found"
-        );
+        let response = create_grpc_error_response(GrpcStatusCode::NotFound, "Service not found");
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -228,35 +231,34 @@ mod tests {
     #[test]
     fn test_extract_grpc_status() {
         let mut response = Response::new(Empty::<Bytes>::new());
-        response.headers_mut().insert(
-            "grpc-status",
-            HeaderValue::from_static("0")
-        );
+        response
+            .headers_mut()
+            .insert("grpc-status", HeaderValue::from_static("0"));
 
         assert_eq!(extract_grpc_status(&response), Some(GrpcStatusCode::Ok));
 
-        response.headers_mut().insert(
-            "grpc-status",
-            HeaderValue::from_static("5")
-        );
+        response
+            .headers_mut()
+            .insert("grpc-status", HeaderValue::from_static("5"));
 
-        assert_eq!(extract_grpc_status(&response), Some(GrpcStatusCode::NotFound));
+        assert_eq!(
+            extract_grpc_status(&response),
+            Some(GrpcStatusCode::NotFound)
+        );
     }
 
     #[test]
     fn test_is_grpc_success() {
         let mut response = Response::new(Empty::<Bytes>::new());
-        response.headers_mut().insert(
-            "grpc-status",
-            HeaderValue::from_static("0")
-        );
+        response
+            .headers_mut()
+            .insert("grpc-status", HeaderValue::from_static("0"));
 
         assert!(is_grpc_success(&response));
 
-        response.headers_mut().insert(
-            "grpc-status",
-            HeaderValue::from_static("13")
-        );
+        response
+            .headers_mut()
+            .insert("grpc-status", HeaderValue::from_static("13"));
 
         assert!(!is_grpc_success(&response));
     }

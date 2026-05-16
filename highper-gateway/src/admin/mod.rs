@@ -9,30 +9,30 @@
 //! - Health status
 //! - Real-time statistics
 
-pub mod server;
-pub mod routes;
-pub mod stats;
+pub mod auth;
 pub mod backends;
-pub mod upstreams;
 pub mod cache;
+pub mod config_persistence;
+pub mod dashboard;
 pub mod metrics;
 pub mod pool;
 pub mod request_metrics;
-pub mod auth;
-pub mod config_persistence;
-pub mod dashboard;
+pub mod routes;
+pub mod server;
+pub mod stats;
+pub mod upstreams;
 
-pub use server::*;
-pub use routes::*;
-pub use stats::*;
+pub use auth::*;
 pub use backends::*;
-pub use upstreams::*;
 pub use cache::*;
+pub use config_persistence::*;
 pub use metrics::*;
 pub use pool::*;
 pub use request_metrics as req_metrics;
-pub use auth::*;
-pub use config_persistence::*;
+pub use routes::*;
+pub use server::*;
+pub use stats::*;
+pub use upstreams::*;
 
 use serde::{Deserialize, Serialize};
 

@@ -1,11 +1,11 @@
 //! Certificate storage implementation
 
 use crate::Result;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use parking_lot::RwLock;
 use tracing::{debug, error, info};
 
 /// Certificate with its private key
@@ -48,7 +48,10 @@ impl FileStorage {
 
         // Create storage directory if it doesn't exist
         if !base_path.exists() {
-            info!("Creating certificate storage directory: {}", base_path.display());
+            info!(
+                "Creating certificate storage directory: {}",
+                base_path.display()
+            );
             fs::create_dir_all(&base_path)?;
         }
 
@@ -86,7 +89,10 @@ impl FileStorage {
             }
         }
 
-        info!("Loaded {} certificates from storage", self.cache.read().len());
+        info!(
+            "Loaded {} certificates from storage",
+            self.cache.read().len()
+        );
         Ok(())
     }
 

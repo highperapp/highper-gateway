@@ -48,8 +48,8 @@ use io_uring::IoUring;
 use std::alloc::{alloc, dealloc, Layout};
 use std::io;
 use std::ptr::NonNull;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Buffer size for registered buffers (64KB - optimal for most workloads)
 pub const REGISTERED_BUFFER_SIZE: usize = 65536;
@@ -122,12 +122,16 @@ impl RegisteredBufferGuard {
 
     /// Get a reference to the underlying buffer
     pub fn buffer(&self) -> &RegisteredBuffer {
-        self.buffer.as_ref().expect("buffer is only None after Drop")
+        self.buffer
+            .as_ref()
+            .expect("buffer is only None after Drop")
     }
 
     /// Get a mutable reference to the underlying buffer
     pub fn buffer_mut(&mut self) -> &mut RegisteredBuffer {
-        self.buffer.as_mut().expect("buffer is only None after Drop")
+        self.buffer
+            .as_mut()
+            .expect("buffer is only None after Drop")
     }
 
     /// Get the buffer ID for io_uring operations
@@ -213,11 +217,7 @@ impl RegisteredBufferPool {
     ///
     /// - Out of memory
     /// - io_uring registration failed (kernel doesn't support it)
-    pub fn new(
-        ring: &mut IoUring,
-        num_buffers: usize,
-        buffer_size: usize,
-    ) -> io::Result<Self> {
+    pub fn new(ring: &mut IoUring, num_buffers: usize, buffer_size: usize) -> io::Result<Self> {
         // Allocate aligned memory for all buffers
         let total_size = buffer_size * num_buffers;
         let layout = Layout::from_size_align(total_size, BUFFER_ALIGNMENT)
@@ -225,8 +225,12 @@ impl RegisteredBufferPool {
 
         let memory = unsafe {
             let ptr = alloc(layout);
-            NonNull::new(ptr)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::OutOfMemory, "Failed to allocate buffer memory"))?
+            NonNull::new(ptr).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::OutOfMemory,
+                    "Failed to allocate buffer memory",
+                )
+            })?
         };
 
         // Build iovec array for io_uring registration
@@ -253,7 +257,10 @@ impl RegisteredBufferPool {
         unsafe {
             match ring.submitter().register_buffers(&iovecs) {
                 Ok(_) => {
-                    tracing::info!("Successfully registered {} buffers with io_uring", num_buffers);
+                    tracing::info!(
+                        "Successfully registered {} buffers with io_uring",
+                        num_buffers
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -304,7 +311,8 @@ impl RegisteredBufferPool {
     ///
     /// Returns None if all buffers are currently in use.
     pub fn allocate_guard(self: &Arc<Self>) -> Option<RegisteredBufferGuard> {
-        self.allocate().map(|buffer| RegisteredBufferGuard::new(buffer, Arc::clone(self)))
+        self.allocate()
+            .map(|buffer| RegisteredBufferGuard::new(buffer, Arc::clone(self)))
     }
 
     /// Return a buffer to the pool (lock-free)

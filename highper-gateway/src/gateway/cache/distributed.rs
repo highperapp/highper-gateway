@@ -169,9 +169,7 @@ impl DistributedCache {
         };
 
         // Set with TTL
-        self.connection
-            .set_ex(key, data, entry.ttl.as_secs())
-            .await
+        self.connection.set_ex(key, data, entry.ttl.as_secs()).await
     }
 
     /// Remove an entry from cache
@@ -283,7 +281,10 @@ mod tests {
         };
 
         // Store entry
-        cache.set("test-key".to_string(), entry.clone()).await.unwrap();
+        cache
+            .set("test-key".to_string(), entry.clone())
+            .await
+            .unwrap();
 
         // Retrieve entry
         let retrieved = cache.get("test-key").await;

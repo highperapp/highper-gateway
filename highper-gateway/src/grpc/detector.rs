@@ -3,7 +3,7 @@
 //! Detects gRPC requests based on HTTP/2 headers and content-type
 
 use super::{GrpcCallType, GrpcRequest};
-use hyper::{Request, header};
+use hyper::{header, Request};
 use std::time::Duration;
 
 /// Check if a request is a gRPC request
@@ -39,7 +39,8 @@ pub fn parse_grpc_request<B>(req: &Request<B>) -> Option<GrpcRequest> {
     let timeout = extract_timeout(req);
 
     // Get content type
-    let content_type = req.headers()
+    let content_type = req
+        .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|ct| ct.to_str().ok())
         .unwrap_or("application/grpc")
@@ -126,12 +127,12 @@ fn parse_grpc_timeout(timeout_str: &str) -> Option<Duration> {
     let value: u64 = value_str.parse().ok()?;
 
     match unit {
-        'H' => Some(Duration::from_secs(value * 3600)),    // Hours
-        'M' => Some(Duration::from_secs(value * 60)),       // Minutes
-        'S' => Some(Duration::from_secs(value)),            // Seconds
-        'm' => Some(Duration::from_millis(value)),          // Milliseconds
-        'u' => Some(Duration::from_micros(value)),          // Microseconds
-        'n' => Some(Duration::from_nanos(value)),           // Nanoseconds
+        'H' => Some(Duration::from_secs(value * 3600)), // Hours
+        'M' => Some(Duration::from_secs(value * 60)),   // Minutes
+        'S' => Some(Duration::from_secs(value)),        // Seconds
+        'm' => Some(Duration::from_millis(value)),      // Milliseconds
+        'u' => Some(Duration::from_micros(value)),      // Microseconds
+        'n' => Some(Duration::from_nanos(value)),       // Nanoseconds
         _ => None,
     }
 }
@@ -199,7 +200,7 @@ pub fn extract_method_name(path: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hyper::{Request, header::HeaderValue};
+    use hyper::{header::HeaderValue, Request};
 
     #[test]
     fn test_is_grpc_request() {
@@ -237,9 +238,18 @@ mod tests {
         assert_eq!(parse_grpc_timeout("1H"), Some(Duration::from_secs(3600)));
         assert_eq!(parse_grpc_timeout("2M"), Some(Duration::from_secs(120)));
         assert_eq!(parse_grpc_timeout("30S"), Some(Duration::from_secs(30)));
-        assert_eq!(parse_grpc_timeout("1000m"), Some(Duration::from_millis(1000)));
-        assert_eq!(parse_grpc_timeout("1000u"), Some(Duration::from_micros(1000)));
-        assert_eq!(parse_grpc_timeout("1000n"), Some(Duration::from_nanos(1000)));
+        assert_eq!(
+            parse_grpc_timeout("1000m"),
+            Some(Duration::from_millis(1000))
+        );
+        assert_eq!(
+            parse_grpc_timeout("1000u"),
+            Some(Duration::from_micros(1000))
+        );
+        assert_eq!(
+            parse_grpc_timeout("1000n"),
+            Some(Duration::from_nanos(1000))
+        );
         assert_eq!(parse_grpc_timeout("invalid"), None);
     }
 

@@ -82,19 +82,8 @@ pub mod config;
 pub mod handler;
 
 pub use config::{
-    BffConfig,
-    BffRoute,
-    ClientProfile,
-    ClientDetectionConfig,
-    DetectionMethod,
-    ResponseTransformConfig,
-    ComputedField,
-    ClientCacheConfig,
-    ClientRateLimitConfig,
+    BffConfig, BffRoute, ClientCacheConfig, ClientDetectionConfig, ClientProfile,
+    ClientRateLimitConfig, ComputedField, DetectionMethod, ResponseTransformConfig,
 };
 
-pub use handler::{
-    BffHandler,
-    ClientType,
-    RouteMatch,
-};
+pub use handler::{BffHandler, ClientType, RouteMatch};

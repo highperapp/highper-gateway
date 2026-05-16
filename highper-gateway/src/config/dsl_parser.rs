@@ -2,9 +2,9 @@
 //!
 //! Parses the Caddy-like DSL into an AST using pest.
 
+use anyhow::{anyhow, Context, Result};
 use pest::Parser;
 use pest_derive::Parser;
-use anyhow::{anyhow, Context, Result};
 use std::time::Duration;
 
 use super::dsl_ast::*;
@@ -15,8 +15,8 @@ pub struct DslParser;
 
 /// Parse DSL configuration from string
 pub fn parse_dsl(input: &str) -> Result<Config> {
-    let mut pairs = DslParser::parse(Rule::config, input)
-        .context("Failed to parse DSL configuration")?;
+    let mut pairs =
+        DslParser::parse(Rule::config, input).context("Failed to parse DSL configuration")?;
 
     let mut config = Config::default();
 
@@ -41,7 +41,10 @@ pub fn parse_dsl(input: &str) -> Result<Config> {
     Ok(config)
 }
 
-fn parse_global_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair<Rule>) -> Result<()> {
+fn parse_global_directive(
+    global: &mut GlobalConfig,
+    pair: pest::iterators::Pair<Rule>,
+) -> Result<()> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::log_directive => {
@@ -171,7 +174,10 @@ fn parse_protocol_log_levels(pair: pest::iterators::Pair<Rule>) -> Result<Protoc
     Ok(protocols)
 }
 
-fn parse_metrics_directive(global: &mut GlobalConfig, pair: pest::iterators::Pair<Rule>) -> Result<()> {
+fn parse_metrics_directive(
+    global: &mut GlobalConfig,
+    pair: pest::iterators::Pair<Rule>,
+) -> Result<()> {
     for inner in pair.into_inner() {
         if let Rule::metrics_option = inner.as_rule() {
             let text = inner.as_str();
@@ -382,135 +388,57 @@ fn parse_directive(pair: pest::iterators::Pair<Rule>) -> Result<Option<Directive
                 let backends = parse_proxy_directive(inner)?;
                 Ok(Some(Directive::Proxy(backends)))
             }
-            Rule::lb_directive => {
-                Ok(Some(parse_lb_directive(inner)?))
-            }
-            Rule::pool_directive => {
-                Ok(Some(Directive::Pool(parse_pool_directive(inner)?)))
-            }
+            Rule::lb_directive => Ok(Some(parse_lb_directive(inner)?)),
+            Rule::pool_directive => Ok(Some(Directive::Pool(parse_pool_directive(inner)?))),
             Rule::health_directive => {
                 Ok(Some(Directive::HealthCheck(parse_health_directive(inner)?)))
             }
-            Rule::tls_directive => {
-                Ok(Some(Directive::Tls(parse_tls_directive(inner)?)))
-            }
-            Rule::tls_protocols_directive => {
-                Ok(Some(parse_tls_protocols_directive(inner)?))
-            }
-            Rule::cors_directive => {
-                Ok(Some(Directive::Cors(parse_cors_directive(inner)?)))
-            }
-            Rule::websocket_directive => {
-                Ok(Some(Directive::WebSocket))
-            }
-            Rule::websocket_config_directive => {
-                Ok(Some(parse_websocket_config_directive(inner)?))
-            }
-            Rule::grpc_directive => {
-                Ok(Some(Directive::Grpc))
-            }
-            Rule::grpc_config_directive => {
-                Ok(Some(parse_grpc_config_directive(inner)?))
-            }
-            Rule::http2_directive => {
-                Ok(Some(parse_http2_directive(inner)?))
-            }
-            Rule::http3_directive => {
-                Ok(Some(parse_http3_directive(inner)?))
-            }
-            Rule::quic_directive => {
-                Ok(Some(parse_quic_directive(inner)?))
-            }
-            Rule::compress_directive => {
-                Ok(Some(parse_compress_directive(inner)?))
-            }
-            Rule::compress_config_directive => {
-                Ok(Some(parse_compress_config_directive(inner)?))
-            }
-            Rule::rate_limit_directive => {
-                Ok(Some(parse_rate_limit_directive(inner)?))
-            }
-            Rule::timeout_directive => {
-                Ok(Some(parse_timeout_directive(inner)?))
-            }
-            Rule::request_timeout_directive => {
-                Ok(Some(parse_request_timeout_directive(inner)?))
-            }
-            Rule::headers_directive => {
-                Ok(Some(parse_headers_directive(inner)?))
-            }
-            Rule::header_add_directive => {
-                Ok(Some(parse_header_add_directive(inner)?))
-            }
-            Rule::header_remove_directive => {
-                Ok(Some(parse_header_remove_directive(inner)?))
-            }
+            Rule::tls_directive => Ok(Some(Directive::Tls(parse_tls_directive(inner)?))),
+            Rule::tls_protocols_directive => Ok(Some(parse_tls_protocols_directive(inner)?)),
+            Rule::cors_directive => Ok(Some(Directive::Cors(parse_cors_directive(inner)?))),
+            Rule::websocket_directive => Ok(Some(Directive::WebSocket)),
+            Rule::websocket_config_directive => Ok(Some(parse_websocket_config_directive(inner)?)),
+            Rule::grpc_directive => Ok(Some(Directive::Grpc)),
+            Rule::grpc_config_directive => Ok(Some(parse_grpc_config_directive(inner)?)),
+            Rule::http2_directive => Ok(Some(parse_http2_directive(inner)?)),
+            Rule::http3_directive => Ok(Some(parse_http3_directive(inner)?)),
+            Rule::quic_directive => Ok(Some(parse_quic_directive(inner)?)),
+            Rule::compress_directive => Ok(Some(parse_compress_directive(inner)?)),
+            Rule::compress_config_directive => Ok(Some(parse_compress_config_directive(inner)?)),
+            Rule::rate_limit_directive => Ok(Some(parse_rate_limit_directive(inner)?)),
+            Rule::timeout_directive => Ok(Some(parse_timeout_directive(inner)?)),
+            Rule::request_timeout_directive => Ok(Some(parse_request_timeout_directive(inner)?)),
+            Rule::headers_directive => Ok(Some(parse_headers_directive(inner)?)),
+            Rule::header_add_directive => Ok(Some(parse_header_add_directive(inner)?)),
+            Rule::header_remove_directive => Ok(Some(parse_header_remove_directive(inner)?)),
             Rule::header_passthrough_directive => {
                 Ok(Some(parse_header_passthrough_directive(inner)?))
             }
-            Rule::circuit_breaker_directive => {
-                Ok(Some(parse_circuit_breaker_directive(inner)?))
-            }
-            Rule::tls_passthrough_directive => {
-                Ok(Some(parse_tls_passthrough_directive(inner)?))
-            }
-            Rule::keepalive_directive => {
-                Ok(Some(parse_keepalive_directive(inner)?))
-            }
-            Rule::max_conns_directive => {
-                Ok(Some(parse_max_conns_directive(inner)?))
-            }
-            Rule::connect_timeout_directive => {
-                Ok(Some(parse_connect_timeout_directive(inner)?))
-            }
-            Rule::idle_timeout_directive => {
-                Ok(Some(parse_idle_timeout_directive(inner)?))
-            }
+            Rule::circuit_breaker_directive => Ok(Some(parse_circuit_breaker_directive(inner)?)),
+            Rule::tls_passthrough_directive => Ok(Some(parse_tls_passthrough_directive(inner)?)),
+            Rule::keepalive_directive => Ok(Some(parse_keepalive_directive(inner)?)),
+            Rule::max_conns_directive => Ok(Some(parse_max_conns_directive(inner)?)),
+            Rule::connect_timeout_directive => Ok(Some(parse_connect_timeout_directive(inner)?)),
+            Rule::idle_timeout_directive => Ok(Some(parse_idle_timeout_directive(inner)?)),
             Rule::websocket_timeout_directive => {
                 Ok(Some(parse_websocket_timeout_directive(inner)?))
             }
-            Rule::grpc_timeout_directive => {
-                Ok(Some(parse_grpc_timeout_directive(inner)?))
-            }
-            Rule::buffer_pool_directive => {
-                Ok(Some(parse_buffer_pool_directive(inner)?))
-            }
-            Rule::backpressure_directive => {
-                Ok(Some(parse_backpressure_directive(inner)?))
-            }
-            Rule::cache_directive => {
-                Ok(Some(parse_cache_directive(inner)?))
-            }
-            Rule::waf_directive => {
-                Ok(Some(parse_waf_directive(inner)?))
-            }
-            Rule::graphql_directive => {
-                Ok(Some(parse_graphql_directive(inner)?))
-            }
-            Rule::php_fpm_directive => {
-                Ok(Some(parse_php_fpm_directive(inner)?))
-            }
-            Rule::static_files_directive => {
-                Ok(Some(Directive::StaticFiles))
-            }
-            Rule::root_directive => {
-                Ok(Some(parse_root_directive(inner)?))
-            }
-            Rule::index_directive => {
-                Ok(Some(parse_index_directive(inner)?))
-            }
-            Rule::try_files_directive => {
-                Ok(Some(parse_try_files_directive(inner)?))
-            }
-            Rule::error_page_directive => {
-                Ok(Some(parse_error_page_directive(inner)?))
-            }
+            Rule::grpc_timeout_directive => Ok(Some(parse_grpc_timeout_directive(inner)?)),
+            Rule::buffer_pool_directive => Ok(Some(parse_buffer_pool_directive(inner)?)),
+            Rule::backpressure_directive => Ok(Some(parse_backpressure_directive(inner)?)),
+            Rule::cache_directive => Ok(Some(parse_cache_directive(inner)?)),
+            Rule::waf_directive => Ok(Some(parse_waf_directive(inner)?)),
+            Rule::graphql_directive => Ok(Some(parse_graphql_directive(inner)?)),
+            Rule::php_fpm_directive => Ok(Some(parse_php_fpm_directive(inner)?)),
+            Rule::static_files_directive => Ok(Some(Directive::StaticFiles)),
+            Rule::root_directive => Ok(Some(parse_root_directive(inner)?)),
+            Rule::index_directive => Ok(Some(parse_index_directive(inner)?)),
+            Rule::try_files_directive => Ok(Some(parse_try_files_directive(inner)?)),
+            Rule::error_page_directive => Ok(Some(parse_error_page_directive(inner)?)),
             Rule::directory_listing_directive => {
                 Ok(Some(parse_directory_listing_directive(inner)?))
             }
-            Rule::limits_directive => {
-                Ok(Some(parse_limits_directive(inner)?))
-            }
+            Rule::limits_directive => Ok(Some(parse_limits_directive(inner)?)),
             _ => Ok(None),
         };
     }
@@ -616,10 +544,20 @@ fn parse_tls_directive(pair: pest::iterators::Pair<Rule>) -> Result<TlsConfig> {
                 });
             }
             s if s.starts_with("cert=") => {
-                cert_file = Some(s.strip_prefix("cert=").unwrap().trim_matches('"').to_string());
+                cert_file = Some(
+                    s.strip_prefix("cert=")
+                        .unwrap()
+                        .trim_matches('"')
+                        .to_string(),
+                );
             }
             s if s.starts_with("key=") => {
-                key_file = Some(s.strip_prefix("key=").unwrap().trim_matches('"').to_string());
+                key_file = Some(
+                    s.strip_prefix("key=")
+                        .unwrap()
+                        .trim_matches('"')
+                        .to_string(),
+                );
             }
             _ => {
                 // Grammar produces two quoted_string tokens for cert and key
@@ -653,9 +591,21 @@ fn parse_cors_directive(pair: pest::iterators::Pair<Rule>) -> Result<CorsConfig>
             if let Some(value) = opt_str.strip_prefix("origins=") {
                 config.origins = Some(vec![value.trim_matches('"').to_string()]);
             } else if let Some(value) = opt_str.strip_prefix("methods=") {
-                config.methods = Some(value.trim_matches('"').split(',').map(|s| s.trim().to_string()).collect());
+                config.methods = Some(
+                    value
+                        .trim_matches('"')
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect(),
+                );
             } else if let Some(value) = opt_str.strip_prefix("headers=") {
-                config.headers = Some(value.trim_matches('"').split(',').map(|s| s.trim().to_string()).collect());
+                config.headers = Some(
+                    value
+                        .trim_matches('"')
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect(),
+                );
             } else if opt_str == "credentials" {
                 config.credentials = true;
             }
@@ -933,7 +883,7 @@ fn parse_cache_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive>
 }
 
 fn parse_waf_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
-    use crate::config::dsl_ast::{WafMode, WafConfig};
+    use crate::config::dsl_ast::{WafConfig, WafMode};
 
     let mut config = WafConfig {
         enabled: false,
@@ -981,8 +931,13 @@ fn parse_waf_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directive> {
     Ok(Directive::Waf(config))
 }
 
-fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut crate::config::dsl_ast::WafConfig) -> Result<()> {
-    use crate::config::dsl_ast::{ModSecurityConfig, AwsWafConfig, CorazaConfig, WafRule, WafRuleType, WafRuleAction};
+fn parse_waf_engine_directive(
+    pair: pest::iterators::Pair<Rule>,
+    config: &mut crate::config::dsl_ast::WafConfig,
+) -> Result<()> {
+    use crate::config::dsl_ast::{
+        AwsWafConfig, CorazaConfig, ModSecurityConfig, WafRule, WafRuleAction, WafRuleType,
+    };
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
@@ -999,11 +954,13 @@ fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut cr
                             if let Rule::modsecurity_option = opt_inner.as_rule() {
                                 let text = opt_inner.as_str();
                                 if let Some(rules) = text.strip_prefix("rules_file ") {
-                                    modsec_config.rules_file = Some(rules.trim_matches('"').to_string());
+                                    modsec_config.rules_file =
+                                        Some(rules.trim_matches('"').to_string());
                                 } else if let Some(level) = text.strip_prefix("paranoia_level ") {
                                     modsec_config.paranoia_level = Some(level.parse()?);
                                 } else if let Some(log) = text.strip_prefix("audit_log ") {
-                                    modsec_config.audit_log = Some(log.trim_matches('"').to_string());
+                                    modsec_config.audit_log =
+                                        Some(log.trim_matches('"').to_string());
                                 }
                             }
                         }
@@ -1048,9 +1005,11 @@ fn parse_waf_engine_directive(pair: pest::iterators::Pair<Rule>, config: &mut cr
                             if let Rule::coraza_option = opt_inner.as_rule() {
                                 let text = opt_inner.as_str();
                                 if let Some(dir) = text.strip_prefix("rules_dir ") {
-                                    coraza_config.rules_dir = Some(dir.trim_matches('"').to_string());
+                                    coraza_config.rules_dir =
+                                        Some(dir.trim_matches('"').to_string());
                                 } else if let Some(log) = text.strip_prefix("audit_log ") {
-                                    coraza_config.audit_log = Some(log.trim_matches('"').to_string());
+                                    coraza_config.audit_log =
+                                        Some(log.trim_matches('"').to_string());
                                 }
                             }
                         }
@@ -1152,7 +1111,10 @@ fn parse_graphql_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directiv
     Ok(Directive::GraphQL(config))
 }
 
-fn parse_graphql_stitching(pair: pest::iterators::Pair<Rule>, config: &mut crate::config::dsl_ast::GraphQLConfig) -> Result<()> {
+fn parse_graphql_stitching(
+    pair: pest::iterators::Pair<Rule>,
+    config: &mut crate::config::dsl_ast::GraphQLConfig,
+) -> Result<()> {
     use crate::config::dsl_ast::GraphQLBackend;
 
     for inner in pair.into_inner() {
@@ -1256,7 +1218,9 @@ fn parse_php_fpm_directive(pair: pest::iterators::Pair<Rule>) -> Result<Directiv
                 config.script_extensions.clear();
                 for ext_inner in inner.into_inner() {
                     if let Rule::file_extension = ext_inner.as_rule() {
-                        config.script_extensions.push(ext_inner.as_str().to_string());
+                        config
+                            .script_extensions
+                            .push(ext_inner.as_str().to_string());
                     }
                 }
             }
@@ -1319,7 +1283,9 @@ fn parse_error_page_directive(pair: pest::iterators::Pair<Rule>) -> Result<Direc
 
     match (status_code, file_path) {
         (Some(code), Some(path)) => Ok(Directive::ErrorPage(code, path)),
-        _ => Err(anyhow!("Invalid error_page directive: missing status code or file path")),
+        _ => Err(anyhow!(
+            "Invalid error_page directive: missing status code or file path"
+        )),
     }
 }
 
@@ -1407,7 +1373,8 @@ fn parse_duration(s: &str) -> Result<Duration> {
         return Err(anyhow!("Invalid duration format: {}", s));
     };
 
-    let num: u64 = num_str.parse()
+    let num: u64 = num_str
+        .parse()
         .with_context(|| format!("Invalid duration number: {}", num_str))?;
 
     let duration = match unit {
@@ -1917,10 +1884,18 @@ php.example.com {
         for directive in &config.sites[0].directives {
             if let Directive::PhpFpm(php_config) = directive {
                 found_php = true;
-                eprintln!("PHP Config: enabled={}, socket={:?}, pool_size={:?}, extensions={:?}",
-                         php_config.enabled, php_config.socket, php_config.pool_size, php_config.script_extensions);
+                eprintln!(
+                    "PHP Config: enabled={}, socket={:?}, pool_size={:?}, extensions={:?}",
+                    php_config.enabled,
+                    php_config.socket,
+                    php_config.pool_size,
+                    php_config.script_extensions
+                );
                 assert_eq!(php_config.enabled, true);
-                assert_eq!(php_config.socket, Some("/var/run/php/php8.2-fpm.sock".to_string()));
+                assert_eq!(
+                    php_config.socket,
+                    Some("/var/run/php/php8.2-fpm.sock".to_string())
+                );
                 assert_eq!(php_config.pool_size, Some(50));
                 assert_eq!(php_config.connect_timeout, Some(Duration::from_secs(5)));
                 assert_eq!(php_config.read_timeout, Some(Duration::from_secs(60)));
@@ -2024,7 +1999,13 @@ http://php.loadtest.local:8454 {
         assert_eq!(config.sites.len(), 1);
 
         // Check site address
-        if let SiteAddress::Http { scheme, domain, port, .. } = &config.sites[0].address {
+        if let SiteAddress::Http {
+            scheme,
+            domain,
+            port,
+            ..
+        } = &config.sites[0].address
+        {
             assert_eq!(*scheme, Scheme::Http);
             assert_eq!(domain, "php.loadtest.local");
             assert_eq!(*port, Some(8454));

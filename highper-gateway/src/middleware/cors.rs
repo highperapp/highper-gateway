@@ -72,7 +72,8 @@ impl CorsMiddleware {
 
     /// Get allowed origin header value
     fn get_allowed_origin(&self, request_origin: Option<&str>) -> String {
-        if self.config.allowed_origins.contains(&"*".to_string()) && !self.config.allow_credentials {
+        if self.config.allowed_origins.contains(&"*".to_string()) && !self.config.allow_credentials
+        {
             return "*".to_string();
         }
 
@@ -132,7 +133,10 @@ impl CorsMiddleware {
 
         // Add Access-Control-Allow-Credentials
         if self.config.allow_credentials {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true".parse().expect("static header value"));
+            headers.insert(
+                header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                "true".parse().expect("static header value"),
+            );
         }
 
         // Add Access-Control-Max-Age
@@ -153,8 +157,12 @@ impl Middleware for CorsMiddleware {
     fn process_request(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Pin<Box<dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>> + Send>>
-    {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Request<hyper::body::Incoming>, Response<Full<Bytes>>>>
+                + Send,
+        >,
+    > {
         let config = self.config.clone();
         let headers = req.headers().clone();
 

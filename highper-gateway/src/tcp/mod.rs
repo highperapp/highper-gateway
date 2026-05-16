@@ -19,19 +19,19 @@
 //! - Throughput: > 1M connections/sec
 //! - Connection reuse: > 95%
 
-pub mod server;
-pub mod proxy;
-pub mod protocol;
+pub mod circuit_breaker;
 pub mod health;
 pub mod pool;
-pub mod circuit_breaker;
+pub mod protocol;
+pub mod proxy;
+pub mod server;
 
-pub use server::TcpProxyServer;
-pub use proxy::TcpProxy;
-pub use protocol::{Protocol, ProtocolDetector};
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
 pub use health::TcpHealthChecker;
 pub use pool::TcpConnectionPool;
-pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
+pub use protocol::{Protocol, ProtocolDetector};
+pub use proxy::TcpProxy;
+pub use server::TcpProxyServer;
 
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;

@@ -174,17 +174,30 @@ impl SocketStateStats {
             Self::parse_tcp_file(&tcp6_content, &mut stats);
         }
 
-        stats.total = stats.established + stats.time_wait + stats.close_wait
-            + stats.fin_wait1 + stats.fin_wait2 + stats.syn_sent
-            + stats.syn_recv + stats.listen + stats.last_ack + stats.closing;
+        stats.total = stats.established
+            + stats.time_wait
+            + stats.close_wait
+            + stats.fin_wait1
+            + stats.fin_wait2
+            + stats.syn_sent
+            + stats.syn_recv
+            + stats.listen
+            + stats.last_ack
+            + stats.closing;
 
         // Warn if too many TIME_WAIT or CLOSE_WAIT sockets
         if stats.time_wait > 5000 {
-            warn!("High TIME_WAIT count: {} (consider tuning tcp_fin_timeout)", stats.time_wait);
+            warn!(
+                "High TIME_WAIT count: {} (consider tuning tcp_fin_timeout)",
+                stats.time_wait
+            );
         }
 
         if stats.close_wait > 1000 {
-            warn!("High CLOSE_WAIT count: {} (application not closing connections properly)", stats.close_wait);
+            warn!(
+                "High CLOSE_WAIT count: {} (application not closing connections properly)",
+                stats.close_wait
+            );
         }
 
         stats
@@ -198,7 +211,8 @@ impl SocketStateStats {
     /// Parse /proc/net/tcp format
     #[cfg(target_os = "linux")]
     fn parse_tcp_file(content: &str, stats: &mut Self) {
-        for line in content.lines().skip(1) { // Skip header
+        for line in content.lines().skip(1) {
+            // Skip header
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() < 4 {
                 continue;
@@ -224,7 +238,6 @@ impl SocketStateStats {
         }
     }
 }
-
 
 impl MemoryStats {
     /// Collect memory usage statistics

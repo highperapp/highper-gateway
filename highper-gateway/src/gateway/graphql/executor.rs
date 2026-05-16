@@ -48,10 +48,7 @@ impl GraphQLExecutor {
             // Build query from fragment fields
             let query = format!("{{ {} }}", fragment.fields.join(" "));
 
-            debug!(
-                "Executing fragment on backend {}: {}",
-                backend.name, query
-            );
+            debug!("Executing fragment on backend {}: {}", backend.name, query);
 
             // Spawn async task for each backend
             let task = tokio::spawn(async move {
@@ -138,9 +135,18 @@ impl GraphQLExecutor {
 
         // Make request
         let response = client
-            .forward(&backend.url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
+            .forward(
+                &backend.url,
+                hyper::Method::POST,
+                "/graphql",
+                headers,
+                Some(body_bytes),
+            )
             .await
-            .context(format!("Failed to execute query on backend: {}", backend.name))?;
+            .context(format!(
+                "Failed to execute query on backend: {}",
+                backend.name
+            ))?;
 
         let status = response.status();
         let body_bytes = http_body_util::BodyExt::collect(response.into_body())
@@ -159,8 +165,8 @@ impl GraphQLExecutor {
             });
         }
 
-        let graphql_response: GraphQLResponse = serde_json::from_slice(&body_bytes)
-            .context("Failed to parse GraphQL response")?;
+        let graphql_response: GraphQLResponse =
+            serde_json::from_slice(&body_bytes).context("Failed to parse GraphQL response")?;
 
         Ok(graphql_response)
     }
@@ -213,10 +219,20 @@ impl GraphQLExecutor {
         );
 
         // Make request
-        let response = self.client
-            .forward(&backend.url, hyper::Method::POST, "/graphql", headers, Some(body_bytes))
+        let response = self
+            .client
+            .forward(
+                &backend.url,
+                hyper::Method::POST,
+                "/graphql",
+                headers,
+                Some(body_bytes),
+            )
             .await
-            .context(format!("Failed to execute query on backend: {}", backend.name))?;
+            .context(format!(
+                "Failed to execute query on backend: {}",
+                backend.name
+            ))?;
 
         let status = response.status();
         let body_bytes = http_body_util::BodyExt::collect(response.into_body())
@@ -235,8 +251,8 @@ impl GraphQLExecutor {
             });
         }
 
-        let graphql_response: GraphQLResponse = serde_json::from_slice(&body_bytes)
-            .context("Failed to parse GraphQL response")?;
+        let graphql_response: GraphQLResponse =
+            serde_json::from_slice(&body_bytes).context("Failed to parse GraphQL response")?;
 
         Ok(graphql_response)
     }
@@ -263,5 +279,4 @@ mod tests {
         let executor = GraphQLExecutor::new(client, config);
         assert!(true); // Just verify it compiles
     }
-
 }

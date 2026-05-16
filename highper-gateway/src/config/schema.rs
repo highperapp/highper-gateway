@@ -1,8 +1,8 @@
 //! Configuration schema definitions
 
+use crate::middleware::waf::{CustomWafConfig, ModSecurityConfig, WafMode};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use crate::middleware::waf::{WafMode, CustomWafConfig, ModSecurityConfig};
 
 /// Main configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1248,7 +1248,9 @@ impl AcmeConfig {
 
         // Auto-determine based on provider and staging flag
         match (self.provider.as_str(), self.staging) {
-            ("letsencrypt", true) => "https://acme-staging-v02.api.letsencrypt.org/directory".to_string(),
+            ("letsencrypt", true) => {
+                "https://acme-staging-v02.api.letsencrypt.org/directory".to_string()
+            }
             ("letsencrypt", false) => "https://acme-v02.api.letsencrypt.org/directory".to_string(),
             ("zerossl", _) => "https://acme.zerossl.com/v2/DV90".to_string(),
             ("buypass", true) => "https://api.test4.buypass.no/acme/directory".to_string(),
@@ -1699,7 +1701,10 @@ pub struct RateLimitConfig {
     pub key_header: Option<String>,
 
     /// Cleanup interval for old entries
-    #[serde(default = "default_rate_limit_cleanup_interval", with = "humantime_serde")]
+    #[serde(
+        default = "default_rate_limit_cleanup_interval",
+        with = "humantime_serde"
+    )]
     pub cleanup_interval: Duration,
 }
 
@@ -1848,7 +1853,6 @@ fn default_php_fpm_keepalive_timeout() -> u64 {
 fn default_php_fpm_script_extensions() -> Vec<String> {
     vec![".php".to_string()]
 }
-
 
 /// Tracing configuration for OpenTelemetry
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -2086,4 +2090,3 @@ pub struct AwsWafConfig {
 fn default_aws_waf_cache_ttl() -> u64 {
     300 // 5 minutes
 }
-

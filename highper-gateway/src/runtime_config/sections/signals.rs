@@ -5,8 +5,8 @@ use crate::runtime_config::RuntimeConfigError;
 
 #[derive(Debug, Clone)]
 pub struct SignalsRuntimeConfig {
-    pub sighup_reload_enabled: bool,    // HIGHPER_SIGNALS_SIGHUP_RELOAD (default true; Restart)
-    pub sigterm_drain_enabled: bool,    // HIGHPER_SIGNALS_SIGTERM_DRAIN (default true; Restart)
+    pub sighup_reload_enabled: bool, // HIGHPER_SIGNALS_SIGHUP_RELOAD (default true; Restart)
+    pub sigterm_drain_enabled: bool, // HIGHPER_SIGNALS_SIGTERM_DRAIN (default true; Restart)
 }
 
 impl Default for SignalsRuntimeConfig {

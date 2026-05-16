@@ -2,25 +2,25 @@
 
 use crate::config::{Config, RouteConfig, UpstreamConfig};
 use crate::gateway::routing::HostnameRouter;
-use crate::http::{alt_svc, CollectedBody, collect_body_validated, ResponseBody};
-use crate::middleware::{MiddlewareChain, compression_middleware::CompressionMiddleware};
+use crate::grpc::detector as grpc_detector;
+use crate::grpc::handler as grpc_handler;
+use crate::http::{alt_svc, collect_body_validated, CollectedBody, ResponseBody};
 use crate::middleware::waf::WafMiddleware;
+use crate::middleware::{compression_middleware::CompressionMiddleware, MiddlewareChain};
 use crate::observability::metrics::{record_request, record_upstream_request};
 use crate::proxy::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 use crate::proxy::{BackendServer, Client, LoadBalancer};
 use crate::state::ProxyState;
 use crate::tls::ChallengeStore;
-use crate::websocket::handler as ws_handler;
-use crate::grpc::detector as grpc_detector;
-use crate::grpc::handler as grpc_handler;
-use crate::webserver::StaticFileHandler;
+use crate::webserver::security::{sanitize_fastcgi_param, validate_php_script, PathValidator};
 use crate::webserver::PhpFpmPool;
-use crate::webserver::security::{PathValidator, validate_php_script, sanitize_fastcgi_param};
+use crate::webserver::StaticFileHandler;
+use crate::websocket::handler as ws_handler;
 use crate::Result;
+use bytes::Bytes;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
-use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -72,14 +72,12 @@ impl Upstream {
         let servers = config.servers.clone();
         let geoip_provider = config.load_balancing.geoip_provider;
         let geoip_path = config.load_balancing.geoip_db_path.as_deref();
-        let load_balancer = LoadBalancer::with_geoip_config(algorithm, servers, geoip_provider, geoip_path);
+        let load_balancer =
+            LoadBalancer::with_geoip_config(algorithm, servers, geoip_provider, geoip_path);
 
         // Create circuit breaker for this upstream
         let cb_config = CircuitBreakerConfig::default();
-        let circuit_breaker = Arc::new(CircuitBreaker::new(
-            config.name.clone(),
-            cb_config,
-        ));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(config.name.clone(), cb_config));
 
         Self {
             config,
@@ -108,8 +106,10 @@ impl Upstream {
         affinity_key: Option<&str>,
     ) -> Option<String> {
         // Convert Vec<(String, String)> to HashMap for select_grpc
-        let metadata_map: std::collections::HashMap<String, String> =
-            metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let metadata_map: std::collections::HashMap<String, String> = metadata
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         self.load_balancer
             .select_grpc(policy, Some(&metadata_map), affinity_key)
@@ -124,10 +124,13 @@ impl Upstream {
         affinity_key: Option<&str>,
     ) -> Option<Arc<BackendServer>> {
         // Convert Vec<(String, String)> to HashMap for select_grpc
-        let metadata_map: std::collections::HashMap<String, String> =
-            metadata.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let metadata_map: std::collections::HashMap<String, String> = metadata
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        self.load_balancer.select_grpc(policy, Some(&metadata_map), affinity_key)
+        self.load_balancer
+            .select_grpc(policy, Some(&metadata_map), affinity_key)
     }
 
     /// Get circuit breaker for this upstream
@@ -143,7 +146,10 @@ impl Handler {
     }
 
     /// Create a new handler with challenge store
-    pub fn with_challenge_store(config: Arc<Config>, challenge_store: Option<ChallengeStore>) -> Self {
+    pub fn with_challenge_store(
+        config: Arc<Config>,
+        challenge_store: Option<ChallengeStore>,
+    ) -> Self {
         // Use connection pool config from server.performance settings
         let pool_config = config.server.performance.connection_pool.clone();
         let client = Client::with_config(None, Some(pool_config));
@@ -174,18 +180,23 @@ impl Handler {
                     custom: schema_waf_config.custom.clone(),
                     coraza: None, // TODO: Convert schema::CorazaConfig to waf::CorazaConfig
                     modsecurity: None, // TODO: Convert schema::ModSecurityConfig to waf::ModSecurityConfig
-                    aws: None, // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
+                    aws: None,         // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
                     max_body_size: schema_waf_config.max_body_size,
                 };
 
                 match WafMiddleware::new(waf_config) {
                     Ok(waf) => {
-                        info!("WAF middleware enabled (mode: {:?}, block_mode: {})",
-                            schema_waf_config.mode, schema_waf_config.block_mode);
+                        info!(
+                            "WAF middleware enabled (mode: {:?}, block_mode: {})",
+                            schema_waf_config.mode, schema_waf_config.block_mode
+                        );
                         middleware_chain.add(waf);
                     }
                     Err(e) => {
-                        warn!("Failed to initialize WAF middleware: {}. WAF will be disabled.", e);
+                        warn!(
+                            "Failed to initialize WAF middleware: {}. WAF will be disabled.",
+                            e
+                        );
                     }
                 }
             }
@@ -194,70 +205,88 @@ impl Handler {
         // Add compression middleware
         middleware_chain.add(CompressionMiddleware::with_defaults());
 
-        info!("Initialized middleware chain with {} middlewares: {:?}",
+        info!(
+            "Initialized middleware chain with {} middlewares: {:?}",
             middleware_chain.len(),
             middleware_chain.middleware_names()
         );
 
         // Initialize WebSocket managers if enabled
-        let (ws_session_manager, ws_connection_tracker, ws_keepalive_manager,
-             ws_recovery_manager, ws_shutdown_coordinator) =
-            if config.websocket.enabled && config.websocket.track_connections {
-                use std::time::Duration;
+        let (
+            ws_session_manager,
+            ws_connection_tracker,
+            ws_keepalive_manager,
+            ws_recovery_manager,
+            ws_shutdown_coordinator,
+        ) = if config.websocket.enabled && config.websocket.track_connections {
+            use std::time::Duration;
 
-                let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
-                    Duration::from_secs(config.websocket.idle_timeout)
-                ));
+            let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
+                Duration::from_secs(config.websocket.idle_timeout),
+            ));
 
-                let session_manager = if config.websocket.sticky_sessions {
-                    Some(Arc::new(crate::websocket::SessionManager::new(
-                        Duration::from_secs(config.websocket.session_timeout)
-                    )))
-                } else {
-                    None
-                };
-
-                let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
-                    crate::websocket::KeepAliveConfig {
-                        ping_interval: Duration::from_secs(config.websocket.ping_interval),
-                        pong_timeout: Duration::from_secs(5),
-                        max_missed_pongs: 3,
-                        enabled: true,
-                    },
-                    tracker.clone()
-                )));
-
-                let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
-                    crate::websocket::RecoveryConfig::default(),
-                    tracker.clone()
-                )));
-
-                let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
-                    tracker.clone(),
-                    Duration::from_secs(30), // graceful timeout
-                    Duration::from_secs(5),  // force timeout
-                )));
-
-                info!("Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
-                    config.websocket.sticky_sessions,
-                    config.websocket.track_connections
-                );
-
-                (session_manager, Some(tracker), keepalive, recovery, shutdown)
+            let session_manager = if config.websocket.sticky_sessions {
+                Some(Arc::new(crate::websocket::SessionManager::new(
+                    Duration::from_secs(config.websocket.session_timeout),
+                )))
             } else {
-                (None, None, None, None, None)
+                None
             };
+
+            let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
+                crate::websocket::KeepAliveConfig {
+                    ping_interval: Duration::from_secs(config.websocket.ping_interval),
+                    pong_timeout: Duration::from_secs(5),
+                    max_missed_pongs: 3,
+                    enabled: true,
+                },
+                tracker.clone(),
+            )));
+
+            let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
+                crate::websocket::RecoveryConfig::default(),
+                tracker.clone(),
+            )));
+
+            let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
+                tracker.clone(),
+                Duration::from_secs(30), // graceful timeout
+                Duration::from_secs(5),  // force timeout
+            )));
+
+            info!(
+                "Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
+                config.websocket.sticky_sessions, config.websocket.track_connections
+            );
+
+            (
+                session_manager,
+                Some(tracker),
+                keepalive,
+                recovery,
+                shutdown,
+            )
+        } else {
+            (None, None, None, None, None)
+        };
 
         // Initialize cache if enabled
         let cache = if let Some(cache_config) = &config.cache {
             if cache_config.enabled {
                 use std::time::Duration;
-                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(cache_config.default_ttl));
+                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(
+                    cache_config.default_ttl,
+                ));
 
                 // Start cleanup task (runs every 60 seconds)
-                local_cache.clone().start_cleanup_task(Duration::from_secs(60));
+                local_cache
+                    .clone()
+                    .start_cleanup_task(Duration::from_secs(60));
 
-                info!("Initialized response cache (TTL: {:?})", cache_config.default_ttl);
+                info!(
+                    "Initialized response cache (TTL: {:?})",
+                    cache_config.default_ttl
+                );
                 Some(local_cache)
             } else {
                 None
@@ -278,8 +307,10 @@ impl Handler {
 
                 let limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rl_config));
 
-                info!("Initialized rate limiter (capacity: {}, window: {:?})",
-                    rate_limit_config.capacity, rate_limit_config.window);
+                info!(
+                    "Initialized rate limiter (capacity: {}, window: {:?})",
+                    rate_limit_config.capacity, rate_limit_config.window
+                );
                 Some(limiter)
             } else {
                 None
@@ -304,7 +335,7 @@ impl Handler {
             ws_recovery_manager,
             ws_shutdown_coordinator,
             cache,
-            graphql_gateway: None,  // Initialize in with_graphql_gateway method
+            graphql_gateway: None, // Initialize in with_graphql_gateway method
             rate_limiter,
         }
     }
@@ -345,18 +376,23 @@ impl Handler {
                     custom: schema_waf_config.custom.clone(),
                     coraza: None, // TODO: Convert schema::CorazaConfig to waf::CorazaConfig
                     modsecurity: None, // TODO: Convert schema::ModSecurityConfig to waf::ModSecurityConfig
-                    aws: None, // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
+                    aws: None,         // TODO: Convert schema::AwsWafConfig to waf::AwsWafConfig
                     max_body_size: schema_waf_config.max_body_size,
                 };
 
                 match WafMiddleware::new(waf_config) {
                     Ok(waf) => {
-                        info!("WAF middleware enabled (mode: {:?}, block_mode: {})",
-                            schema_waf_config.mode, schema_waf_config.block_mode);
+                        info!(
+                            "WAF middleware enabled (mode: {:?}, block_mode: {})",
+                            schema_waf_config.mode, schema_waf_config.block_mode
+                        );
                         middleware_chain.add(waf);
                     }
                     Err(e) => {
-                        warn!("Failed to initialize WAF middleware: {}. WAF will be disabled.", e);
+                        warn!(
+                            "Failed to initialize WAF middleware: {}. WAF will be disabled.",
+                            e
+                        );
                     }
                 }
             }
@@ -365,70 +401,88 @@ impl Handler {
         // Add compression middleware
         middleware_chain.add(CompressionMiddleware::with_defaults());
 
-        info!("Initialized middleware chain with {} middlewares: {:?}",
+        info!(
+            "Initialized middleware chain with {} middlewares: {:?}",
             middleware_chain.len(),
             middleware_chain.middleware_names()
         );
 
         // Initialize WebSocket managers if enabled
-        let (ws_session_manager, ws_connection_tracker, ws_keepalive_manager,
-             ws_recovery_manager, ws_shutdown_coordinator) =
-            if config.websocket.enabled && config.websocket.track_connections {
-                use std::time::Duration;
+        let (
+            ws_session_manager,
+            ws_connection_tracker,
+            ws_keepalive_manager,
+            ws_recovery_manager,
+            ws_shutdown_coordinator,
+        ) = if config.websocket.enabled && config.websocket.track_connections {
+            use std::time::Duration;
 
-                let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
-                    Duration::from_secs(config.websocket.idle_timeout)
-                ));
+            let tracker = Arc::new(crate::websocket::ConnectionTracker::new(
+                Duration::from_secs(config.websocket.idle_timeout),
+            ));
 
-                let session_manager = if config.websocket.sticky_sessions {
-                    Some(Arc::new(crate::websocket::SessionManager::new(
-                        Duration::from_secs(config.websocket.session_timeout)
-                    )))
-                } else {
-                    None
-                };
-
-                let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
-                    crate::websocket::KeepAliveConfig {
-                        ping_interval: Duration::from_secs(config.websocket.ping_interval),
-                        pong_timeout: Duration::from_secs(5),
-                        max_missed_pongs: 3,
-                        enabled: true,
-                    },
-                    tracker.clone()
-                )));
-
-                let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
-                    crate::websocket::RecoveryConfig::default(),
-                    tracker.clone()
-                )));
-
-                let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
-                    tracker.clone(),
-                    Duration::from_secs(30), // graceful timeout
-                    Duration::from_secs(5),  // force timeout
-                )));
-
-                info!("Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
-                    config.websocket.sticky_sessions,
-                    config.websocket.track_connections
-                );
-
-                (session_manager, Some(tracker), keepalive, recovery, shutdown)
+            let session_manager = if config.websocket.sticky_sessions {
+                Some(Arc::new(crate::websocket::SessionManager::new(
+                    Duration::from_secs(config.websocket.session_timeout),
+                )))
             } else {
-                (None, None, None, None, None)
+                None
             };
+
+            let keepalive = Some(Arc::new(crate::websocket::KeepAliveManager::new(
+                crate::websocket::KeepAliveConfig {
+                    ping_interval: Duration::from_secs(config.websocket.ping_interval),
+                    pong_timeout: Duration::from_secs(5),
+                    max_missed_pongs: 3,
+                    enabled: true,
+                },
+                tracker.clone(),
+            )));
+
+            let recovery = Some(Arc::new(crate::websocket::RecoveryManager::new(
+                crate::websocket::RecoveryConfig::default(),
+                tracker.clone(),
+            )));
+
+            let shutdown = Some(Arc::new(crate::websocket::ShutdownCoordinator::new(
+                tracker.clone(),
+                Duration::from_secs(30), // graceful timeout
+                Duration::from_secs(5),  // force timeout
+            )));
+
+            info!(
+                "Initialized WebSocket managers (sticky_sessions: {}, track_connections: {})",
+                config.websocket.sticky_sessions, config.websocket.track_connections
+            );
+
+            (
+                session_manager,
+                Some(tracker),
+                keepalive,
+                recovery,
+                shutdown,
+            )
+        } else {
+            (None, None, None, None, None)
+        };
 
         // Initialize cache if enabled
         let cache = if let Some(cache_config) = &config.cache {
             if cache_config.enabled {
                 use std::time::Duration;
-                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(cache_config.default_ttl));
+                let local_cache = Arc::new(crate::gateway::cache::LocalCache::new(
+                    cache_config.default_ttl,
+                ));
 
                 // Start cleanup task (runs every 60 seconds)
-                local_cache.clone().start_cleanup_task(Duration::from_secs(60));
+                local_cache
+                    .clone()
+                    .start_cleanup_task(Duration::from_secs(60));
 
-                info!("Initialized response cache (TTL: {:?})", cache_config.default_ttl);
+                info!(
+                    "Initialized response cache (TTL: {:?})",
+                    cache_config.default_ttl
+                );
                 Some(local_cache)
             } else {
                 None
@@ -449,8 +503,10 @@ impl Handler {
 
                 let limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rl_config));
 
-                info!("Initialized rate limiter (capacity: {}, window: {:?})",
-                    rate_limit_config.capacity, rate_limit_config.window);
+                info!(
+                    "Initialized rate limiter (capacity: {}, window: {:?})",
+                    rate_limit_config.capacity, rate_limit_config.window
+                );
                 Some(limiter)
             } else {
                 None
@@ -475,7 +531,7 @@ impl Handler {
             ws_recovery_manager,
             ws_shutdown_coordinator,
             cache,
-            graphql_gateway: None,  // Initialize in with_graphql_gateway method
+            graphql_gateway: None, // Initialize in with_graphql_gateway method
             rate_limiter,
         }
     }
@@ -487,7 +543,10 @@ impl Handler {
     }
 
     /// Set GraphQL gateway for schema stitching and federation
-    pub fn with_graphql_gateway(mut self, gateway: Arc<crate::gateway::graphql::GraphQLGateway>) -> Self {
+    pub fn with_graphql_gateway(
+        mut self,
+        gateway: Arc<crate::gateway::graphql::GraphQLGateway>,
+    ) -> Self {
         self.graphql_gateway = Some(gateway);
         self
     }
@@ -513,24 +572,20 @@ impl Handler {
 
         // Get host from either :authority (HTTP/2) or Host header (HTTP/1.1)
         // HTTP/2 uses :authority pseudo-header, HTTP/1.1 uses Host header
-        let host = uri.authority()
+        let host = uri
+            .authority()
             .map(|a| a.as_str())
-            .or_else(|| req.headers()
-                .get("host")
-                .and_then(|h| h.to_str().ok()))
+            .or_else(|| req.headers().get("host").and_then(|h| h.to_str().ok()))
             .unwrap_or("")
             .to_string(); // Convert to owned String to allow moving req later
 
         // Extract client IP from headers (X-Forwarded-For or X-Real-IP)
-        let client_ip = req.headers()
+        let client_ip = req
+            .headers()
             .get("x-forwarded-for")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.split(',').next())
-            .or_else(|| {
-                req.headers()
-                    .get("x-real-ip")
-                    .and_then(|h| h.to_str().ok())
-            })
+            .or_else(|| req.headers().get("x-real-ip").and_then(|h| h.to_str().ok()))
             .map(|s| s.to_string()); // Convert to owned String
 
         // Extract trace context from incoming headers for distributed tracing
@@ -544,7 +599,10 @@ impl Handler {
             client_ip.as_deref(),
         );
 
-        debug!("Received {} request for {} (Host: {}, Client IP: {:?})", method, path, host, client_ip);
+        debug!(
+            "Received {} request for {} (Host: {}, Client IP: {:?})",
+            method, path, host, client_ip
+        );
 
         // Check rate limiting
         if let Some(rate_limiter) = &self.rate_limiter {
@@ -554,7 +612,11 @@ impl Handler {
                 debug!("Rate limit exceeded for client: {}", ip_for_rate_limit);
 
                 let duration = start.elapsed().as_secs_f64();
-                record_request(method.as_str(), StatusCode::TOO_MANY_REQUESTS.as_u16(), duration);
+                record_request(
+                    method.as_str(),
+                    StatusCode::TOO_MANY_REQUESTS.as_u16(),
+                    duration,
+                );
 
                 // Record response in tracing
                 crate::observability::tracing::record_http_response(
@@ -568,10 +630,15 @@ impl Handler {
 
                 // Extract bytes from Full<Bytes> body
                 use http_body_util::BodyExt;
-                let body_bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
+                let body_bytes = body
+                    .collect()
+                    .await
+                    .expect("Full<Bytes> body collection is infallible")
+                    .to_bytes();
 
                 // Reconstruct response with ResponseBody
-                let final_response = Response::from_parts(parts, ResponseBody::buffered(body_bytes));
+                let final_response =
+                    Response::from_parts(parts, ResponseBody::buffered(body_bytes));
                 return Ok(final_response);
             }
         }
@@ -586,16 +653,14 @@ impl Handler {
                 record_request(method.as_str(), status.as_u16(), duration);
 
                 // Record response in tracing
-                crate::observability::tracing::record_http_response(
-                    status,
-                    duration * 1000.0,
-                );
+                crate::observability::tracing::record_http_response(status, duration * 1000.0);
 
                 // Convert Full<Bytes> response to ResponseBody
                 let (parts, body) = blocked_response.into_parts();
                 use http_body_util::BodyExt;
                 let body_bytes = body.collect().await.unwrap_or_default().to_bytes();
-                let final_response = Response::from_parts(parts, ResponseBody::buffered(body_bytes));
+                let final_response =
+                    Response::from_parts(parts, ResponseBody::buffered(body_bytes));
                 return Ok(final_response);
             }
         };
@@ -635,7 +700,8 @@ impl Handler {
                 let (parts, incoming_body) = req.into_parts();
 
                 // Extract content length
-                let content_length = parts.headers
+                let content_length = parts
+                    .headers
                     .get("content-length")
                     .and_then(|h| h.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok());
@@ -644,10 +710,14 @@ impl Handler {
                     incoming_body,
                     content_length,
                     *crate::runtime_config::current().body.max_request_body.get() as usize,
-                ).await {
+                )
+                .await
+                {
                     Ok(body) => {
                         // Parse GraphQL request
-                        match serde_json::from_slice::<crate::gateway::graphql::GraphQLRequest>(&body.bytes) {
+                        match serde_json::from_slice::<crate::gateway::graphql::GraphQLRequest>(
+                            &body.bytes,
+                        ) {
                             Ok(graphql_req) => {
                                 debug!("GraphQL query: {}", graphql_req.query);
 
@@ -668,12 +738,18 @@ impl Handler {
                                         return Ok(Response::builder()
                                             .status(status)
                                             .header("content-type", "application/json")
-                                            .body(ResponseBody::buffered(Bytes::from(response_json)))?);
+                                            .body(ResponseBody::buffered(Bytes::from(
+                                                response_json,
+                                            )))?);
                                     }
                                     Err(e) => {
                                         error!("GraphQL request failed: {}", e);
                                         let duration = start.elapsed().as_secs_f64();
-                                        record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                                        record_request(
+                                            method.as_str(),
+                                            StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                            duration,
+                                        );
 
                                         return self.error_response(
                                             StatusCode::INTERNAL_SERVER_ERROR,
@@ -685,7 +761,11 @@ impl Handler {
                             Err(e) => {
                                 warn!("Failed to parse GraphQL request: {}", e);
                                 let duration = start.elapsed().as_secs_f64();
-                                record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
+                                record_request(
+                                    method.as_str(),
+                                    StatusCode::BAD_REQUEST.as_u16(),
+                                    duration,
+                                );
 
                                 return self.error_response(
                                     StatusCode::BAD_REQUEST,
@@ -727,7 +807,11 @@ impl Handler {
                     Err(e) => {
                         error!("GraphQL introspection failed: {}", e);
                         let duration = start.elapsed().as_secs_f64();
-                        record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                        record_request(
+                            method.as_str(),
+                            StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            duration,
+                        );
 
                         return self.error_response(
                             StatusCode::INTERNAL_SERVER_ERROR,
@@ -745,7 +829,10 @@ impl Handler {
 
             // Extract session ID from cookie if sticky sessions enabled
             let existing_session_id = if self.ws_session_manager.is_some() {
-                ws_handler::extract_session_id_from_cookie(&req, &self.config.websocket.session_cookie_name)
+                ws_handler::extract_session_id_from_cookie(
+                    &req,
+                    &self.config.websocket.session_cookie_name,
+                )
             } else {
                 None
             };
@@ -761,10 +848,9 @@ impl Handler {
                         let request_key = existing_session_id.as_ref().map(|sid| sid.to_string());
 
                         // Select backend using session ID for consistency
-                        let backend_selection = upstream.load_balancer.select(
-                            client_ip.as_deref(),
-                            request_key.as_deref()
-                        );
+                        let backend_selection = upstream
+                            .load_balancer
+                            .select(client_ip.as_deref(), request_key.as_deref());
 
                         if let Some(selected_backend) = backend_selection {
                             let backend_url = &selected_backend.server.url;
@@ -779,13 +865,16 @@ impl Handler {
                             let backend_idx = (hasher.finish() % 1000) as usize;
 
                             // Create or update session
-                            let session_for_cookie = if let Some(session_mgr) = &self.ws_session_manager {
+                            let session_for_cookie = if let Some(session_mgr) =
+                                &self.ws_session_manager
+                            {
                                 if existing_session_id.is_none() {
                                     // Create new session
                                     Some(session_mgr.create_session(backend_idx, client_ip.clone()))
                                 } else {
                                     // Get existing session (updates last_activity)
-                                    existing_session_id.and_then(|sid| session_mgr.get_session(&sid))
+                                    existing_session_id
+                                        .and_then(|sid| session_mgr.get_session(&sid))
                                 }
                             } else {
                                 None
@@ -795,32 +884,46 @@ impl Handler {
                             let backend_ws_url = backend_url
                                 .replace("http://", "ws://")
                                 .replace("https://", "wss://");
-                            let backend_ws_url = format!("{}{}", backend_ws_url.trim_end_matches('/'), path);
+                            let backend_ws_url =
+                                format!("{}{}", backend_ws_url.trim_end_matches('/'), path);
 
-                            info!("Establishing WebSocket connection to backend: {}", backend_ws_url);
+                            info!(
+                                "Establishing WebSocket connection to backend: {}",
+                                backend_ws_url
+                            );
 
                             // Create WebSocket upgrade response with session cookie
-                            let upgrade_response = if let Some(session) = session_for_cookie.as_ref() {
-                                ws_handler::create_upgrade_response_with_session(
-                                    &req,
-                                    Some(&session.id),
-                                    Some(&self.config.websocket.session_cookie_name),
-                                    self.config.websocket.session_timeout,
-                                )
-                            } else {
-                                ws_handler::create_upgrade_response(&req)
-                            };
+                            let upgrade_response =
+                                if let Some(session) = session_for_cookie.as_ref() {
+                                    ws_handler::create_upgrade_response_with_session(
+                                        &req,
+                                        Some(&session.id),
+                                        Some(&self.config.websocket.session_cookie_name),
+                                        self.config.websocket.session_timeout,
+                                    )
+                                } else {
+                                    ws_handler::create_upgrade_response(&req)
+                                };
 
                             match upgrade_response {
                                 Ok(response) => {
                                     info!("WebSocket upgrade response created for {}", path);
                                     let duration = start.elapsed().as_secs_f64();
-                                    record_request(method.as_str(), StatusCode::SWITCHING_PROTOCOLS.as_u16(), duration);
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::SWITCHING_PROTOCOLS.as_u16(),
+                                        duration,
+                                    );
 
                                     // Register connection if tracking enabled
-                                    let conn_id = if let Some(tracker) = &self.ws_connection_tracker {
+                                    let conn_id = if let Some(tracker) = &self.ws_connection_tracker
+                                    {
                                         let session_id = session_for_cookie.as_ref().map(|s| s.id);
-                                        Some(tracker.register(backend_idx, session_id, client_ip.clone()))
+                                        Some(tracker.register(
+                                            backend_idx,
+                                            session_id,
+                                            client_ip.clone(),
+                                        ))
                                     } else {
                                         None
                                     };
@@ -832,8 +935,13 @@ impl Handler {
                                     // Spawn async task for WebSocket proxying after upgrade
                                     tokio::spawn(async move {
                                         // Update connection state to Connecting
-                                        if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
-                                            tracker.update_state(cid, crate::websocket::ConnectionState::Connecting);
+                                        if let (Some(cid), Some(tracker)) =
+                                            (conn_id.as_ref(), tracker_clone.as_ref())
+                                        {
+                                            tracker.update_state(
+                                                cid,
+                                                crate::websocket::ConnectionState::Connecting,
+                                            );
                                         }
 
                                         // Wait for the upgrade to complete
@@ -842,7 +950,9 @@ impl Handler {
                                                 info!("Client WebSocket connection upgraded, connecting to backend");
 
                                                 // Update connection state to Connected
-                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
+                                                if let (Some(cid), Some(tracker)) =
+                                                    (conn_id.as_ref(), tracker_clone.as_ref())
+                                                {
                                                     tracker.update_state(cid, crate::websocket::ConnectionState::Connected);
                                                 }
 
@@ -851,12 +961,21 @@ impl Handler {
                                                 let upgraded_io = TokioIo::new(upgraded);
 
                                                 // Connect to backend WebSocket
-                                                match tokio_tungstenite::connect_async(&backend_ws_url).await {
+                                                match tokio_tungstenite::connect_async(
+                                                    &backend_ws_url,
+                                                )
+                                                .await
+                                                {
                                                     Ok((backend_ws, _)) => {
-                                                        info!("Connected to backend WebSocket: {}", backend_ws_url);
+                                                        info!(
+                                                            "Connected to backend WebSocket: {}",
+                                                            backend_ws_url
+                                                        );
 
                                                         // Record successful connection
-                                                        if let Some(recovery) = recovery_clone.as_ref() {
+                                                        if let Some(recovery) =
+                                                            recovery_clone.as_ref()
+                                                        {
                                                             recovery.record_success(backend_idx);
                                                         }
 
@@ -868,10 +987,21 @@ impl Handler {
                                                         ).await;
 
                                                         // Proxy bidirectionally with tracking
-                                                        if let Err(e) = Self::proxy_websocket_streams(client_ws, backend_ws).await {
+                                                        if let Err(e) =
+                                                            Self::proxy_websocket_streams(
+                                                                client_ws, backend_ws,
+                                                            )
+                                                            .await
+                                                        {
                                                             error!("WebSocket proxy error: {}", e);
-                                                            if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
-                                                                tracker.record_error(cid, format!("Proxy error: {}", e));
+                                                            if let (Some(cid), Some(tracker)) = (
+                                                                conn_id.as_ref(),
+                                                                tracker_clone.as_ref(),
+                                                            ) {
+                                                                tracker.record_error(
+                                                                    cid,
+                                                                    format!("Proxy error: {}", e),
+                                                                );
                                                             }
                                                         } else {
                                                             info!("WebSocket connection closed cleanly");
@@ -879,27 +1009,44 @@ impl Handler {
                                                     }
                                                     Err(e) => {
                                                         error!("Failed to connect to backend WebSocket: {}", e);
-                                                        if let Some(recovery) = recovery_clone.as_ref() {
+                                                        if let Some(recovery) =
+                                                            recovery_clone.as_ref()
+                                                        {
                                                             recovery.record_failure(backend_idx, crate::websocket::WebSocketError::ConnectionRefused);
                                                         }
                                                     }
                                                 }
 
                                                 // Update connection state to Closing
-                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
-                                                    tracker.update_state(cid, crate::websocket::ConnectionState::Closing);
+                                                if let (Some(cid), Some(tracker)) =
+                                                    (conn_id.as_ref(), tracker_clone.as_ref())
+                                                {
+                                                    tracker.update_state(
+                                                        cid,
+                                                        crate::websocket::ConnectionState::Closing,
+                                                    );
                                                 }
                                             }
                                             Err(e) => {
-                                                error!("Failed to upgrade client connection: {}", e);
-                                                if let (Some(cid), Some(tracker)) = (conn_id.as_ref(), tracker_clone.as_ref()) {
-                                                    tracker.record_error(cid, format!("Upgrade error: {}", e));
+                                                error!(
+                                                    "Failed to upgrade client connection: {}",
+                                                    e
+                                                );
+                                                if let (Some(cid), Some(tracker)) =
+                                                    (conn_id.as_ref(), tracker_clone.as_ref())
+                                                {
+                                                    tracker.record_error(
+                                                        cid,
+                                                        format!("Upgrade error: {}", e),
+                                                    );
                                                 }
                                             }
                                         }
 
                                         // Unregister connection
-                                        if let (Some(cid), Some(tracker)) = (conn_id, tracker_clone.as_ref()) {
+                                        if let (Some(cid), Some(tracker)) =
+                                            (conn_id, tracker_clone.as_ref())
+                                        {
                                             tracker.unregister(&cid);
                                         }
                                     });
@@ -909,7 +1056,11 @@ impl Handler {
                                 Err(e) => {
                                     error!("Failed to create WebSocket upgrade response: {}", e);
                                     let duration = start.elapsed().as_secs_f64();
-                                    record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::BAD_REQUEST.as_u16(),
+                                        duration,
+                                    );
                                     return self.error_response(
                                         StatusCode::BAD_REQUEST,
                                         "Invalid WebSocket upgrade request",
@@ -926,7 +1077,11 @@ impl Handler {
 
             // If we get here, no backend was found
             let duration = start.elapsed().as_secs_f64();
-            record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
+            record_request(
+                method.as_str(),
+                StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                duration,
+            );
             return self.error_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "No backend available for WebSocket connection",
@@ -934,11 +1089,15 @@ impl Handler {
         }
 
         // Check for gRPC request and store info for later use (BEFORE consuming req)
-        let grpc_request_info = if self.config.grpc.enabled && grpc_detector::is_grpc_request(&req) {
+        let grpc_request_info = if self.config.grpc.enabled && grpc_detector::is_grpc_request(&req)
+        {
             debug!("Detected gRPC request");
             if let Some(grpc_req) = grpc_detector::parse_grpc_request(&req) {
-                info!("gRPC request: {} (service: {:?})", grpc_req.path,
-                    grpc_detector::extract_service_name(&grpc_req.path));
+                info!(
+                    "gRPC request: {} (service: {:?})",
+                    grpc_req.path,
+                    grpc_detector::extract_service_name(&grpc_req.path)
+                );
                 Some(grpc_req)
             } else {
                 None
@@ -951,16 +1110,20 @@ impl Handler {
         // Try to find matching route to check for webserver configuration
         if let Some(route) = self.find_route(&method, &host, path) {
             // Check if this route has webserver configuration
-            let has_webserver_config = route.static_files
-                || route.php_fpm.is_some()
-                || route.root.is_some();
+            let has_webserver_config =
+                route.static_files || route.php_fpm.is_some() || route.root.is_some();
 
             if has_webserver_config {
-                debug!("Route {} has webserver configuration, processing as webserver request", route.name);
+                debug!(
+                    "Route {} has webserver configuration, processing as webserver request",
+                    route.name
+                );
 
                 // Handle as webserver request using route configuration
                 // NOTE: This consumes req, so we can't fall through to proxy
-                return self.handle_webserver_request(req, route, &method, &host, path, start).await;
+                return self
+                    .handle_webserver_request(req, route, &method, &host, path, start)
+                    .await;
             }
         }
 
@@ -973,45 +1136,48 @@ impl Handler {
 
                 // Check cache for GET requests (only cache safe, idempotent requests)
                 if method == Method::GET {
-                if let Some(cache) = self.cache.as_ref() {
+                    if let Some(cache) = self.cache.as_ref() {
+                        // Generate cache key from method and URI
+                        let cache_key = crate::gateway::cache::LocalCache::generate_key(
+                            method.as_str(),
+                            &uri.to_string(),
+                            &[],
+                        );
 
-                    // Generate cache key from method and URI
-                    let cache_key = crate::gateway::cache::LocalCache::generate_key(
-                        method.as_str(),
-                        &uri.to_string(),
-                        &[]
-                    );
+                        // Try to get from cache
+                        if let Some(cached_entry) = cache.get(&cache_key) {
+                            debug!("Cache HIT for {}", uri);
 
-                    // Try to get from cache
-                    if let Some(cached_entry) = cache.get(&cache_key) {
-                        debug!("Cache HIT for {}", uri);
+                            // Build response from cache
+                            let mut response_builder = Response::builder()
+                                .status(
+                                    StatusCode::from_u16(cached_entry.status)
+                                        .unwrap_or(StatusCode::OK),
+                                )
+                                .header("x-cache", "HIT");
 
-                        // Build response from cache
-                        let mut response_builder = Response::builder()
-                            .status(StatusCode::from_u16(cached_entry.status).unwrap_or(StatusCode::OK))
-                            .header("x-cache", "HIT");
+                            // Add cached headers
+                            for (name, value) in cached_entry.headers {
+                                response_builder = response_builder.header(name, value);
+                            }
 
-                        // Add cached headers
-                        for (name, value) in cached_entry.headers {
-                            response_builder = response_builder.header(name, value);
+                            // Add Age header (how old is this cached entry)
+                            let age_secs = cached_entry.created_at.elapsed().as_secs();
+                            response_builder = response_builder.header("age", age_secs.to_string());
+
+                            let cached_response =
+                                response_builder.body(ResponseBody::buffered(cached_entry.body))?;
+
+                            // Record metrics
+                            let duration = start.elapsed().as_secs_f64();
+                            record_request(method.as_str(), cached_entry.status, duration);
+
+                            return Ok(cached_response);
+                        } else {
+                            debug!("Cache MISS for {}", uri);
                         }
-
-                        // Add Age header (how old is this cached entry)
-                        let age_secs = cached_entry.created_at.elapsed().as_secs();
-                        response_builder = response_builder.header("age", age_secs.to_string());
-
-                        let cached_response = response_builder
-                            .body(ResponseBody::buffered(cached_entry.body))?;
-
-                        // Record metrics
-                        let duration = start.elapsed().as_secs_f64();
-                        record_request(method.as_str(), cached_entry.status, duration);
-
-                        return Ok(cached_response);
-                    } else {
-                        debug!("Cache MISS for {}", uri);
                     }
-                }}
+                }
 
                 // Get upstream
                 if let Some(upstream) = self.upstreams.get(&upstream_name) {
@@ -1020,7 +1186,11 @@ impl Handler {
                     if !circuit_breaker.allow_request() {
                         warn!("Circuit breaker OPEN for upstream: {}", upstream_name);
                         let duration = start.elapsed().as_secs_f64();
-                        record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
+                        record_request(
+                            method.as_str(),
+                            StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                            duration,
+                        );
                         return self.error_response(
                             StatusCode::SERVICE_UNAVAILABLE,
                             "Circuit breaker is open",
@@ -1059,9 +1229,16 @@ impl Handler {
                             let grpc_req_clone = grpc_req.clone();
                             let backend_url_clone = backend_url.clone();
 
-                            let result = circuit_breaker.execute(|| async move {
-                                grpc_handler::proxy_grpc_request(&grpc_req_clone, &backend_url_clone, req).await
-                            }).await;
+                            let result = circuit_breaker
+                                .execute(|| async move {
+                                    grpc_handler::proxy_grpc_request(
+                                        &grpc_req_clone,
+                                        &backend_url_clone,
+                                        req,
+                                    )
+                                    .await
+                                })
+                                .await;
 
                             match result {
                                 Ok(response) => {
@@ -1080,22 +1257,35 @@ impl Handler {
                                     // Record metrics
                                     let duration = start.elapsed().as_secs_f64();
                                     record_request(method.as_str(), status.as_u16(), duration);
-                                    record_upstream_request(&upstream_name, status.as_u16(), duration);
+                                    record_upstream_request(
+                                        &upstream_name,
+                                        status.as_u16(),
+                                        duration,
+                                    );
 
                                     // Convert Incoming body to ResponseBody for return type compatibility
                                     // Incoming needs to be boxed and error type converted
                                     let (parts, body) = response.into_parts();
                                     use http_body_util::BodyExt as _;
                                     let boxed_body = body
-                                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                                        .map_err(|e| {
+                                            std::io::Error::new(std::io::ErrorKind::Other, e)
+                                        })
                                         .boxed_unsync();
-                                    let response = Response::from_parts(parts, ResponseBody::Stream(boxed_body));
+                                    let response = Response::from_parts(
+                                        parts,
+                                        ResponseBody::Stream(boxed_body),
+                                    );
                                     Ok(response)
                                 }
                                 Err(CircuitBreakerError::Open) => {
                                     warn!("Circuit breaker opened for upstream: {}", upstream_name);
                                     let duration = start.elapsed().as_secs_f64();
-                                    record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                                        duration,
+                                    );
 
                                     let grpc_error = grpc_handler::create_grpc_error_response(
                                         crate::grpc::GrpcStatusCode::Unavailable,
@@ -1104,7 +1294,11 @@ impl Handler {
                                     // Convert Full<Bytes> body to ResponseBody
                                     let (parts, body) = grpc_error.into_parts();
                                     use http_body_util::BodyExt as _;
-                                    let bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
+                                    let bytes = body
+                                        .collect()
+                                        .await
+                                        .expect("Full<Bytes> body collection is infallible")
+                                        .to_bytes();
                                     Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
                                 }
                                 Err(CircuitBreakerError::Failure(e)) => {
@@ -1113,8 +1307,16 @@ impl Handler {
 
                                     error!("gRPC backend request failed: {}", e);
                                     let duration = start.elapsed().as_secs_f64();
-                                    record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);
-                                    record_upstream_request(&upstream_name, StatusCode::BAD_GATEWAY.as_u16(), duration);
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::BAD_GATEWAY.as_u16(),
+                                        duration,
+                                    );
+                                    record_upstream_request(
+                                        &upstream_name,
+                                        StatusCode::BAD_GATEWAY.as_u16(),
+                                        duration,
+                                    );
 
                                     let grpc_error = grpc_handler::create_grpc_error_response(
                                         crate::grpc::GrpcStatusCode::Unavailable,
@@ -1123,7 +1325,11 @@ impl Handler {
                                     // Convert Full<Bytes> body to ResponseBody
                                     let (parts, body) = grpc_error.into_parts();
                                     use http_body_util::BodyExt as _;
-                                    let bytes = body.collect().await.expect("Full<Bytes> body collection is infallible").to_bytes();
+                                    let bytes = body
+                                        .collect()
+                                        .await
+                                        .expect("Full<Bytes> body collection is infallible")
+                                        .to_bytes();
                                     Ok(Response::from_parts(parts, ResponseBody::buffered(bytes)))
                                 }
                             }
@@ -1137,18 +1343,25 @@ impl Handler {
 
                             // Collect request body for POST/PUT/PATCH methods
                             let (parts, incoming_body) = req.into_parts();
-                            let body_bytes = if method == Method::POST || method == Method::PUT || method == Method::PATCH {
+                            let body_bytes = if method == Method::POST
+                                || method == Method::PUT
+                                || method == Method::PATCH
+                            {
                                 // Extract content length
-                                let content_length = parts.headers
+                                let content_length = parts
+                                    .headers
                                     .get("content-length")
                                     .and_then(|h| h.to_str().ok())
                                     .and_then(|s| s.parse::<u64>().ok());
 
                                 match collect_body_validated(
-                    incoming_body,
-                    content_length,
-                    *crate::runtime_config::current().body.max_request_body.get() as usize,
-                ).await {
+                                    incoming_body,
+                                    content_length,
+                                    *crate::runtime_config::current().body.max_request_body.get()
+                                        as usize,
+                                )
+                                .await
+                                {
                                     Ok(collected) => Some(collected.bytes),
                                     Err(e) => {
                                         warn!("Failed to collect request body: {}", e);
@@ -1160,174 +1373,244 @@ impl Handler {
                                 None
                             };
 
-                            let result = circuit_breaker.execute(|| async {
-                                client.forward(&backend_url_clone, method_clone.clone(), &path_str, headers.clone(), body_bytes.clone()).await
-                            }).await;
+                            let result = circuit_breaker
+                                .execute(|| async {
+                                    client
+                                        .forward(
+                                            &backend_url_clone,
+                                            method_clone.clone(),
+                                            &path_str,
+                                            headers.clone(),
+                                            body_bytes.clone(),
+                                        )
+                                        .await
+                                })
+                                .await;
 
-                        match result {
-                            Ok(response) => {
-                                // Record response time for load balancing
-                                backend.record_response_time(backend_request_start.elapsed());
+                            match result {
+                                Ok(response) => {
+                                    // Record response time for load balancing
+                                    backend.record_response_time(backend_request_start.elapsed());
 
-                                // Circuit breaker records success automatically
-                                // Convert response body using BufferPool for efficient memory reuse
-                                let status = response.status();
-                                let headers = response.headers().clone();
+                                    // Circuit breaker records success automatically
+                                    // Convert response body using BufferPool for efficient memory reuse
+                                    let status = response.status();
+                                    let headers = response.headers().clone();
 
-                                // Use global buffer pool to avoid allocations
-                                use crate::runtime::GLOBAL_BUFFER_POOL;
-                                let mut buffer = GLOBAL_BUFFER_POOL.get(16384); // 16KB initial size
+                                    // Use global buffer pool to avoid allocations
+                                    use crate::runtime::GLOBAL_BUFFER_POOL;
+                                    let mut buffer = GLOBAL_BUFFER_POOL.get(16384); // 16KB initial size
 
-                                // Stream response body into pooled buffer
-                                let mut body = response.into_body();
-                                let body_result = async {
-                                    while let Some(frame) = body.frame().await {
-                                        match frame {
-                                            Ok(frame) => {
-                                                if let Some(chunk) = frame.data_ref() {
-                                                    buffer.extend_from_slice(chunk);
+                                    // Stream response body into pooled buffer
+                                    let mut body = response.into_body();
+                                    let body_result = async {
+                                        while let Some(frame) = body.frame().await {
+                                            match frame {
+                                                Ok(frame) => {
+                                                    if let Some(chunk) = frame.data_ref() {
+                                                        buffer.extend_from_slice(chunk);
+                                                    }
                                                 }
+                                                Err(e) => return Err(e),
                                             }
-                                            Err(e) => return Err(e),
                                         }
+                                        Ok(())
                                     }
-                                    Ok(())
-                                }.await;
+                                    .await;
 
-                                match body_result {
-                                    Ok(()) => {
-                                        // Convert buffer to Bytes (zero-copy view)
-                                        let body_bytes = buffer.freeze();
+                                    match body_result {
+                                        Ok(()) => {
+                                            // Convert buffer to Bytes (zero-copy view)
+                                            let body_bytes = buffer.freeze();
 
-                                        let mut resp = Response::builder()
-                                            .status(status);
+                                            let mut resp = Response::builder().status(status);
 
-                                        // Copy headers
-                                        for (key, value) in headers.iter() {
-                                            resp = resp.header(key, value);
-                                        }
+                                            // Copy headers
+                                            for (key, value) in headers.iter() {
+                                                resp = resp.header(key, value);
+                                            }
 
-                                        let response = resp.body(ResponseBody::buffered(body_bytes.clone()))?;
+                                            let response = resp
+                                                .body(ResponseBody::buffered(body_bytes.clone()))?;
 
-                                        // Store in cache for GET requests with successful status
-                                        if method == Method::GET && status.is_success() {
-                                        if let Some(cache) = self.cache.as_ref() {
+                                            // Store in cache for GET requests with successful status
+                                            if method == Method::GET && status.is_success() {
+                                                if let Some(cache) = self.cache.as_ref() {
+                                                    // Check Cache-Control header to respect caching directives
+                                                    let should_cache = if let Some(cache_control) =
+                                                        headers.get("cache-control")
+                                                    {
+                                                        if let Ok(cc_str) = cache_control.to_str() {
+                                                            let cc_lower = cc_str.to_lowercase();
+                                                            // Don't cache if no-store or no-cache
+                                                            !cc_lower.contains("no-store")
+                                                                && !cc_lower.contains("no-cache")
+                                                        } else {
+                                                            true
+                                                        }
+                                                    } else {
+                                                        true // No cache-control header, safe to cache
+                                                    };
 
-                                            // Check Cache-Control header to respect caching directives
-                                            let should_cache = if let Some(cache_control) = headers.get("cache-control") {
-                                                if let Ok(cc_str) = cache_control.to_str() {
-                                                    let cc_lower = cc_str.to_lowercase();
-                                                    // Don't cache if no-store or no-cache
-                                                    !cc_lower.contains("no-store") && !cc_lower.contains("no-cache")
-                                                } else {
-                                                    true
-                                                }
-                                            } else {
-                                                true // No cache-control header, safe to cache
-                                            };
-
-                                            if should_cache {
-                                                // Generate cache key
-                                                let cache_key = crate::gateway::cache::LocalCache::generate_key(
+                                                    if should_cache {
+                                                        // Generate cache key
+                                                        let cache_key = crate::gateway::cache::LocalCache::generate_key(
                                                     method.as_str(),
                                                     &uri.to_string(),
                                                     &[]
                                                 );
 
-                                                // Convert headers to Vec<(String, String)>
-                                                let header_vec: Vec<(String, String)> = headers
-                                                    .iter()
-                                                    .filter_map(|(name, value)| {
-                                                        value.to_str().ok().map(|v| (name.to_string(), v.to_string()))
-                                                    })
-                                                    .collect();
+                                                        // Convert headers to Vec<(String, String)>
+                                                        let header_vec: Vec<(String, String)> =
+                                                            headers
+                                                                .iter()
+                                                                .filter_map(|(name, value)| {
+                                                                    value.to_str().ok().map(|v| {
+                                                                        (
+                                                                            name.to_string(),
+                                                                            v.to_string(),
+                                                                        )
+                                                                    })
+                                                                })
+                                                                .collect();
 
-                                                // Create cache entry (use TTL from config)
-                                                let ttl = if let Some(cache_config) = &self.config.cache {
-                                                    cache_config.default_ttl
-                                                } else {
-                                                    std::time::Duration::from_secs(300) // Default 5 minutes
-                                                };
+                                                        // Create cache entry (use TTL from config)
+                                                        let ttl = if let Some(cache_config) =
+                                                            &self.config.cache
+                                                        {
+                                                            cache_config.default_ttl
+                                                        } else {
+                                                            std::time::Duration::from_secs(300)
+                                                            // Default 5 minutes
+                                                        };
 
-                                                let cache_entry = crate::gateway::cache::CacheEntry {
-                                                    body: body_bytes.clone(),
-                                                    status: status.as_u16(),
-                                                    headers: header_vec,
-                                                    created_at: std::time::Instant::now(),
-                                                    ttl,
-                                                };
+                                                        let cache_entry =
+                                                            crate::gateway::cache::CacheEntry {
+                                                                body: body_bytes.clone(),
+                                                                status: status.as_u16(),
+                                                                headers: header_vec,
+                                                                created_at: std::time::Instant::now(
+                                                                ),
+                                                                ttl,
+                                                            };
 
-                                                cache.set(cache_key.clone(), cache_entry);
-                                                debug!("Cached response for {} (key: {})", uri, cache_key);
+                                                        cache.set(cache_key.clone(), cache_entry);
+                                                        debug!(
+                                                            "Cached response for {} (key: {})",
+                                                            uri, cache_key
+                                                        );
+                                                    }
+                                                }
                                             }
-                                        }}
 
-                                        // Apply middleware chain (compression, etc.)
-                                        let mut response = match self.middleware_chain.process_response(response).await {
-                                            Ok(resp) => resp,
-                                            Err(e) => {
-                                                error!("Middleware processing failed: {}", e);
-                                                // Fall through to original response if middleware fails
-                                                return self.error_response(
-                                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                                    "Middleware processing failed",
+                                            // Apply middleware chain (compression, etc.)
+                                            let mut response = match self
+                                                .middleware_chain
+                                                .process_response(response)
+                                                .await
+                                            {
+                                                Ok(resp) => resp,
+                                                Err(e) => {
+                                                    error!("Middleware processing failed: {}", e);
+                                                    // Fall through to original response if middleware fails
+                                                    return self.error_response(
+                                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                                        "Middleware processing failed",
+                                                    );
+                                                }
+                                            };
+
+                                            // Add Alt-Svc header to advertise HTTP/3 if enabled
+                                            if self.config.server.http3.enabled {
+                                                alt_svc::add_alt_svc_header(
+                                                    &mut response,
+                                                    self.config.server.http3.port,
                                                 );
                                             }
-                                        };
 
-                                        // Add Alt-Svc header to advertise HTTP/3 if enabled
-                                        if self.config.server.http3.enabled {
-                                            alt_svc::add_alt_svc_header(&mut response, self.config.server.http3.port);
+                                            // Record metrics
+                                            let duration = start.elapsed().as_secs_f64();
+                                            record_request(
+                                                method.as_str(),
+                                                status.as_u16(),
+                                                duration,
+                                            );
+                                            record_upstream_request(
+                                                &upstream_name,
+                                                status.as_u16(),
+                                                duration,
+                                            );
+
+                                            Ok(response)
                                         }
-
-                                        // Record metrics
-                                        let duration = start.elapsed().as_secs_f64();
-                                        record_request(method.as_str(), status.as_u16(), duration);
-                                        record_upstream_request(&upstream_name, status.as_u16(), duration);
-
-                                        Ok(response)
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to read response body: {}", e);
-                                        circuit_breaker.record_failure();
-                                        let duration = start.elapsed().as_secs_f64();
-                                        record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);
-                                        record_upstream_request(&upstream_name, StatusCode::BAD_GATEWAY.as_u16(), duration);
-                                        self.error_response(
-                                            StatusCode::BAD_GATEWAY,
-                                            "Failed to read upstream response",
-                                        )
+                                        Err(e) => {
+                                            error!("Failed to read response body: {}", e);
+                                            circuit_breaker.record_failure();
+                                            let duration = start.elapsed().as_secs_f64();
+                                            record_request(
+                                                method.as_str(),
+                                                StatusCode::BAD_GATEWAY.as_u16(),
+                                                duration,
+                                            );
+                                            record_upstream_request(
+                                                &upstream_name,
+                                                StatusCode::BAD_GATEWAY.as_u16(),
+                                                duration,
+                                            );
+                                            self.error_response(
+                                                StatusCode::BAD_GATEWAY,
+                                                "Failed to read upstream response",
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            Err(CircuitBreakerError::Open) => {
-                                warn!("Circuit breaker opened for upstream: {}", upstream_name);
-                                let duration = start.elapsed().as_secs_f64();
-                                record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
-                                self.error_response(
-                                    StatusCode::SERVICE_UNAVAILABLE,
-                                    "Circuit breaker is open",
-                                )
-                            }
-                            Err(CircuitBreakerError::Failure(e)) => {
-                                // Record response time even on failure (helps detect slow failing backends)
-                                backend.record_response_time(backend_request_start.elapsed());
+                                Err(CircuitBreakerError::Open) => {
+                                    warn!("Circuit breaker opened for upstream: {}", upstream_name);
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                                        duration,
+                                    );
+                                    self.error_response(
+                                        StatusCode::SERVICE_UNAVAILABLE,
+                                        "Circuit breaker is open",
+                                    )
+                                }
+                                Err(CircuitBreakerError::Failure(e)) => {
+                                    // Record response time even on failure (helps detect slow failing backends)
+                                    backend.record_response_time(backend_request_start.elapsed());
 
-                                error!("Failed to forward request: {}", e);
-                                let duration = start.elapsed().as_secs_f64();
-                                record_request(method.as_str(), StatusCode::BAD_GATEWAY.as_u16(), duration);
-                                record_upstream_request(&upstream_name, StatusCode::BAD_GATEWAY.as_u16(), duration);
-                                self.error_response(
-                                    StatusCode::BAD_GATEWAY,
-                                    "Failed to connect to upstream",
-                                )
+                                    error!("Failed to forward request: {}", e);
+                                    let duration = start.elapsed().as_secs_f64();
+                                    record_request(
+                                        method.as_str(),
+                                        StatusCode::BAD_GATEWAY.as_u16(),
+                                        duration,
+                                    );
+                                    record_upstream_request(
+                                        &upstream_name,
+                                        StatusCode::BAD_GATEWAY.as_u16(),
+                                        duration,
+                                    );
+                                    self.error_response(
+                                        StatusCode::BAD_GATEWAY,
+                                        "Failed to connect to upstream",
+                                    )
+                                }
                             }
-                        }
                         }
                     } else {
-                        warn!("No healthy backends available for upstream: {}", upstream_name);
+                        warn!(
+                            "No healthy backends available for upstream: {}",
+                            upstream_name
+                        );
                         let duration = start.elapsed().as_secs_f64();
-                        record_request(method.as_str(), StatusCode::SERVICE_UNAVAILABLE.as_u16(), duration);
+                        record_request(
+                            method.as_str(),
+                            StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                            duration,
+                        );
                         self.error_response(
                             StatusCode::SERVICE_UNAVAILABLE,
                             "No healthy backends available",
@@ -1353,7 +1636,10 @@ impl Handler {
     async fn find_route_async(&self, method: &Method, host: &str, path: &str) -> Option<String> {
         // Try hostname router first (API Gateway)
         if let Some(router) = &self.hostname_router {
-            if let Some(matched) = router.match_request_wildcard(host, path, method.as_str()).await {
+            if let Some(matched) = router
+                .match_request_wildcard(host, path, method.as_str())
+                .await
+            {
                 info!(
                     "Hostname router matched: route={}, upstream={}, match_type={:?}",
                     matched.route.name, matched.route.upstream, matched.match_type
@@ -1363,7 +1649,8 @@ impl Handler {
         }
 
         // Fallback to config-based routing
-        self.find_route(method, host, path).map(|r| r.upstream.clone())
+        self.find_route(method, host, path)
+            .map(|r| r.upstream.clone())
     }
 
     /// Find a matching route for the request (legacy config-based)
@@ -1372,27 +1659,29 @@ impl Handler {
         // This allows route patterns to match without requiring port specification
         let host_without_port = host.split(':').next().unwrap_or(host);
 
-        debug!("Route matching: method={}, host={}, host_without_port={}, path={}",
-               method, host, host_without_port, path);
+        debug!(
+            "Route matching: method={}, host={}, host_without_port={}, path={}",
+            method, host, host_without_port, path
+        );
         debug!("Available routes: {}", self.config.routes.len());
 
         for route in &self.config.routes {
-            debug!("Checking route: name={}, hosts={:?}, paths={:?}",
-                   route.name, route.match_rules.hosts, route.match_rules.paths);
+            debug!(
+                "Checking route: name={}, hosts={:?}, paths={:?}",
+                route.name, route.match_rules.hosts, route.match_rules.paths
+            );
 
             // Check host match (if specified)
             if !route.match_rules.hosts.is_empty() {
-                let host_matches = route
-                    .match_rules
-                    .hosts
-                    .iter()
-                    .any(|pattern| {
-                        let match_result = self.matches_pattern(host, pattern) ||
-                                         self.matches_pattern(host_without_port, pattern);
-                        debug!("  Host pattern '{}' vs '{}' (without port: '{}'): {}",
-                               pattern, host, host_without_port, match_result);
-                        match_result
-                    });
+                let host_matches = route.match_rules.hosts.iter().any(|pattern| {
+                    let match_result = self.matches_pattern(host, pattern)
+                        || self.matches_pattern(host_without_port, pattern);
+                    debug!(
+                        "  Host pattern '{}' vs '{}' (without port: '{}'): {}",
+                        pattern, host, host_without_port, match_result
+                    );
+                    match_result
+                });
 
                 if !host_matches {
                     debug!("  Route {} rejected: host mismatch", route.name);
@@ -1403,15 +1692,14 @@ impl Handler {
 
             // Check path match (if specified)
             if !route.match_rules.paths.is_empty() {
-                let path_matches = route
-                    .match_rules
-                    .paths
-                    .iter()
-                    .any(|pattern| {
-                        let match_result = self.matches_pattern(path, pattern);
-                        debug!("  Path pattern '{}' vs '{}': {}", pattern, path, match_result);
-                        match_result
-                    });
+                let path_matches = route.match_rules.paths.iter().any(|pattern| {
+                    let match_result = self.matches_pattern(path, pattern);
+                    debug!(
+                        "  Path pattern '{}' vs '{}': {}",
+                        pattern, path, match_result
+                    );
+                    match_result
+                });
 
                 if !path_matches {
                     debug!("  Route {} rejected: path mismatch", route.name);
@@ -1462,12 +1750,13 @@ impl Handler {
     /// Proxy WebSocket frames bidirectionally between client and backend
     async fn proxy_websocket_streams<S>(
         client: tokio_tungstenite::WebSocketStream<S>,
-        backend: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        backend: tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
     ) -> Result<()>
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
     {
-        
         use futures_util::{SinkExt, StreamExt};
 
         info!("Starting bidirectional WebSocket proxy");
@@ -1536,11 +1825,15 @@ impl Handler {
         start: Instant,
     ) -> Result<Response<ResponseBody>> {
         // Get static file handler
-        let static_handler = self.static_file_handler.as_ref()
+        let static_handler = self
+            .static_file_handler
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Static file handler not configured"))?;
 
         // Get document root from route or use default
-        let document_root = route.root.as_ref()
+        let document_root = route
+            .root
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No document root configured for route"))?;
 
         debug!("Webserver request: path={}, root={}", path, document_root);
@@ -1613,7 +1906,11 @@ impl Handler {
                         if let Ok(status) = StatusCode::from_u16(code) {
                             let duration = start.elapsed().as_secs_f64();
                             record_request(method.as_str(), status.as_u16(), duration);
-                            return self.webserver_error_response(status, &format!("File not found: {}", path), route);
+                            return self.webserver_error_response(
+                                status,
+                                &format!("File not found: {}", path),
+                                route,
+                            );
                         }
                     }
                     continue;
@@ -1633,9 +1930,8 @@ impl Handler {
         }
 
         // If still not found, return 404
-        let final_path = resolved_path.ok_or_else(|| {
-            anyhow::anyhow!("File not found: {}", path)
-        })?;
+        let final_path =
+            resolved_path.ok_or_else(|| anyhow::anyhow!("File not found: {}", path))?;
 
         debug!("Resolved path: {:?}", final_path);
 
@@ -1644,11 +1940,7 @@ impl Handler {
             warn!("File access denied for {:?}: {}", final_path, e);
             let duration = start.elapsed().as_secs_f64();
             record_request(method.as_str(), StatusCode::FORBIDDEN.as_u16(), duration);
-            return self.webserver_error_response(
-                StatusCode::FORBIDDEN,
-                "Access denied",
-                route,
-            );
+            return self.webserver_error_response(StatusCode::FORBIDDEN, "Access denied", route);
         }
 
         // Get file info
@@ -1658,7 +1950,11 @@ impl Handler {
         if let Err(e) = path_validator.validate_file_size(file_info.metadata.len()) {
             warn!("File too large for {:?}: {}", final_path, e);
             let duration = start.elapsed().as_secs_f64();
-            record_request(method.as_str(), StatusCode::PAYLOAD_TOO_LARGE.as_u16(), duration);
+            record_request(
+                method.as_str(),
+                StatusCode::PAYLOAD_TOO_LARGE.as_u16(),
+                duration,
+            );
             return self.webserver_error_response(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "File too large",
@@ -1689,64 +1985,101 @@ impl Handler {
                         let (parts, incoming_body) = req.into_parts();
 
                         // Extract Content-Length header
-                        let content_length = parts.headers
+                        let content_length = parts
+                            .headers
                             .get("content-length")
                             .and_then(|h| h.to_str().ok())
                             .and_then(|s| s.parse::<u64>().ok());
 
                         // Collect body for POST/PUT/PATCH requests
-                        let body = if matches!(method, &Method::POST | &Method::PUT | &Method::PATCH) {
-                            match collect_body_validated(
-                    incoming_body,
-                    content_length,
-                    *crate::runtime_config::current().body.max_request_body.get() as usize,
-                ).await {
-                                Ok(collected) => {
-                                    debug!("Collected {} bytes for PHP request", collected.len());
+                        let body =
+                            if matches!(method, &Method::POST | &Method::PUT | &Method::PATCH) {
+                                match collect_body_validated(
+                                    incoming_body,
+                                    content_length,
+                                    *crate::runtime_config::current().body.max_request_body.get()
+                                        as usize,
+                                )
+                                .await
+                                {
+                                    Ok(collected) => {
+                                        debug!(
+                                            "Collected {} bytes for PHP request",
+                                            collected.len()
+                                        );
 
-                                    // Validate request body size
-                                    if let Err(e) = path_validator.validate_request_body_size(collected.len()) {
-                                        warn!("Request body too large: {}", e);
+                                        // Validate request body size
+                                        if let Err(e) = path_validator
+                                            .validate_request_body_size(collected.len())
+                                        {
+                                            warn!("Request body too large: {}", e);
+                                            let duration = start.elapsed().as_secs_f64();
+                                            record_request(
+                                                method.as_str(),
+                                                StatusCode::PAYLOAD_TOO_LARGE.as_u16(),
+                                                duration,
+                                            );
+                                            return self.webserver_error_response(
+                                                StatusCode::PAYLOAD_TOO_LARGE,
+                                                "Request body too large",
+                                                route,
+                                            );
+                                        }
+
+                                        collected
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to collect request body: {}", e);
                                         let duration = start.elapsed().as_secs_f64();
-                                        record_request(method.as_str(), StatusCode::PAYLOAD_TOO_LARGE.as_u16(), duration);
+                                        record_request(
+                                            method.as_str(),
+                                            StatusCode::BAD_REQUEST.as_u16(),
+                                            duration,
+                                        );
                                         return self.webserver_error_response(
-                                            StatusCode::PAYLOAD_TOO_LARGE,
-                                            "Request body too large",
+                                            StatusCode::BAD_REQUEST,
+                                            "Invalid request body",
                                             route,
                                         );
                                     }
-
-                                    collected
                                 }
-                                Err(e) => {
-                                    warn!("Failed to collect request body: {}", e);
-                                    let duration = start.elapsed().as_secs_f64();
-                                    record_request(method.as_str(), StatusCode::BAD_REQUEST.as_u16(), duration);
-                                    return self.webserver_error_response(
-                                        StatusCode::BAD_REQUEST,
-                                        "Invalid request body",
-                                        route,
-                                    );
-                                }
-                            }
-                        } else {
-                            // For GET, HEAD, etc., use empty body
-                            CollectedBody::empty()
-                        };
+                            } else {
+                                // For GET, HEAD, etc., use empty body
+                                CollectedBody::empty()
+                            };
 
                         // Reconstruct request with empty body
                         let req_empty = Request::from_parts(parts, Empty::<Bytes>::new());
 
-                        match self.serve_php_file(&file_info, php_pool, &req_empty, host, path, body, document_root).await {
+                        match self
+                            .serve_php_file(
+                                &file_info,
+                                php_pool,
+                                &req_empty,
+                                host,
+                                path,
+                                body,
+                                document_root,
+                            )
+                            .await
+                        {
                             Ok(response) => {
                                 let duration = start.elapsed().as_secs_f64();
-                                record_request(method.as_str(), response.status().as_u16(), duration);
+                                record_request(
+                                    method.as_str(),
+                                    response.status().as_u16(),
+                                    duration,
+                                );
                                 return Ok(response);
                             }
                             Err(e) => {
                                 error!("PHP-FPM processing failed for {:?}: {}", final_path, e);
                                 let duration = start.elapsed().as_secs_f64();
-                                record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                                record_request(
+                                    method.as_str(),
+                                    StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    duration,
+                                );
                                 return self.webserver_error_response(
                                     StatusCode::INTERNAL_SERVER_ERROR,
                                     "PHP processing failed",
@@ -1758,14 +2091,20 @@ impl Handler {
                 }
             }
             // If PHP-FPM not configured, treat as static file (will likely fail with wrong MIME type)
-            warn!("PHP file detected but PHP-FPM not configured for route: {}", path);
+            warn!(
+                "PHP file detected but PHP-FPM not configured for route: {}",
+                path
+            );
         }
 
         // Serve as static file
         debug!("Serving static file: {:?}", final_path);
 
         // Reconstruct request for static file serving
-        match self.serve_static_file(&file_info, static_handler, &req).await {
+        match self
+            .serve_static_file(&file_info, static_handler, &req)
+            .await
+        {
             Ok(response) => {
                 let duration = start.elapsed().as_secs_f64();
                 record_request(method.as_str(), response.status().as_u16(), duration);
@@ -1774,7 +2113,11 @@ impl Handler {
             Err(e) => {
                 error!("Static file serving failed for {:?}: {}", final_path, e);
                 let duration = start.elapsed().as_secs_f64();
-                record_request(method.as_str(), StatusCode::INTERNAL_SERVER_ERROR.as_u16(), duration);
+                record_request(
+                    method.as_str(),
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    duration,
+                );
                 self.webserver_error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Failed to serve file",
@@ -1791,8 +2134,6 @@ impl Handler {
         static_handler: &crate::webserver::StaticFileHandler,
         req: &Request<Incoming>,
     ) -> Result<Response<ResponseBody>> {
-        
-
         // Get file metadata
         let metadata = &file_info.metadata;
         let file_size = metadata.len();
@@ -1832,7 +2173,9 @@ impl Handler {
         }
 
         // Check Range header for partial content requests
-        let range = req.headers().get("range")
+        let range = req
+            .headers()
+            .get("range")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| self.parse_range_header(s, file_size));
 
@@ -1861,7 +2204,10 @@ impl Handler {
                 .status(StatusCode::PARTIAL_CONTENT)
                 .header("content-type", mime_type)
                 .header("content-length", length.to_string())
-                .header("content-range", format!("bytes {}-{}/{}", start, end, file_size))
+                .header(
+                    "content-range",
+                    format!("bytes {}-{}/{}", start, end, file_size),
+                )
                 .header("accept-ranges", "bytes")
                 .header("etag", &etag);
 
@@ -1907,29 +2253,38 @@ impl Handler {
         host_document_root: &str,
     ) -> Result<Response<ResponseBody>> {
         // Get connection from pool
-        let mut conn = php_pool.get_connection()
+        let mut conn = php_pool
+            .get_connection()
             .map_err(|e| anyhow::anyhow!("Failed to get PHP-FPM connection: {}", e))?;
 
         // Build SCRIPT_FILENAME with path translation if needed
         let script_filename = if let Some(container_root) = php_pool.document_root() {
             // Translate path: remove host root, prepend container root
-            let file_path_str = file_info.path.to_str()
+            let file_path_str = file_info
+                .path
+                .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Invalid script path"))?;
 
-            debug!("Path translation: file_path={}, host_root={}, container_root={}",
-                file_path_str, host_document_root, container_root);
+            debug!(
+                "Path translation: file_path={}, host_root={}, container_root={}",
+                file_path_str, host_document_root, container_root
+            );
 
             // Get relative path from host root
             let relative_path = std::path::Path::new(file_path_str)
                 .strip_prefix(host_document_root)
                 .map_err(|e| {
-                    error!("Failed to strip prefix '{}' from '{}': {}", host_document_root, file_path_str, e);
+                    error!(
+                        "Failed to strip prefix '{}' from '{}': {}",
+                        host_document_root, file_path_str, e
+                    );
                     anyhow::anyhow!("Script path not under document root")
                 })?;
 
             // Join with container root
             let container_path = std::path::Path::new(container_root).join(relative_path);
-            let result = container_path.to_str()
+            let result = container_path
+                .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Invalid container path"))?
                 .to_string();
 
@@ -1937,22 +2292,32 @@ impl Handler {
             result
         } else {
             // No translation, use host path as-is
-            file_info.path.to_str()
+            file_info
+                .path
+                .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Invalid script path"))?
                 .to_string()
         };
 
         // Use container document root if configured, otherwise host root
-        let document_root_param = php_pool.document_root()
-            .unwrap_or(host_document_root);
+        let document_root_param = php_pool.document_root().unwrap_or(host_document_root);
 
         let mut params = vec![
-            ("REQUEST_METHOD".to_string(), req.method().as_str().to_string()),
+            (
+                "REQUEST_METHOD".to_string(),
+                req.method().as_str().to_string(),
+            ),
             ("SCRIPT_FILENAME".to_string(), script_filename.to_string()),
-            ("REQUEST_URI".to_string(), sanitize_fastcgi_param(req.uri().path())),
+            (
+                "REQUEST_URI".to_string(),
+                sanitize_fastcgi_param(req.uri().path()),
+            ),
             ("DOCUMENT_URI".to_string(), sanitize_fastcgi_param(path)),
             ("DOCUMENT_ROOT".to_string(), document_root_param.to_string()),
-            ("SERVER_PROTOCOL".to_string(), format!("{:?}", req.version())),
+            (
+                "SERVER_PROTOCOL".to_string(),
+                format!("{:?}", req.version()),
+            ),
             ("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string()),
             ("SERVER_SOFTWARE".to_string(), "highper-gateway".to_string()),
             ("REMOTE_ADDR".to_string(), "127.0.0.1".to_string()),
@@ -1981,7 +2346,8 @@ impl Handler {
         // Add HTTP headers as CGI variables (sanitize to prevent injection)
         for (name, value) in req.headers() {
             if let Ok(value_str) = value.to_str() {
-                let header_name = format!("HTTP_{}", name.as_str().to_uppercase().replace('-', "_"));
+                let header_name =
+                    format!("HTTP_{}", name.as_str().to_uppercase().replace('-', "_"));
                 params.push((header_name, sanitize_fastcgi_param(value_str)));
             }
         }
@@ -1990,7 +2356,8 @@ impl Handler {
         debug!("Sending {} bytes to PHP-FPM", body.len());
 
         // Execute FastCGI request with actual body data
-        let output = conn.execute(&params, &body.bytes)
+        let output = conn
+            .execute(&params, &body.bytes)
             .map_err(|e| anyhow::anyhow!("PHP-FPM execution failed: {}", e))?;
 
         // Parse CGI response (headers + body)
@@ -2004,10 +2371,10 @@ impl Handler {
         // Find end of headers (double newline)
         let mut header_end = 0;
         for i in 0..output.len().saturating_sub(3) {
-            if &output[i..i+4] == b"\r\n\r\n" {
+            if &output[i..i + 4] == b"\r\n\r\n" {
                 header_end = i + 4;
                 break;
-            } else if &output[i..i+2] == b"\n\n" {
+            } else if &output[i..i + 2] == b"\n\n" {
                 header_end = i + 2;
                 break;
             }
@@ -2037,7 +2404,7 @@ impl Handler {
 
             if let Some(colon_pos) = line.find(':') {
                 let name = &line[0..colon_pos].trim();
-                let value = &line[colon_pos+1..].trim();
+                let value = &line[colon_pos + 1..].trim();
 
                 if name.eq_ignore_ascii_case("status") {
                     // Parse status code
@@ -2060,11 +2427,7 @@ impl Handler {
     }
 
     /// Create an error response
-    fn error_response(
-        &self,
-        status: StatusCode,
-        message: &str,
-    ) -> Result<Response<ResponseBody>> {
+    fn error_response(&self, status: StatusCode, message: &str) -> Result<Response<ResponseBody>> {
         Ok(Response::builder()
             .status(status)
             .header("content-type", "text/plain")
@@ -2082,14 +2445,20 @@ impl Handler {
         if let Some(error_page_path) = route.error_pages.get(&status.as_u16()) {
             // Get document root
             if let Some(root) = &route.root {
-                let error_file_path = std::path::Path::new(root).join(error_page_path.trim_start_matches('/'));
+                let error_file_path =
+                    std::path::Path::new(root).join(error_page_path.trim_start_matches('/'));
 
                 // Try to read the custom error page
                 if let Ok(contents) = std::fs::read(&error_file_path) {
-                    debug!("Serving custom error page: {:?} for status {}", error_file_path, status);
+                    debug!(
+                        "Serving custom error page: {:?} for status {}",
+                        error_file_path, status
+                    );
 
                     // Detect content type
-                    let content_type = if error_page_path.ends_with(".html") || error_page_path.ends_with(".htm") {
+                    let content_type = if error_page_path.ends_with(".html")
+                        || error_page_path.ends_with(".htm")
+                    {
                         "text/html; charset=utf-8"
                     } else if error_page_path.ends_with(".json") {
                         "application/json"
@@ -2142,7 +2511,8 @@ impl Handler {
                 format_file_size(metadata.len())
             };
 
-            let modified = metadata.modified()
+            let modified = metadata
+                .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| {
@@ -2260,25 +2630,35 @@ impl Handler {
             } else {
                 ""
             },
-            directory_rows = dirs.iter()
+            directory_rows = dirs
+                .iter()
                 .map(|(name, size, modified)| format!(
                     r#"<tr>
                 <td><a href="{}/{}" class="dir">{}/</a></td>
                 <td class="size">{}</td>
                 <td class="modified">{}</td>
             </tr>"#,
-                    request_path.trim_end_matches('/'), name, name, size, modified
+                    request_path.trim_end_matches('/'),
+                    name,
+                    name,
+                    size,
+                    modified
                 ))
                 .collect::<Vec<_>>()
                 .join("\n"),
-            file_rows = files.iter()
+            file_rows = files
+                .iter()
                 .map(|(name, size, modified)| format!(
                     r#"<tr>
                 <td><a href="{}/{}" class="file">{}</a></td>
                 <td class="size">{}</td>
                 <td class="modified">{}</td>
             </tr>"#,
-                    request_path.trim_end_matches('/'), name, name, size, modified
+                    request_path.trim_end_matches('/'),
+                    name,
+                    name,
+                    size,
+                    modified
                 ))
                 .collect::<Vec<_>>()
                 .join("\n"),

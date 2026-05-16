@@ -2,12 +2,12 @@
 //!
 //! Implements token bucket and sliding window algorithms for rate limiting.
 
-pub mod token_bucket;
-pub mod sliding_window;
 pub mod distributed;
+pub mod sliding_window;
+pub mod token_bucket;
 
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 /// Rate limit result
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

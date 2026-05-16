@@ -43,14 +43,17 @@ impl FfiPluginLoader {
 
             // Look up plugin creation function
             let create_plugin: Symbol<unsafe extern "C" fn() -> *mut FfiPluginVTable> = unsafe {
-                library.get(b"plugin_create\0")
-                    .map_err(|e| PluginError::LoadError(format!("plugin_create not found: {}", e)))?
+                library.get(b"plugin_create\0").map_err(|e| {
+                    PluginError::LoadError(format!("plugin_create not found: {}", e))
+                })?
             };
 
             // Call creation function
             let vtable_ptr = unsafe { create_plugin() };
             if vtable_ptr.is_null() {
-                return Err(PluginError::LoadError("plugin_create returned null".to_string()));
+                return Err(PluginError::LoadError(
+                    "plugin_create returned null".to_string(),
+                ));
             }
 
             // Convert to reference (unsafe but necessary for FFI)
@@ -78,7 +81,10 @@ impl FfiPluginLoader {
 
             let init_result = (vtable.init)(config_cstring.as_ptr());
             if init_result != 0 {
-                return Err(PluginError::InitFailed(format!("Plugin init failed with code: {}", init_result)));
+                return Err(PluginError::InitFailed(format!(
+                    "Plugin init failed with code: {}",
+                    init_result
+                )));
             }
 
             // Create metadata
@@ -111,7 +117,9 @@ impl FfiPluginLoader {
         #[cfg(not(feature = "plugin-ffi"))]
         {
             let _ = config;
-            Err(PluginError::Config("FFI support not compiled in".to_string()))
+            Err(PluginError::Config(
+                "FFI support not compiled in".to_string(),
+            ))
         }
     }
 }
@@ -129,24 +137,16 @@ pub struct FfiPluginVTable {
     pub init: extern "C" fn(config: *const std::os::raw::c_char) -> i32,
 
     /// Handle request headers phase
-    pub on_request_headers: extern "C" fn(
-        ctx: *mut FfiPluginContext,
-    ) -> i32,
+    pub on_request_headers: extern "C" fn(ctx: *mut FfiPluginContext) -> i32,
 
     /// Handle request body phase
-    pub on_request_body: extern "C" fn(
-        ctx: *mut FfiPluginContext,
-    ) -> i32,
+    pub on_request_body: extern "C" fn(ctx: *mut FfiPluginContext) -> i32,
 
     /// Handle response headers phase
-    pub on_response_headers: extern "C" fn(
-        ctx: *mut FfiPluginContext,
-    ) -> i32,
+    pub on_response_headers: extern "C" fn(ctx: *mut FfiPluginContext) -> i32,
 
     /// Handle response body phase
-    pub on_response_body: extern "C" fn(
-        ctx: *mut FfiPluginContext,
-    ) -> i32,
+    pub on_response_body: extern "C" fn(ctx: *mut FfiPluginContext) -> i32,
 
     /// Destroy plugin
     pub destroy: extern "C" fn(),
@@ -193,14 +193,20 @@ impl FfiPlugin {
             method: ctx.request.method.clone(),
             uri: ctx.request.uri.clone(),
             headers: ctx.request.headers.clone(),
-        }).unwrap_or_default();
+        })
+        .unwrap_or_default();
 
-        let response_json = ctx.response.as_ref().map(|r| {
-            serde_json::to_string(&FfiResponse {
-                status: r.status,
-                headers: r.headers.clone(),
-            }).unwrap_or_default()
-        }).unwrap_or_default();
+        let response_json = ctx
+            .response
+            .as_ref()
+            .map(|r| {
+                serde_json::to_string(&FfiResponse {
+                    status: r.status,
+                    headers: r.headers.clone(),
+                })
+                .unwrap_or_default()
+            })
+            .unwrap_or_default();
 
         FfiPluginContext {
             request_ptr: request_json.as_ptr() as *const c_char,
@@ -277,7 +283,8 @@ impl Plugin for FfiPlugin {
 
     async fn on_response_headers(&self, ctx: &mut PluginExecutionContext) -> Result<FilterResult> {
         let vtable = unsafe { &*self.vtable };
-        self.call_ffi_function(vtable.on_response_headers, ctx).await
+        self.call_ffi_function(vtable.on_response_headers, ctx)
+            .await
     }
 
     async fn on_response_body(&self, ctx: &mut PluginExecutionContext) -> Result<FilterResult> {

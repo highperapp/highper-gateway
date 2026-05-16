@@ -145,7 +145,8 @@ pub trait CacheBackend: Send + Sync {
     /// * `key` - Cache key
     /// * `value` - Value to cache (as bytes)
     /// * `ttl` - Time-to-live (None = no expiration)
-    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>) -> Result<(), CacheError>;
+    async fn set(&self, key: &str, value: Vec<u8>, ttl: Option<Duration>)
+        -> Result<(), CacheError>;
 
     /// Delete a value from the cache
     async fn delete(&self, key: &str) -> Result<bool, CacheError>;
@@ -179,7 +180,10 @@ pub trait CacheBackend: Send + Sync {
     }
 
     /// Set multiple key-value pairs atomically
-    async fn mset(&self, entries: Vec<(&str, Vec<u8>, Option<Duration>)>) -> Result<(), CacheError> {
+    async fn mset(
+        &self,
+        entries: Vec<(&str, Vec<u8>, Option<Duration>)>,
+    ) -> Result<(), CacheError> {
         for (key, value, ttl) in entries {
             self.set(key, value, ttl).await?;
         }
@@ -204,8 +208,16 @@ pub trait CacheBackend: Send + Sync {
         let test_key = "__health_check__";
         let test_value = b"ok".to_vec();
 
-        let ttl_secs = *crate::runtime_config::current().cache.health_check_ttl_secs.get();
-        self.set(test_key, test_value.clone(), Some(Duration::from_secs(ttl_secs))).await?;
+        let ttl_secs = *crate::runtime_config::current()
+            .cache
+            .health_check_ttl_secs
+            .get();
+        self.set(
+            test_key,
+            test_value.clone(),
+            Some(Duration::from_secs(ttl_secs)),
+        )
+        .await?;
         let result = self.get(test_key).await?;
         self.delete(test_key).await?;
 
@@ -227,7 +239,10 @@ impl<B: CacheBackend> TypedCache<B> {
     }
 
     /// Get a typed value from cache
-    pub async fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>, CacheError> {
+    pub async fn get<T: for<'de> Deserialize<'de>>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, CacheError> {
         if let Some(bytes) = self.backend.get(key).await? {
             let value: T = serde_json::from_slice(&bytes)
                 .map_err(|e| CacheError::Deserialization(e.to_string()))?;
@@ -238,7 +253,12 @@ impl<B: CacheBackend> TypedCache<B> {
     }
 
     /// Set a typed value in cache
-    pub async fn set<T: Serialize>(&self, key: &str, value: &T, ttl: Option<Duration>) -> Result<(), CacheError> {
+    pub async fn set<T: Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         let bytes = serde_json::to_vec(value)?;
         self.backend.set(key, bytes, ttl).await
     }

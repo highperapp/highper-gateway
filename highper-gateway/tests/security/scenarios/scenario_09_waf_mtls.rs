@@ -232,7 +232,11 @@ async fn test_waf_03_path_traversal_bypass() {
             println!(
                 "  Encoded '{}': {}",
                 payload,
-                if blocked { "BLOCKED" } else { "POTENTIAL BYPASS" }
+                if blocked {
+                    "BLOCKED"
+                } else {
+                    "POTENTIAL BYPASS"
+                }
             );
         }
     }

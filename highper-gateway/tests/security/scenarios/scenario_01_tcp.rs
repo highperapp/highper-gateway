@@ -154,9 +154,7 @@ async fn test_tcp_04_reset_handling() {
     for _ in 0..10 {
         if let Ok(stream) = TcpStream::connect(&addr).await {
             // Set linger to 0 to send RST on close
-            stream
-                .set_linger(Some(Duration::from_secs(0)))
-                .ok();
+            stream.set_linger(Some(Duration::from_secs(0))).ok();
             // Drop immediately to trigger RST
             drop(stream);
         }
@@ -197,33 +195,25 @@ async fn test_tcp_05_data_integrity() {
     ];
 
     for pattern in test_patterns {
-        let mut stream = TcpStream::connect(&addr)
-            .await
-            .expect("Failed to connect");
+        let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
         // Send data
-        stream
-            .write_all(&pattern)
-            .await
-            .expect("Failed to write");
+        stream.write_all(&pattern).await.expect("Failed to write");
 
         // Read echo response
         let mut response = vec![0u8; pattern.len()];
-        let timeout = tokio::time::timeout(
-            Duration::from_secs(5),
-            stream.read_exact(&mut response),
-        )
-        .await;
+        let timeout =
+            tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut response)).await;
 
         match timeout {
             Ok(Ok(_)) => {
-                assert_eq!(
-                    pattern, response,
-                    "Data should not be modified in transit"
-                );
+                assert_eq!(pattern, response, "Data should not be modified in transit");
             }
             Ok(Err(e)) => {
-                eprintln!("Read error (may be expected if backend doesn't echo): {}", e);
+                eprintln!(
+                    "Read error (may be expected if backend doesn't echo): {}",
+                    e
+                );
             }
             Err(_) => {
                 eprintln!("Read timeout (may be expected if backend doesn't echo)");
@@ -245,18 +235,13 @@ async fn test_tcp_large_data_transfer() {
     };
 
     let addr = harness.tcp_addr();
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .expect("Failed to connect");
+    let mut stream = TcpStream::connect(&addr).await.expect("Failed to connect");
 
     // Send 1MB of data
     let large_data = vec![b'X'; 1024 * 1024];
     let write_result = stream.write_all(&large_data).await;
 
-    assert!(
-        write_result.is_ok(),
-        "Should handle large data transfer"
-    );
+    assert!(write_result.is_ok(), "Should handle large data transfer");
 }
 
 #[cfg(test)]

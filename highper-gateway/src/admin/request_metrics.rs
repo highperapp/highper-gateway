@@ -3,7 +3,7 @@
 use crate::state::RequestMetrics;
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::{Response, StatusCode, Request};
+use hyper::{Request, Response, StatusCode};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -54,16 +54,14 @@ pub async fn get_route_metric<B>(
     let uri = req.uri();
     let query = uri.query().unwrap_or("");
 
-    let route_param = query
-        .split('&')
-        .find_map(|pair| {
-            let mut parts = pair.split('=');
-            if parts.next() == Some("route") {
-                parts.next()
-            } else {
-                None
-            }
-        });
+    let route_param = query.split('&').find_map(|pair| {
+        let mut parts = pair.split('=');
+        if parts.next() == Some("route") {
+            parts.next()
+        } else {
+            None
+        }
+    });
 
     let route = match route_param {
         Some(r) => urlencoding::decode(r).unwrap_or_default().to_string(),
@@ -168,16 +166,14 @@ pub async fn get_backend_metric<B>(
     let uri = req.uri();
     let query = uri.query().unwrap_or("");
 
-    let backend_param = query
-        .split('&')
-        .find_map(|pair| {
-            let mut parts = pair.split('=');
-            if parts.next() == Some("backend") {
-                parts.next()
-            } else {
-                None
-            }
-        });
+    let backend_param = query.split('&').find_map(|pair| {
+        let mut parts = pair.split('=');
+        if parts.next() == Some("backend") {
+            parts.next()
+        } else {
+            None
+        }
+    });
 
     let backend_id = match backend_param {
         Some(b) => urlencoding::decode(b).unwrap_or_default().to_string(),
@@ -302,13 +298,7 @@ mod tests {
         let metrics = Arc::new(RequestMetrics::new());
 
         // Record some test data
-        metrics.record_route_request(
-            "/api/users",
-            200,
-            Duration::from_millis(10),
-            1024,
-            512,
-        );
+        metrics.record_route_request("/api/users", 200, Duration::from_millis(10), 1024, 512);
 
         let response = get_route_metrics(metrics).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -318,13 +308,7 @@ mod tests {
     async fn test_get_route_metric_with_query() {
         let metrics = Arc::new(RequestMetrics::new());
 
-        metrics.record_route_request(
-            "/api/users",
-            200,
-            Duration::from_millis(10),
-            1024,
-            512,
-        );
+        metrics.record_route_request("/api/users", 200, Duration::from_millis(10), 1024, 512);
 
         let req = Request::builder()
             .uri("/api/metrics/route?route=%2Fapi%2Fusers")
@@ -339,13 +323,7 @@ mod tests {
     async fn test_get_backend_metrics() {
         let metrics = Arc::new(RequestMetrics::new());
 
-        metrics.record_backend_request(
-            "api_0",
-            false,
-            Duration::from_millis(5),
-            512,
-            1024,
-        );
+        metrics.record_backend_request("api_0", false, Duration::from_millis(5), 512, 1024);
 
         let response = get_backend_metrics(metrics).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -355,13 +333,7 @@ mod tests {
     async fn test_get_global_response_time() {
         let metrics = Arc::new(RequestMetrics::new());
 
-        metrics.record_route_request(
-            "/test",
-            200,
-            Duration::from_millis(10),
-            100,
-            100,
-        );
+        metrics.record_route_request("/test", 200, Duration::from_millis(10), 100, 100);
 
         let response = get_global_response_time(metrics).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -371,13 +343,7 @@ mod tests {
     async fn test_reset_request_metrics() {
         let metrics = Arc::new(RequestMetrics::new());
 
-        metrics.record_route_request(
-            "/test",
-            200,
-            Duration::from_millis(10),
-            100,
-            100,
-        );
+        metrics.record_route_request("/test", 200, Duration::from_millis(10), 100, 100);
 
         let response = reset_request_metrics(metrics.clone()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);

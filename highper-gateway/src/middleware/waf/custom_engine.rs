@@ -107,7 +107,8 @@ impl CustomWafEngine {
         let now = Instant::now();
         let window = Duration::from_secs(self.config.rate_limit_window_secs);
 
-        let mut entry = self.rate_limits
+        let mut entry = self
+            .rate_limits
             .entry(client_ip.to_string())
             .or_insert(RateLimitEntry {
                 count: 0,
@@ -187,15 +188,7 @@ impl CustomWafEngine {
         let ua_lower = user_agent.to_lowercase();
 
         let suspicious = [
-            "sqlmap",
-            "nikto",
-            "nmap",
-            "masscan",
-            "nessus",
-            "acunetix",
-            "burp",
-            "owasp",
-            "zap",
+            "sqlmap", "nikto", "nmap", "masscan", "nessus", "acunetix", "burp", "owasp", "zap",
         ];
 
         suspicious.iter().any(|tool| ua_lower.contains(tool))
@@ -224,7 +217,9 @@ impl WafEngine for CustomWafEngine {
 
         // Check path traversal
         if self.config.path_traversal_protection && Self::detect_path_traversal(&context.path) {
-            self.stats.blocked_path_traversal.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .blocked_path_traversal
+                .fetch_add(1, Ordering::Relaxed);
             return WafDecision::Block {
                 reason: "Path traversal attempt detected".to_string(),
                 rule_id: Some("CUSTOM-001".to_string()),
@@ -235,7 +230,9 @@ impl WafEngine for CustomWafEngine {
         // Check query string
         if let Some(ref query) = context.query {
             if self.config.sql_injection_protection && Self::detect_sql_injection(query) {
-                self.stats.blocked_sql_injection.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .blocked_sql_injection
+                    .fetch_add(1, Ordering::Relaxed);
                 return WafDecision::Block {
                     reason: "SQL injection attempt detected".to_string(),
                     rule_id: Some("CUSTOM-002".to_string()),
@@ -257,7 +254,9 @@ impl WafEngine for CustomWafEngine {
         if self.config.user_agent_filtering {
             if let Some(ref ua) = context.user_agent {
                 if Self::check_user_agent(ua) {
-                    self.stats.blocked_user_agent.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .blocked_user_agent
+                        .fetch_add(1, Ordering::Relaxed);
                     return WafDecision::Block {
                         reason: "Suspicious User-Agent detected".to_string(),
                         rule_id: Some("CUSTOM-004".to_string()),
@@ -330,7 +329,9 @@ mod tests {
     fn test_sql_injection_detection() {
         assert!(CustomWafEngine::detect_sql_injection("test' OR '1'='1"));
         assert!(CustomWafEngine::detect_sql_injection("admin'--"));
-        assert!(CustomWafEngine::detect_sql_injection("'; DROP TABLE users--"));
+        assert!(CustomWafEngine::detect_sql_injection(
+            "'; DROP TABLE users--"
+        ));
         assert!(!CustomWafEngine::detect_sql_injection("normal query"));
     }
 

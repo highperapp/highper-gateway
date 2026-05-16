@@ -195,11 +195,17 @@ async fn test_php_03_lfi() {
         ("page", "../../../etc/passwd"),
         ("template", "....//....//etc/passwd"),
         // PHP filter wrapper
-        ("page", "php://filter/convert.base64-encode/resource=config.php"),
+        (
+            "page",
+            "php://filter/convert.base64-encode/resource=config.php",
+        ),
         ("page", "php://filter/read=string.rot13/resource=index.php"),
         // Data wrapper
         ("page", "data://text/plain,<?php phpinfo(); ?>"),
-        ("page", "data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg=="),
+        (
+            "page",
+            "data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg==",
+        ),
         // Expect wrapper (if enabled)
         ("page", "expect://id"),
         // Input wrapper

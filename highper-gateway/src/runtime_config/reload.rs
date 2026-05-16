@@ -81,10 +81,7 @@ impl ReloadDiff {
 /// Compare two `RuntimeConfig` snapshots and return a section-level diff.
 /// Uses `Debug`-string comparison per section — cheap, deterministic, and
 /// secret-safe via the custom `SecretRef::Debug` impl.
-pub fn compute_diff(
-    old: &super::RuntimeConfig,
-    new: &super::RuntimeConfig,
-) -> ReloadDiff {
+pub fn compute_diff(old: &super::RuntimeConfig, new: &super::RuntimeConfig) -> ReloadDiff {
     let mut changed = Vec::new();
 
     // Each entry: (section name, did-change). Section-level granularity is
@@ -149,9 +146,9 @@ pub fn reload_now() -> Result<ReloadDiff, super::RuntimeConfigError> {
 /// SIGHUP to (per `src/main.rs` reload_command). Both fire on every SIGHUP.
 #[cfg(unix)]
 pub async fn install_sighup_handler() -> anyhow::Result<()> {
+    use futures::stream::StreamExt;
     use signal_hook::consts::SIGHUP;
     use signal_hook_tokio::Signals;
-    use futures::stream::StreamExt;
 
     let mut signals = Signals::new([SIGHUP])?;
     tokio::spawn(async move {

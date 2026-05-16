@@ -9,9 +9,8 @@
 /// - target (module path)
 /// - message
 /// - structured fields (request_id, client_ip, duration, etc.)
-
 use std::time::Instant;
-use tracing::{info, warn, error, debug, Span};
+use tracing::{debug, error, info, warn, Span};
 
 /// Request context for structured logging
 #[derive(Debug, Clone)]
@@ -24,12 +23,7 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
-    pub fn new(
-        request_id: String,
-        client_ip: String,
-        method: String,
-        path: String,
-    ) -> Self {
+    pub fn new(request_id: String, client_ip: String, method: String, path: String) -> Self {
         Self {
             request_id,
             client_ip,
@@ -96,12 +90,7 @@ pub fn log_request_error(
 }
 
 /// Log a security event with structured fields
-pub fn log_security_event(
-    event_type: &str,
-    client_ip: &str,
-    path: &str,
-    reason: &str,
-) {
+pub fn log_security_event(event_type: &str, client_ip: &str, path: &str, reason: &str) {
     warn!(
         event_type = "security",
         security_event = event_type,
@@ -113,12 +102,7 @@ pub fn log_security_event(
 }
 
 /// Log a rate limit event with structured fields
-pub fn log_rate_limit(
-    client_ip: &str,
-    limit_type: &str,
-    current: u64,
-    max: u64,
-) {
+pub fn log_rate_limit(client_ip: &str, limit_type: &str, current: u64, max: u64) {
     warn!(
         event_type = "rate_limit",
         client_ip = client_ip,
@@ -147,11 +131,7 @@ pub fn log_resource_limit(
 }
 
 /// Log a backend health event with structured fields
-pub fn log_backend_health(
-    backend: &str,
-    healthy: bool,
-    reason: Option<&str>,
-) {
+pub fn log_backend_health(backend: &str, healthy: bool, reason: Option<&str>) {
     if healthy {
         info!(
             event_type = "backend_health",
@@ -171,12 +151,7 @@ pub fn log_backend_health(
 }
 
 /// Log a configuration event with structured fields
-pub fn log_config_event(
-    event: &str,
-    config_path: &str,
-    success: bool,
-    error: Option<&str>,
-) {
+pub fn log_config_event(event: &str, config_path: &str, success: bool, error: Option<&str>) {
     if success {
         info!(
             event_type = "config",
@@ -198,12 +173,7 @@ pub fn log_config_event(
 }
 
 /// Log a cache event with structured fields
-pub fn log_cache_event(
-    event_type: &str,
-    key: &str,
-    hit: bool,
-    ttl_secs: Option<u64>,
-) {
+pub fn log_cache_event(event_type: &str, key: &str, hit: bool, ttl_secs: Option<u64>) {
     debug!(
         event_type = "cache",
         cache_event = event_type,
@@ -215,12 +185,7 @@ pub fn log_cache_event(
 }
 
 /// Log a TLS event with structured fields
-pub fn log_tls_event(
-    event: &str,
-    domain: &str,
-    success: bool,
-    error: Option<&str>,
-) {
+pub fn log_tls_event(event: &str, domain: &str, success: bool, error: Option<&str>) {
     if success {
         info!(
             event_type = "tls",
@@ -289,11 +254,7 @@ impl PerfTimer {
 }
 
 /// Log server startup event
-pub fn log_server_startup(
-    version: &str,
-    bind_address: &str,
-    hot_reload: bool,
-) {
+pub fn log_server_startup(version: &str, bind_address: &str, hot_reload: bool) {
     info!(
         event_type = "lifecycle",
         event = "startup",
@@ -305,10 +266,7 @@ pub fn log_server_startup(
 }
 
 /// Log server shutdown event
-pub fn log_server_shutdown(
-    graceful: bool,
-    active_connections: usize,
-) {
+pub fn log_server_shutdown(graceful: bool, active_connections: usize) {
     info!(
         event_type = "lifecycle",
         event = "shutdown",
@@ -319,11 +277,7 @@ pub fn log_server_shutdown(
 }
 
 /// Log metrics snapshot
-pub fn log_metrics_snapshot(
-    total_requests: u64,
-    error_rate: f64,
-    avg_response_time_ms: u64,
-) {
+pub fn log_metrics_snapshot(total_requests: u64, error_rate: f64, avg_response_time_ms: u64) {
     info!(
         event_type = "metrics",
         total_requests = total_requests,

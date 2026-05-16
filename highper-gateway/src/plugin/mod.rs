@@ -43,21 +43,21 @@
 //! - **WASM**: Safe, sandboxed, multi-language (Rust, JS, Python, Go, etc.)
 //! - **FFI**: High-performance, zero-copy, Rust/C/C++ only, requires trust
 
-pub mod types;
-pub mod trait_def;
+pub mod config;
+pub mod ffi;
+pub mod host_functions;
+pub mod hot_reload;
 pub mod manager;
 pub mod registry;
+pub mod trait_def;
+pub mod types;
 pub mod wasm;
-pub mod ffi;
-pub mod config;
-pub mod hot_reload;
-pub mod host_functions;
 
-pub use types::*;
-pub use trait_def::{Plugin, PluginContext, FilterResult, BoxedPlugin};
+pub use config::{PluginCapabilities, PluginConfig, PluginLimits, PluginSystemConfig, PluginType};
 pub use manager::PluginManager;
 pub use registry::PluginRegistry;
-pub use config::{PluginConfig, PluginType, PluginLimits, PluginCapabilities, PluginSystemConfig};
+pub use trait_def::{BoxedPlugin, FilterResult, Plugin, PluginContext};
+pub use types::*;
 
 /// Plugin system error types
 #[derive(Debug, thiserror::Error)]

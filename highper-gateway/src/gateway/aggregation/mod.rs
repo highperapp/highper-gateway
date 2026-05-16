@@ -6,6 +6,6 @@ pub mod config;
 pub mod executor;
 pub mod merger;
 
-pub use config::{AggregationConfig, BackendCall, MergeStrategy, ErrorStrategy};
+pub use config::{AggregationConfig, BackendCall, ErrorStrategy, MergeStrategy};
 pub use executor::AggregationExecutor;
 pub use merger::ResponseMerger;

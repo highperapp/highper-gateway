@@ -5,10 +5,10 @@
 
 use crate::config::{CertVerificationMode, RouteMtlsPolicy};
 use crate::tls::ClientCertInfo;
-use hyper::{Request, Response, StatusCode};
-use hyper::body::Incoming;
-use http_body_util::Full;
 use bytes::Bytes;
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper::{Request, Response, StatusCode};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -125,7 +125,10 @@ impl MtlsMiddleware {
                 }
             }
 
-            debug!("Injected {} client certificate headers", cert_info.as_headers().len());
+            debug!(
+                "Injected {} client certificate headers",
+                cert_info.as_headers().len()
+            );
         } else {
             debug!("No client certificate to inject");
         }
@@ -202,7 +205,10 @@ where
 
     fn call(&mut self, request: Request<Incoming>) -> Self::Future {
         // Check mTLS policy
-        if let Err(response) = self.middleware.check_policy(self.policy.as_ref(), self.global_mode) {
+        if let Err(response) = self
+            .middleware
+            .check_policy(self.policy.as_ref(), self.global_mode)
+        {
             return Box::pin(async move { Ok(response) });
         }
 
@@ -211,9 +217,7 @@ where
 
         // Call inner service
         let mut inner = self.inner.clone();
-        Box::pin(async move {
-            inner.call(request).await.map_err(Into::into)
-        })
+        Box::pin(async move { inner.call(request).await.map_err(Into::into) })
     }
 }
 

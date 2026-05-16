@@ -117,11 +117,7 @@ pub fn log_connection_closed(
 }
 
 /// Log TCP connection error
-pub fn log_connection_error(
-    ctx: &TcpConnectionContext,
-    error_type: &str,
-    error_message: &str,
-) {
+pub fn log_connection_error(ctx: &TcpConnectionContext, error_type: &str, error_message: &str) {
     error!(
         event = "tcp_connection_error",
         connection_id = %ctx.connection_id,
@@ -135,10 +131,7 @@ pub fn log_connection_error(
 }
 
 /// Log TCP connection timeout
-pub fn log_connection_timeout(
-    ctx: &TcpConnectionContext,
-    timeout_duration: Duration,
-) {
+pub fn log_connection_timeout(ctx: &TcpConnectionContext, timeout_duration: Duration) {
     warn!(
         event = "tcp_connection_timeout",
         connection_id = %ctx.connection_id,
@@ -151,11 +144,7 @@ pub fn log_connection_timeout(
 }
 
 /// Log TCP connection refused
-pub fn log_connection_refused(
-    client_addr: SocketAddr,
-    backend_addr: &str,
-    protocol: &str,
-) {
+pub fn log_connection_refused(client_addr: SocketAddr, backend_addr: &str, protocol: &str) {
     warn!(
         event = "tcp_connection_refused",
         client_addr = %client_addr,
@@ -205,10 +194,7 @@ pub fn log_pool_connection_acquired(
 }
 
 /// Log connection returned to pool
-pub fn log_pool_connection_returned(
-    pool_ctx: &TcpPoolContext,
-    connection_id: &TcpConnectionId,
-) {
+pub fn log_pool_connection_returned(pool_ctx: &TcpPoolContext, connection_id: &TcpConnectionId) {
     trace!(
         event = "tcp_pool_connection_returned",
         backend_addr = %pool_ctx.backend_addr,
@@ -219,11 +205,7 @@ pub fn log_pool_connection_returned(
 }
 
 /// Log connection pool exhausted
-pub fn log_pool_exhausted(
-    pool_ctx: &TcpPoolContext,
-    active_count: usize,
-    max_size: usize,
-) {
+pub fn log_pool_exhausted(pool_ctx: &TcpPoolContext, active_count: usize, max_size: usize) {
     warn!(
         event = "tcp_pool_exhausted",
         backend_addr = %pool_ctx.backend_addr,
@@ -235,10 +217,7 @@ pub fn log_pool_exhausted(
 }
 
 /// Log new connection created for pool
-pub fn log_pool_connection_created(
-    pool_ctx: &TcpPoolContext,
-    connection_id: &TcpConnectionId,
-) {
+pub fn log_pool_connection_created(pool_ctx: &TcpPoolContext, connection_id: &TcpConnectionId) {
     debug!(
         event = "tcp_pool_connection_created",
         backend_addr = %pool_ctx.backend_addr,

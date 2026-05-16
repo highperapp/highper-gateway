@@ -1,12 +1,12 @@
 //! Runtime module for io_uring-based async execution
 
-mod worker;
 mod buffer_pool;
 mod signals;
+mod worker;
 
 // Week 2 optimization: Adapter pattern for pluggable I/O backends
-mod io_backend;
 mod epoll_backend;
+mod io_backend;
 
 // io_uring shim layer (Linux-only, feature-gated)
 #[cfg(all(feature = "io-uring", target_os = "linux"))]
@@ -40,18 +40,20 @@ pub mod cpu_affinity;
 // Backpressure and load shedding for graceful degradation
 pub mod backpressure;
 
-pub use worker::*;
 pub use buffer_pool::*;
 pub use signals::*;
+pub use worker::*;
 
 // Export adapter pattern types
-pub use io_backend::{AsyncIoBackend, BackendStats, GLOBAL_IO, is_io_uring_available};
+pub use io_backend::{is_io_uring_available, AsyncIoBackend, BackendStats, GLOBAL_IO};
 
 #[cfg(all(feature = "io-uring", target_os = "linux"))]
 pub use io_uring_shim::*;
 
 #[cfg(all(feature = "io-uring", target_os = "linux"))]
-pub use io_uring_buffers::{RegisteredBufferPool, RegisteredBuffer, REGISTERED_BUFFER_SIZE, NUM_REGISTERED_BUFFERS};
+pub use io_uring_buffers::{
+    RegisteredBuffer, RegisteredBufferPool, NUM_REGISTERED_BUFFERS, REGISTERED_BUFFER_SIZE,
+};
 
 #[cfg(all(feature = "io-uring", target_os = "linux"))]
 pub use hybrid_stream::HybridTcpStream;
@@ -59,11 +61,11 @@ pub use hybrid_stream::HybridTcpStream;
 // Export SIMD optimizations (only the beneficial ones - see WEEK10_BENCHMARK_RESULTS.md)
 // NOTE: simd_memcpy and simd_memcmp are NOT exported as benchmarks showed they are 2-3x SLOWER than scalar
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-pub use simd_opt::{simd_find_pattern, simd_checksum};
+pub use simd_opt::{simd_checksum, simd_find_pattern};
 
 // Export lock-free structures
 pub use lockfree::{
-    AtomicCounter, WorkStealingQueue, ConcurrentStats, StatsSnapshot, BoundedQueue
+    AtomicCounter, BoundedQueue, ConcurrentStats, StatsSnapshot, WorkStealingQueue,
 };
 
 use crate::config::{Config, ConfigReloader};
@@ -120,7 +122,10 @@ impl Runtime {
             config.server.workers.parse()?
         };
 
-        info!("Initializing runtime with {} workers (hot reload enabled)", num_workers);
+        info!(
+            "Initializing runtime with {} workers (hot reload enabled)",
+            num_workers
+        );
 
         // Create PID file for process tracking (supports reload command)
         let pid_file = PidFile::create("/var/run/highper-gateway.pid")
@@ -180,7 +185,10 @@ impl Runtime {
                 setup_signals_with_reload(reload_tx).await;
             });
 
-            (Some((reloader_handle, signal_handle)), Some(reload_tx_for_admin))
+            (
+                Some((reloader_handle, signal_handle)),
+                Some(reload_tx_for_admin),
+            )
         } else {
             // No hot reload - use simple shutdown signal
             let signal_handle = tokio::spawn(async move {
@@ -195,7 +203,9 @@ impl Runtime {
 
         // Read config for TLS passthrough check
         let config_read = self.config.read().await;
-        let tls_passthrough_enabled = config_read.tls.as_ref()
+        let tls_passthrough_enabled = config_read
+            .tls
+            .as_ref()
             .and_then(|tls| tls.passthrough.as_ref())
             .map(|pt| pt.enabled)
             .unwrap_or(false);
@@ -230,7 +240,11 @@ impl Runtime {
 
         // Start admin API server if enabled
         let config_read = self.config.read().await;
-        let admin_enabled = config_read.admin.as_ref().map(|a| a.enabled).unwrap_or(false);
+        let admin_enabled = config_read
+            .admin
+            .as_ref()
+            .map(|a| a.enabled)
+            .unwrap_or(false);
         let admin_config = config_read.admin.clone();
         drop(config_read);
 
@@ -238,7 +252,11 @@ impl Runtime {
             if let Some(admin_cfg) = admin_config {
                 let proxy_config = self.config.clone();
                 let admin_server = if let Some(reload_tx) = reload_tx_for_admin {
-                    crate::admin::AdminServer::with_reload_trigger(admin_cfg, proxy_config, reload_tx)
+                    crate::admin::AdminServer::with_reload_trigger(
+                        admin_cfg,
+                        proxy_config,
+                        reload_tx,
+                    )
                 } else {
                     crate::admin::AdminServer::new(admin_cfg, proxy_config)
                 };
@@ -285,7 +303,10 @@ impl Runtime {
         // refactor; for now a configurable delay is sufficient to let
         // long-running background work (e.g., cache writebacks, observability
         // flush, plugin teardown) complete before we abort.
-        let drain = *crate::runtime_config::current().shutdown.spawn_task_drain_secs.get();
+        let drain = *crate::runtime_config::current()
+            .shutdown
+            .spawn_task_drain_secs
+            .get();
         if !drain.is_zero() {
             info!("Draining spawned tasks for {:?}", drain);
             tokio::time::sleep(drain).await;

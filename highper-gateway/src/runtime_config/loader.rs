@@ -12,8 +12,8 @@ use crate::runtime_config::sections::ai::{AiCacheBackend, AiCooldownBackend};
 use crate::runtime_config::sections::cluster::{TypeBBackend, TypeCBackend};
 use crate::runtime_config::{
     sections::{
-        ai, body, cache, circuit_breaker, config_watcher, geo, graphql, http3, observability,
-        plugin, ratelimit, secrets, shutdown, signals, tls, cluster as cluster_section,
+        ai, body, cache, circuit_breaker, cluster as cluster_section, config_watcher, geo, graphql,
+        http3, observability, plugin, ratelimit, secrets, shutdown, signals, tls,
     },
     RuntimeConfig, RuntimeConfigError,
 };
@@ -37,9 +37,22 @@ pub fn load() -> Result<RuntimeConfig, RuntimeConfigError> {
     let graphql = graphql::load()?;
 
     let cfg = RuntimeConfig {
-        cluster, plugin, ai, body, shutdown, secrets,
-        http3, tls, ratelimit, circuit_breaker, geo, cache,
-        signals, config_watcher, observability, graphql,
+        cluster,
+        plugin,
+        ai,
+        body,
+        shutdown,
+        secrets,
+        http3,
+        tls,
+        ratelimit,
+        circuit_breaker,
+        geo,
+        cache,
+        signals,
+        config_watcher,
+        observability,
+        graphql,
     };
     validate_cross_subsystem(&cfg)?;
     Ok(cfg)
@@ -134,8 +147,7 @@ fn derive_enabled_ucs(config: &crate::config::Config) -> EnabledUcs {
     // UC11 — CDN Edge Caching (Group B per HA_ARCHITECTURE.md).
     // Enabled when there is a top-level `cache` block OR any route has a
     // per-route cache override.
-    let uc11_enabled =
-        config.cache.is_some() || config.routes.iter().any(|r| r.cache.is_some());
+    let uc11_enabled = config.cache.is_some() || config.routes.iter().any(|r| r.cache.is_some());
     if uc11_enabled {
         group_b_ucs.push("UC11-cdn-cache");
     }
@@ -196,10 +208,7 @@ mod tests {
     fn load_with_no_env_vars_returns_defaults() {
         clear_all();
         let cfg = load().unwrap();
-        assert_eq!(
-            *cfg.plugin.drain.get(),
-            std::time::Duration::from_secs(30)
-        );
+        assert_eq!(*cfg.plugin.drain.get(), std::time::Duration::from_secs(30));
     }
 
     #[test]

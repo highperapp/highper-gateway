@@ -8,7 +8,7 @@ use std::os::unix::io::AsRawFd;
 use tracing::debug;
 
 #[cfg(target_os = "linux")]
-use libc::{c_int, c_void, socklen_t, setsockopt, SOL_TLS, TLS_TX, TLS_RX};
+use libc::{c_int, c_void, setsockopt, socklen_t, SOL_TLS, TLS_RX, TLS_TX};
 
 #[cfg(target_os = "linux")]
 const TCP_ULP: c_int = 31;
@@ -106,7 +106,7 @@ pub fn enable_ktls_on_socket<S: AsRawFd>(
 ) -> io::Result<()> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "kTLS is only supported on Linux"
+        "kTLS is only supported on Linux",
     ))
 }
 
@@ -144,7 +144,7 @@ fn configure_aes_gcm_128(fd: c_int, keys: &SessionKeys, direction: Direction) ->
     if keys.key.len() != 16 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "AES-128-GCM requires 16-byte key"
+            "AES-128-GCM requires 16-byte key",
         ));
     }
 
@@ -162,7 +162,8 @@ fn configure_aes_gcm_128(fd: c_int, keys: &SessionKeys, direction: Direction) ->
     // Copy keys
     crypto_info.key[..keys.key.len()].copy_from_slice(&keys.key);
     crypto_info.iv[..keys.iv.len().min(8)].copy_from_slice(&keys.iv[..keys.iv.len().min(8)]);
-    crypto_info.salt[..keys.salt.len().min(4)].copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
+    crypto_info.salt[..keys.salt.len().min(4)]
+        .copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
 
     // Convert sequence number to big-endian bytes
     let seq_bytes = keys.seq_num.to_be_bytes();
@@ -195,7 +196,7 @@ fn configure_aes_gcm_256(fd: c_int, keys: &SessionKeys, direction: Direction) ->
     if keys.key.len() != 32 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "AES-256-GCM requires 32-byte key"
+            "AES-256-GCM requires 32-byte key",
         ));
     }
 
@@ -212,7 +213,8 @@ fn configure_aes_gcm_256(fd: c_int, keys: &SessionKeys, direction: Direction) ->
 
     crypto_info.key.copy_from_slice(&keys.key);
     crypto_info.iv[..keys.iv.len().min(8)].copy_from_slice(&keys.iv[..keys.iv.len().min(8)]);
-    crypto_info.salt[..keys.salt.len().min(4)].copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
+    crypto_info.salt[..keys.salt.len().min(4)]
+        .copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
 
     let seq_bytes = keys.seq_num.to_be_bytes();
     crypto_info.rec_seq.copy_from_slice(&seq_bytes);
@@ -240,11 +242,15 @@ fn configure_aes_gcm_256(fd: c_int, keys: &SessionKeys, direction: Direction) ->
 }
 
 #[cfg(target_os = "linux")]
-fn configure_chacha20_poly1305(fd: c_int, keys: &SessionKeys, direction: Direction) -> io::Result<()> {
+fn configure_chacha20_poly1305(
+    fd: c_int,
+    keys: &SessionKeys,
+    direction: Direction,
+) -> io::Result<()> {
     if keys.key.len() != 32 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "ChaCha20-Poly1305 requires 32-byte key"
+            "ChaCha20-Poly1305 requires 32-byte key",
         ));
     }
 
@@ -261,7 +267,8 @@ fn configure_chacha20_poly1305(fd: c_int, keys: &SessionKeys, direction: Directi
 
     crypto_info.key.copy_from_slice(&keys.key);
     crypto_info.iv[..keys.iv.len().min(12)].copy_from_slice(&keys.iv[..keys.iv.len().min(12)]);
-    crypto_info.salt[..keys.salt.len().min(4)].copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
+    crypto_info.salt[..keys.salt.len().min(4)]
+        .copy_from_slice(&keys.salt[..keys.salt.len().min(4)]);
 
     let seq_bytes = keys.seq_num.to_be_bytes();
     crypto_info.rec_seq.copy_from_slice(&seq_bytes);

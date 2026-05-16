@@ -31,14 +31,8 @@ pub fn describe_grpc_metrics() {
         "grpc_streams_total",
         "Total gRPC streams by type (unary/client/server/bidi)"
     );
-    describe_counter!(
-        "grpc_streams_closed_total",
-        "Total gRPC streams closed"
-    );
-    describe_histogram!(
-        "grpc_stream_duration_seconds",
-        "Duration of gRPC streams"
-    );
+    describe_counter!("grpc_streams_closed_total", "Total gRPC streams closed");
+    describe_histogram!("grpc_stream_duration_seconds", "Duration of gRPC streams");
 
     // Message metrics
     describe_counter!(
@@ -49,36 +43,21 @@ pub fn describe_grpc_metrics() {
         "grpc_messages_received_total",
         "Total gRPC messages received by service and method"
     );
-    describe_histogram!(
-        "grpc_message_size_bytes",
-        "Size of gRPC messages in bytes"
-    );
+    describe_histogram!("grpc_message_size_bytes", "Size of gRPC messages in bytes");
 
     // Status code metrics
     describe_counter!(
         "grpc_status_codes_total",
         "gRPC status codes (OK, CANCELLED, UNKNOWN, etc.)"
     );
-    describe_counter!(
-        "grpc_errors_total",
-        "Total gRPC errors by status code"
-    );
+    describe_counter!("grpc_errors_total", "Total gRPC errors by status code");
 
     // Per-method metrics
-    describe_counter!(
-        "grpc_method_calls_total",
-        "Total calls per gRPC method"
-    );
-    describe_histogram!(
-        "grpc_method_duration_seconds",
-        "Duration per gRPC method"
-    );
+    describe_counter!("grpc_method_calls_total", "Total calls per gRPC method");
+    describe_histogram!("grpc_method_duration_seconds", "Duration per gRPC method");
 
     // Compression metrics
-    describe_counter!(
-        "grpc_compression_used_total",
-        "Times compression was used"
-    );
+    describe_counter!("grpc_compression_used_total", "Times compression was used");
 
     // Deadline/timeout metrics
     describe_counter!(
@@ -88,12 +67,7 @@ pub fn describe_grpc_metrics() {
 }
 
 /// Record a gRPC request
-pub fn record_request(
-    service: &str,
-    method: &str,
-    status_code: &str,
-    duration: Duration,
-) {
+pub fn record_request(service: &str, method: &str, status_code: &str, duration: Duration) {
     let duration_secs = duration.as_secs_f64();
 
     counter!(
@@ -101,20 +75,23 @@ pub fn record_request(
         "service" => service.to_string(),
         "method" => method.to_string(),
         "status" => status_code.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "grpc_request_duration_seconds",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).record(duration_secs);
+    )
+    .record(duration_secs);
 
     counter!(
         "grpc_status_codes_total",
         "service" => service.to_string(),
         "method" => method.to_string(),
         "code" => status_code.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     // Track errors (any non-OK status)
     if status_code != "OK" {
@@ -123,7 +100,8 @@ pub fn record_request(
             "service" => service.to_string(),
             "method" => method.to_string(),
             "code" => status_code.to_string(),
-        ).increment(1);
+        )
+        .increment(1);
     }
 }
 
@@ -136,17 +114,12 @@ pub fn record_stream_open(service: &str, method: &str, stream_type: &str) {
         "service" => service.to_string(),
         "method" => method.to_string(),
         "type" => stream_type.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record gRPC stream close
-pub fn record_stream_close(
-    service: &str,
-    method: &str,
-    stream_type: &str,
-    duration: Duration,
-) {
+pub fn record_stream_close(service: &str, method: &str, stream_type: &str, duration: Duration) {
     gauge!("grpc_streams_active").decrement(1.0);
 
     counter!(
@@ -154,15 +127,16 @@ pub fn record_stream_close(
         "service" => service.to_string(),
         "method" => method.to_string(),
         "type" => stream_type.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "grpc_stream_duration_seconds",
         "service" => service.to_string(),
         "method" => method.to_string(),
         "type" => stream_type.to_string(),
-    ).record(duration.as_secs_f64());
-
+    )
+    .record(duration.as_secs_f64());
 }
 
 /// Record gRPC message sent
@@ -171,15 +145,16 @@ pub fn record_message_sent(service: &str, method: &str, size_bytes: usize) {
         "grpc_messages_sent_total",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "grpc_message_size_bytes",
         "service" => service.to_string(),
         "method" => method.to_string(),
         "direction" => "sent".to_string(),
-    ).record(size_bytes as f64);
-
+    )
+    .record(size_bytes as f64);
 }
 
 /// Record gRPC message received
@@ -188,15 +163,16 @@ pub fn record_message_received(service: &str, method: &str, size_bytes: usize) {
         "grpc_messages_received_total",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "grpc_message_size_bytes",
         "service" => service.to_string(),
         "method" => method.to_string(),
         "direction" => "received".to_string(),
-    ).record(size_bytes as f64);
-
+    )
+    .record(size_bytes as f64);
 }
 
 /// Record gRPC method call
@@ -205,13 +181,15 @@ pub fn record_method_call(service: &str, method: &str, duration: Duration) {
         "grpc_method_calls_total",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).increment(1);
+    )
+    .increment(1);
 
     histogram!(
         "grpc_method_duration_seconds",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).record(duration.as_secs_f64());
+    )
+    .record(duration.as_secs_f64());
 }
 
 /// Record compression usage
@@ -221,8 +199,8 @@ pub fn record_compression_used(service: &str, method: &str, algorithm: &str) {
         "service" => service.to_string(),
         "method" => method.to_string(),
         "algorithm" => algorithm.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 /// Record deadline exceeded
@@ -231,8 +209,8 @@ pub fn record_deadline_exceeded(service: &str, method: &str) {
         "grpc_deadline_exceeded_total",
         "service" => service.to_string(),
         "method" => method.to_string(),
-    ).increment(1);
-
+    )
+    .increment(1);
 }
 
 #[cfg(test)]

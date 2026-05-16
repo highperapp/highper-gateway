@@ -69,10 +69,7 @@ impl CertificateWatcher {
                 match result {
                     Ok(event) => {
                         // Only process write/modify events
-                        if matches!(
-                            event.kind,
-                            EventKind::Modify(_) | EventKind::Create(_)
-                        ) {
+                        if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                             let mut cert_modified = false;
                             let mut key_modified = false;
 

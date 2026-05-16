@@ -111,7 +111,10 @@ impl LocalCache {
 
     /// Get all cache keys
     pub fn get_all_keys(&self) -> Vec<String> {
-        self.entries.iter().map(|entry| entry.key().clone()).collect()
+        self.entries
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Start cleanup task to remove expired entries

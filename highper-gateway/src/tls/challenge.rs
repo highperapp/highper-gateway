@@ -89,9 +89,8 @@ impl ChallengeStore {
         let now = Instant::now();
         let ttl = self.ttl;
 
-        self.challenges.retain(|_token, challenge| {
-            now.duration_since(challenge.stored_at) <= ttl
-        });
+        self.challenges
+            .retain(|_token, challenge| now.duration_since(challenge.stored_at) <= ttl);
     }
 
     /// Get the number of stored challenges
@@ -127,10 +126,7 @@ mod tests {
     fn test_store_and_retrieve() {
         let store = ChallengeStore::new();
 
-        store.store(
-            "test-token".to_string(),
-            "test-key-auth".to_string(),
-        );
+        store.store("test-token".to_string(), "test-key-auth".to_string());
 
         let result = store.get("test-token");
         assert_eq!(result, Some("test-key-auth".to_string()));
@@ -148,10 +144,7 @@ mod tests {
     fn test_remove_challenge() {
         let store = ChallengeStore::new();
 
-        store.store(
-            "test-token".to_string(),
-            "test-key-auth".to_string(),
-        );
+        store.store("test-token".to_string(), "test-key-auth".to_string());
 
         store.remove("test-token");
 
@@ -163,10 +156,7 @@ mod tests {
     fn test_expiration() {
         let store = ChallengeStore::with_ttl(Duration::from_millis(100));
 
-        store.store(
-            "test-token".to_string(),
-            "test-key-auth".to_string(),
-        );
+        store.store("test-token".to_string(), "test-key-auth".to_string());
 
         // Should be available immediately
         assert!(store.get("test-token").is_some());
@@ -185,18 +175,12 @@ mod tests {
         assert!(store.is_empty());
         assert_eq!(store.len(), 0);
 
-        store.store(
-            "token1".to_string(),
-            "key-auth1".to_string(),
-        );
+        store.store("token1".to_string(), "key-auth1".to_string());
 
         assert!(!store.is_empty());
         assert_eq!(store.len(), 1);
 
-        store.store(
-            "token2".to_string(),
-            "key-auth2".to_string(),
-        );
+        store.store("token2".to_string(), "key-auth2".to_string());
 
         assert_eq!(store.len(), 2);
 

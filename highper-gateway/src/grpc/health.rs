@@ -3,14 +3,17 @@
 //! Implements grpc.health.v1.Health service for health checks
 //! Based on: https://github.com/grpc/grpc/blob/master/doc/health-checking.md
 
-use hyper::{Request, Response, header::{self, HeaderValue}};
+use anyhow::{anyhow, Result};
+use bytes::{BufMut, Bytes, BytesMut};
+use http_body_util::{BodyExt, Full};
 use hyper::client::conn::http2;
+use hyper::{
+    header::{self, HeaderValue},
+    Request, Response,
+};
 use hyper_util::rt::TokioExecutor;
-use http_body_util::{Full, BodyExt};
-use bytes::{Bytes, BytesMut, BufMut};
-use anyhow::{Result, anyhow};
-use tracing::{debug, error};
 use prost::Message;
+use tracing::{debug, error};
 
 /// gRPC health check status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +86,8 @@ pub async fn check_grpc_health(
     let request = create_health_check_request(backend_url, service_name)?;
 
     // Parse backend URL
-    let uri: hyper::Uri = backend_url.parse()
+    let uri: hyper::Uri = backend_url
+        .parse()
         .map_err(|e| anyhow!("Invalid backend URL: {}", e))?;
 
     let host = uri.host().ok_or_else(|| anyhow!("No host in URL"))?;
@@ -91,13 +95,15 @@ pub async fn check_grpc_health(
 
     // Connect to backend (HTTP/2 only for gRPC)
     let addr = format!("{}:{}", host, port);
-    let stream = tokio::net::TcpStream::connect(&addr).await
+    let stream = tokio::net::TcpStream::connect(&addr)
+        .await
         .map_err(|e| anyhow!("Failed to connect to {}: {}", addr, e))?;
 
     // Set up HTTP/2 connection
     let io = hyper_util::rt::TokioIo::new(stream);
 
-    let (mut sender, conn) = http2::handshake(TokioExecutor::new(), io).await
+    let (mut sender, conn) = http2::handshake(TokioExecutor::new(), io)
+        .await
         .map_err(|e| anyhow!("HTTP/2 handshake failed: {}", e))?;
 
     // Spawn connection task
@@ -108,7 +114,9 @@ pub async fn check_grpc_health(
     });
 
     // Send request
-    let response = sender.send_request(request).await
+    let response = sender
+        .send_request(request)
+        .await
         .map_err(|e| anyhow!("gRPC health check request failed: {}", e))?;
 
     // Parse response
@@ -133,9 +141,11 @@ fn create_health_check_request(
     grpc_body.extend_from_slice(&body_bytes);
 
     // Parse URL to get authority
-    let uri: hyper::Uri = backend_url.parse()
+    let uri: hyper::Uri = backend_url
+        .parse()
         .map_err(|e| anyhow!("Invalid backend URL: {}", e))?;
-    let authority = uri.authority()
+    let authority = uri
+        .authority()
         .ok_or_else(|| anyhow!("No authority in URL"))?
         .clone();
 
@@ -159,7 +169,8 @@ fn create_health_check_request_body(service_name: Option<&str>) -> Result<Vec<u8
     };
 
     let mut buf = Vec::new();
-    request.encode(&mut buf)
+    request
+        .encode(&mut buf)
         .map_err(|e| anyhow!("Failed to encode protobuf: {}", e))?;
 
     Ok(buf)
@@ -174,36 +185,54 @@ where
 {
     // Check HTTP status
     if response.status() != hyper::StatusCode::OK {
-        return Err(anyhow!("gRPC health check returned HTTP status: {}", response.status()));
+        return Err(anyhow!(
+            "gRPC health check returned HTTP status: {}",
+            response.status()
+        ));
     }
 
     // Check grpc-status header (trailer may also contain it)
     if let Some(grpc_status) = response.headers().get("grpc-status") {
         if grpc_status != "0" {
-            let grpc_message = response.headers()
+            let grpc_message = response
+                .headers()
                 .get("grpc-message")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("unknown error");
-            return Err(anyhow!("gRPC error status {}: {}", grpc_status.to_str().unwrap_or("?"), grpc_message));
+            return Err(anyhow!(
+                "gRPC error status {}: {}",
+                grpc_status.to_str().unwrap_or("?"),
+                grpc_message
+            ));
         }
     }
 
     // Read response body
     let body = response.into_body();
-    let body_bytes = body.collect().await
+    let body_bytes = body
+        .collect()
+        .await
         .map_err(|e| anyhow!("Failed to read response body: {}", e))?
         .to_bytes();
 
     if body_bytes.len() < 5 {
-        return Err(anyhow!("gRPC response too short: {} bytes", body_bytes.len()));
+        return Err(anyhow!(
+            "gRPC response too short: {} bytes",
+            body_bytes.len()
+        ));
     }
 
     // Parse gRPC frame: 1-byte compression flag + 4-byte length + message
     let _compressed = body_bytes[0];
-    let message_len = u32::from_be_bytes([body_bytes[1], body_bytes[2], body_bytes[3], body_bytes[4]]) as usize;
+    let message_len =
+        u32::from_be_bytes([body_bytes[1], body_bytes[2], body_bytes[3], body_bytes[4]]) as usize;
 
     if body_bytes.len() < 5 + message_len {
-        return Err(anyhow!("gRPC message incomplete: expected {} bytes, got {}", 5 + message_len, body_bytes.len()));
+        return Err(anyhow!(
+            "gRPC message incomplete: expected {} bytes, got {}",
+            5 + message_len,
+            body_bytes.len()
+        ));
     }
 
     let message_bytes = &body_bytes[5..5 + message_len];
@@ -225,12 +254,11 @@ pub fn create_health_check_response(status: HealthStatus) -> Response<Full<Bytes
     let mut response = Response::new(Full::new(Bytes::from(vec![status.to_proto_value() as u8])));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("application/grpc+proto")
+        HeaderValue::from_static("application/grpc+proto"),
     );
-    response.headers_mut().insert(
-        "grpc-status",
-        HeaderValue::from_static("0")
-    );
+    response
+        .headers_mut()
+        .insert("grpc-status", HeaderValue::from_static("0"));
 
     response
 }
@@ -271,7 +299,8 @@ mod tests {
 
     #[test]
     fn test_create_health_check_request() {
-        let request = create_health_check_request("http://localhost:50051", Some("test.service")).unwrap();
+        let request =
+            create_health_check_request("http://localhost:50051", Some("test.service")).unwrap();
 
         // Verify HTTP method
         assert_eq!(request.method(), "POST");
@@ -280,7 +309,10 @@ mod tests {
         assert_eq!(request.uri().path(), "/grpc.health.v1.Health/Check");
 
         // Verify headers
-        assert_eq!(request.headers().get("content-type").unwrap(), "application/grpc+proto");
+        assert_eq!(
+            request.headers().get("content-type").unwrap(),
+            "application/grpc+proto"
+        );
         assert_eq!(request.headers().get("te").unwrap(), "trailers");
 
         // Note: We can't easily inspect the body without consuming it,
@@ -328,7 +360,8 @@ mod tests {
         assert_eq!(grpc_body[0], 0);
 
         // Next 4 bytes are message length (big-endian)
-        let message_len = u32::from_be_bytes([grpc_body[1], grpc_body[2], grpc_body[3], grpc_body[4]]) as usize;
+        let message_len =
+            u32::from_be_bytes([grpc_body[1], grpc_body[2], grpc_body[3], grpc_body[4]]) as usize;
 
         // Verify total body size matches: 5-byte prefix + message
         assert_eq!(grpc_body.len(), 5 + message_len);
@@ -356,7 +389,10 @@ mod tests {
         match result {
             Ok(status) => {
                 println!("Health check succeeded: {:?}", status);
-                assert!(matches!(status, HealthStatus::Serving | HealthStatus::NotServing | HealthStatus::Unknown));
+                assert!(matches!(
+                    status,
+                    HealthStatus::Serving | HealthStatus::NotServing | HealthStatus::Unknown
+                ));
             }
             Err(e) => {
                 println!("Health check failed (expected if no server running): {}", e);

@@ -2,9 +2,9 @@
 //!
 //! Implements the circuit breaker pattern to detect and prevent calls to failing services.
 
+use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
 use tracing::{info, warn};
 
 /// Circuit breaker states

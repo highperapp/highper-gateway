@@ -12,7 +12,6 @@
 /// - HIGHPER_MAX_REQUEST_BODY=50MB
 /// - HIGHPER_LOG_LEVEL=debug
 /// - HIGHPER_METRICS_PORT=9091
-
 use anyhow::{anyhow, Result};
 use std::env;
 use std::time::Duration;
