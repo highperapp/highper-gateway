@@ -48,6 +48,86 @@
 - Code-review checklist item: literal numeric / `Duration` constant in production
   paths → flag and either remove (load from env) or justify in a comment.
 
+### 0.2 Core-first, vertical-second scoping convention (added 2026-05-16)
+
+**The platform extensibility surface is in v1.0 GA. The first vertical
+that uses that surface (UC16 AI/LLM Gateway) is in v1.x.**
+
+This is the standard platform-product shipping pattern (Kubernetes
+CRDs landed before any major CRD-based product; Linux loadable modules
+landed well before NVIDIA / WireGuard). Highper Gateway uses it
+deliberately. Concretely:
+
+- **In v1.0 GA scope:**
+  - The env-driven `RuntimeConfig` scaffold (Workstream 0.J ✅) —
+    including the `AiRuntimeConfig` section's 25 `HIGHPER_AI_*` env
+    vars, even though no `src/ai/` module exists in v1.0. The vars
+    parse, range-check, and feed the cross-subsystem validator
+    (`HIGHPER_AI_CACHE_BACKEND=valkey` correctly fails boot when
+    `HIGHPER_CLUSTER_TYPEB_BACKEND=none`).
+  - Cluster bootstrap (§11): Type B = Valkey, Type C = etcd,
+    `PeerDiscovery` trait (`static` / `k8s_headless` / `dns` /
+    `consul`). These are *not* UC16-only — UC4 hot-key sharding,
+    UC12 service discovery, and any multi-replica HA deployment all
+    depend on the same machinery.
+  - Phase 1.4 cross-cutting traits (`AuthProvider`,
+    `MetricsBackend` / `LogBackend`, `PeerDiscovery`). **Tagged
+    v1.0 GA scope even though none is a B1–B14 blocker** — see
+    §13.2 v1.0-scope subsection. Without them, the "UC16 inherits
+    not retrofits" guarantee weakens because UC16 virtual-key auth
+    has no trait to plug into.
+  - 11 of 12 §4.4 trait extractions land in Phases 0 / 1. Only
+    `ConfigSource` (row 8) defers to Phase 4.2.
+
+- **Out of v1.0 GA scope** (deferred to v1.x by owner gate #3,
+  decided 2026-05-03, `OWNER_GATES_2026-05-03.md` + §6 #3):
+  - The `src/ai/` module, `AiProvider` / `AiStateStore` /
+    `VectorIndex` trait *implementations*, virtual keys, budgets,
+    exact cache, SSE chunker — all of §5 Phase 2 + 2.5 + 3.1 + 4.1.
+  - UC13 GraphQL Federation (deferred to Phase 4.2 per owner
+    gate #2 + `GRAPHQL_FEDERATION.md`).
+
+**Why scaffold UC16 in core instead of waiting?**
+
+1. **Env-var shape locks in early.** Operators upgrading to v1.x
+   keep their env-var matrix intact across the UC16 release. No
+   "we shipped `HIGHPER_AI_FOO` in v1.5 but should have called it
+   `HIGHPER_AI_BAR`" mid-release breakage.
+2. **Cross-subsystem validator wired now.** §11.2 cluster
+   validation rules run at boot today; when UC16 lands, the
+   dependency graph is already understood.
+3. **Trait boundaries land progressively, not all at once.**
+   §4.4 estimates 12 person-weeks of trait extraction. Folded
+   across Phases 0 / 1 / 2 / 3 / 4.2, no single phase pays the
+   full cost. v1.x UC16 implementation is "implement 3 new
+   traits + register" — not "refactor 12 boundaries first."
+
+**Three risks of this approach are tracked explicitly** (see §13.5
+P0c and §13.5 P1 verification tiers):
+
+- **R1 — Silent no-op env vars in v1.0.** Operator sets
+  `HIGHPER_AI_RETRY_BUDGET=5` in a v1.0 build; nothing reads it;
+  boot succeeds silently. Mitigation: WARN-level startup log
+  when any `HIGHPER_AI_*` is set but `derive_enabled_ucs`
+  reports UC16 absent in this build. Tracked as §13.5 P0c.
+- **R2 — Phase 1.4 slippage breaks the deal.** Phase 1.4
+  cross-cutting traits are not B-tagged; without an explicit
+  v1.0 GA scope tag they risk perma-defer. §13.2 v1.0-scope
+  subsection holds the line; the `docs-keeper` weekly cron
+  (`trig_017YZKK1gLdJNntEAcSqVE7H`) catches drift.
+- **R3 — UC16 design-doc drift between v1.0 GA and v1.x
+  implementation.** `USECASE_16_AI_LLM_GATEWAY.md` keeps
+  accumulating decisions against not-yet-shipped infrastructure.
+  Mitigation: **freeze the UC16 design at v1.0 GA tag time**;
+  resume v1.x work from the frozen baseline. Tracked as §13.5
+  P1 verification + §12 fortieth-revision entry.
+
+**For contributors:** if you find yourself writing code that
+references `src/ai/`, an `AiProvider` impl, or any UC16 vertical
+behaviour, **stop** — that work is v1.x scope. If you're touching
+`runtime_config::ai.*` fields, the cross-subsystem validator, or
+Phase 1.4 traits, **proceed** — that work is v1.0 GA scope.
+
 ---
 
 ## 0.5 Pre-Phase-0 reconciliation (added 2026-05-02 — ✅ landed)
@@ -364,7 +444,7 @@ Cited from `docs/AUDIT_2026-05-02.md §1.2`:
 | ID | Issue | Source |
 |----|-------|--------|
 | B1 | UC10 Hybrid not wired — `Runtime::run` never calls `TcpProxyServer::start()` | `src/runtime/mod.rs`, `src/main.rs:220-310` |
-| B2 | Admin API stubbed (auth, config, ~20 TODOs) | `src/admin/api.rs:5, 125, 141` |
+| B2 | Admin API stubbed (auth, config, ~20 TODOs) | **Citation correction 2026-05-16:** the original cite `src/admin/api.rs:5, 125, 141` is **orphaned dead code** — the file is not declared in `src/admin/mod.rs:12-21` and never compiles into the binary. The real admin surface is `src/admin/server.rs` (2,068 lines), which **already has working JWT verification** at `:370-394` via `jsonwebtoken::decode::<JwtClaims>` and API-key check at `:359-367`. **Fresh audit needed** of `server.rs` against the W0.G task list before B2 is re-planned — likely halves the original 12-day estimate. See §12 forty-first revision. |
 | B3 | OCSP request body never built; response only length-validated; stapling never attached; ACME `needs_renewal()` always returns `false` | `src/tls/ocsp_fetcher.rs:346-415`, `src/tls/ocsp_stapler.rs:97-136`, `src/tls/acme.rs:199-204` |
 | B4 | Distributed rate-limiter fails open on Redis error without alert; X-Forwarded-For trusted unconditionally | `src/gateway/ratelimit/distributed.rs:54-62, 140-147`, `src/middleware/rate_limit.rs:162-182` |
 | B5 | GraphQL depth/complexity not enforced; stitcher is acknowledged-stub | `src/gateway/graphql/stitcher.rs:56-57` |
@@ -667,14 +747,16 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 
 #### Workstream 0.C — Rate-limit + WAF safety + RateLimiter trait (UC4, UC9, B4)
 
-- [ ] Proxy-trust-list config (CIDR allowlist for `X-Forwarded-For`); fall back to socket addr outside the list. Configured via `HIGHPER_PROXY_TRUST_CIDRS` (comma-separated). **1.5 days.**
-- [ ] Distributed limiter Redis-failure mode: `fail-open | fail-closed | local-fallback` (default `local-fallback`); env var `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`. **2 days.**
+> **B4 release blocker fully closed 2026-05-06** by commits `3d5f4dc` (B4.1 XFF trust) + `abd6457` (B4.2 distributed limiter consumer migration). Two of eight tickets below remain partially deviated from spec (see notes); five WAF / per-route / trait tickets are still open. **Workstream 0.C remains open** — only the B4-tagged safety half closed.
+
+- [~] Proxy-trust-list config (CIDR allowlist for `X-Forwarded-For`); fall back to socket addr outside the list. Configured via `HIGHPER_PROXY_TRUST_CIDRS` (comma-separated). **1.5 days.** — **partially closed by B4.1 (commit `3d5f4dc`, 2026-05-03)** via a *simpler mode-based* env var (`HIGHPER_RATELIMIT_XFF_TRUST = none|first|last`, default `none`) wired into `src/middleware/rate_limit.rs:181-193`. Closes the immediate security hole (unconditional XFF trust → IP-keyed rate-limit bypass). **Deviation:** CIDR-list flexibility deferred — operators with multi-LB topologies cannot express a trust list. Tracked as Phase 1.6 hygiene (see §13.5 P2).
+- [x] Distributed limiter Redis-failure mode: `fail-open | fail-closed | local-fallback` (default `local-fallback`); env var `HIGHPER_RATELIMIT_REDIS_FAIL_MODE`. **2 days.** — closed by B4.2 (commit `abd6457`, 2026-05-06) at `src/gateway/ratelimit/distributed.rs:164-178` + `329-330`; `LocalBucket` per-replica fallback at `:51-65`.
 - [ ] Per-route limit wiring from config to runtime (DSL + YAML). **1 day.**
 - [ ] Custom WAF: real SQLi/XSS/path-traversal regex sets; verify Coraza binding actually compiles + runs CRS rules; if not, swap to Rust `coraza-rs` port. **5 days.**
 - [ ] Body decompression pipeline (gzip/deflate up to cap from `HIGHPER_BODY_MAX_WAF`) before WAF runs. **3 days.**
 - [ ] WAF rule hot-reload via signal + admin API. **2 days.**
 - [ ] **RateLimiter trait extraction (added 2026-05-02):** define `RateLimiter` trait (`check(&self, key: &Key, cost: u64) -> Decision`); migrate `TokenBucket` in `src/middleware/rate_limit.rs:93-145` and `gateway/ratelimit/{token_bucket, sliding_window, distributed}.rs` into trait impls; chosen algorithm via `HIGHPER_RATELIMIT_ALGO`; opens the door for GCRA/leaky-bucket impls in Phase 4 without parallel code paths. **1 week.** *(folded from interface-first audit §4.4)*
-- [ ] **Hot-key sharding for distributed rate limiting (added 2026-05-02 — addresses `HA_ARCHITECTURE.md` §1.5.4 F1 Valkey hot-key bottleneck):** add `HIGHPER_RATELIMIT_KEY_SHARDS` env var (default `1` = no sharding); when `>1`, the distributed limiter writes to N sub-keys (`<key>:<shard_id>`) chosen by a stable hash of the request, and reads aggregate by summing all N at decision time. Trade-off: ~0.1 ms extra latency per check vs. eliminating single-shard contention for popular keys. Add a `examples/configs/scenarios/scenario-04-rate-limit-hot-key.yaml` cookbook entry demonstrating the pattern. **2 days.**
+- [x] **Hot-key sharding for distributed rate limiting (added 2026-05-02 — addresses `HA_ARCHITECTURE.md` §1.5.4 F1 Valkey hot-key bottleneck):** add `HIGHPER_RATELIMIT_KEY_SHARDS` env var (default `1` = no sharding); when `>1`, the distributed limiter writes to N sub-keys (`<key>:<shard_id>`) chosen by a stable hash of the request, and reads aggregate by summing all N at decision time. Trade-off: ~0.1 ms extra latency per check vs. eliminating single-shard contention for popular keys. Add a `examples/configs/scenarios/scenario-04-rate-limit-hot-key.yaml` cookbook entry demonstrating the pattern. **2 days.** — closed by B4.2 (commit `abd6457`, 2026-05-06) at `src/gateway/ratelimit/distributed.rs:91-156` (per-request random shard via `rand::random::<u32>() % N`, aggregate sum via pipelined INCRs). **Deviation:** shard chosen randomly per request rather than via a *stable* hash of the request — random spreads load identically but loses per-client locality. Cookbook entry `scenario-04-rate-limit-hot-key.yaml` **not yet authored** — tracked as Phase 1.6 hygiene.
 
 #### Workstream 0.D — Protocol fixes (UC5, UC6, UC7, B7, B8, B14)
 
@@ -687,27 +769,47 @@ The blockers map to Section 4.1 items B1–B10. Eight original workstreams plus 
 
 #### Workstream 0.E — Application-protocol fixes (UC8, UC13, B5, B6)
 
-- [ ] Real PostgreSQL pool validation (parameter-status / `SELECT 1` probe with timeout). **2 days.**
-- [ ] PostgreSQL STARTTLS/SSLRequest negotiation. **3 days.**
-- [ ] DB pool failover wired to circuit breaker. **2 days.**
-- [ ] GraphQL depth + complexity analyzers wired to parsed AST; reject early; emit metric. **3 days.**
+> **B5 + B6 release blockers fully closed 2026-05-06** by commits `c0bf716` (B5 GraphQL depth/complexity) + `5c29eb3` (B6 PostgreSQL pool validation). **Workstream 0.E ✅ for the release-blocker tickets.** Two non-blocker follow-ups remain open (STARTTLS + DB-pool ↔ CB failover) — neither gates v1.0.
+
+- [x] Real PostgreSQL pool validation (parameter-status / `SELECT 1` probe with timeout). **2 days.** — closed by B6 (commit `5c29eb3`, 2026-05-06) at `src/proxy/database_pool.rs:174-218`; 5 new `#[tokio::test]` unit tests cover idle/failed-tx/open-tx/truncated/oversized-message at `:748-782`.
+- [ ] PostgreSQL STARTTLS/SSLRequest negotiation. **3 days.** — non-blocker; queued.
+- [ ] DB pool failover wired to circuit breaker. **2 days.** — non-blocker; queued.
+- [x] GraphQL depth + complexity analyzers wired to parsed AST; reject early; emit metric. **3 days.** — closed by B5 (commit `c0bf716`, 2026-05-06) at `src/gateway/graphql/analyzer.rs` + wired into `src/gateway/graphql/mod.rs:182,340-372`. New `GraphqlRuntimeConfig` section (`HIGHPER_GRAPHQL_MAX_DEPTH` default 15, `HIGHPER_GRAPHQL_MAX_COMPLEXITY` default 1000, `HIGHPER_GRAPHQL_ENFORCE_LIMITS` default true). 8 analyzer + 5 section unit tests. **Out of scope for v1.0** (queued for Phase 1.6): per-field `@cost` directive weights; per-virtual-key thresholds.
 - [x] GraphQL stitcher decision (2026-05-02): **federation deferred to Phase 4.2** per `docs/planning/GRAPHQL_FEDERATION.md`. UC13 ships passthrough + introspection cache + depth/complexity (the Phase 0.E depth/complexity item above satisfies B5). Stitcher placeholder at `src/gateway/graphql/stitcher.rs:56-57` stays as-is for v1.0; no new federation code lands in Phase 0.E.
 
 #### Workstream 0.F — Slowloris + header-size + UC2 hygiene + B11 backpressure (UC2, B11)
 
+> **B11 release blocker fully closed 2026-05-03** by commits `fef5bb4` (B11.1 cert_watcher) + `9159aa4` (B11.2–B11.5 bundle). **Workstream 0.F remains open** — three slowloris/header/GOAWAY tickets still pending; only the B11 backpressure half closed.
+
 - [ ] Per-request read/idle timeouts (config-driven via env, see §0.1); 408 on incomplete header read. **2 days.**
 - [ ] Header-block size cap → 431. Knob: `HIGHPER_HTTP_MAX_HEADER_BYTES` (default 64 KiB). **1 day.**
 - [ ] HTTP/2 GOAWAY graceful drain on shutdown signal (overlaps with B14 drain). **2 days.**
-- [ ] **B11 bounded-channel migration (added 2026-05-02):** replace 8 `mpsc::unbounded_channel()` sites listed in §4.1.1 with bounded `mpsc::channel(depth)` where depth comes from per-site env var; implement overflow policies (`drop_oldest` / `coalesce` / `block`) per the §4.1.1 table; emit `*_queue_dropped_total` and `*_queue_depth_current` metrics. **4 days.**
+- [x] **B11 bounded-channel migration (added 2026-05-02):** replace 8 `mpsc::unbounded_channel()` sites listed in §4.1.1 with bounded `mpsc::channel(depth)` where depth comes from per-site env var; implement overflow policies (`drop_oldest` / `coalesce` / `block`) per the §4.1.1 table; emit `*_queue_dropped_total` and `*_queue_depth_current` metrics. **4 days.** — closed 2026-05-03 by commits `fef5bb4` (cert_watcher) + `9159aa4` (4-site bundle: `config/reloader.rs:79`, `config/watcher.rs:36`, `http3_quiche.rs:186/187`). **Scope deviation:** original spec listed 8 sites; final count was **5 production sites** (test fixtures at `src/runtime/signals.rs:196/211/229` left unbounded by design — not production paths). 4 new env vars; per-site overflow policies refined during impl (B11.4 backend-request channel uses `try_send` + 503 rather than block-on-full because the QUIC event loop is sync — see commit message for rationale). `*_queue_dropped_total` / `*_queue_depth_current` metrics **not yet emitted** — tracked as Phase 1.6 observability follow-up.
 
 #### Workstream 0.G — Admin API truth (cross-cutting, B2)
 
-- [ ] Real JWT verify (use `jsonwebtoken` crate or `jose` — pick one); token validation, scope check. **2 days.**
-- [ ] `GET /admin/config` returns actual configuration with secrets redacted. **1 day.**
-- [ ] `POST /admin/config` (validated, atomic apply, revert on failure). **3 days.**
-- [ ] Backend enable/disable, weight changes (live, no restart). **2 days.**
-- [ ] OpenAPI 3.1 spec generated from handlers. **2 days.**
-- [ ] Audit log of admin-API actions (Postgres or sled append-only). **2 days.**
+> **2026-05-16 audit correction (refined in third pass same day):** the original B2 citation pointed at `src/admin/api.rs`, which is **orphaned dead code** — not in the `src/admin/mod.rs` module tree, never compiled into the binary. The real admin surface is `src/admin/server.rs` (2,068 lines). Third-pass inventory found `server.rs` is **~60–70% complete against the B2 task list**, with two additional sub-modules in scope (`src/admin/config_persistence.rs` 461 lines, `src/admin/dashboard.rs` 631 lines — both declared in `mod.rs:22-23`).
+>
+> **Endpoints already shipped in `src/admin/server.rs`:**
+>
+> - JWT decode + expiry + API-key auth at `:359-394`.
+> - Full route CRUD (`GET/POST/PUT/DELETE /api/routes/*`) at `:237-251`.
+> - Full upstream CRUD + per-server add/remove + load-balancing config at `:253-282`.
+> - `GET /api/config` (summary form) at `:440-459`.
+> - `POST /api/config/reload` (with read-only-mode check) at `:512`.
+> - `GET /api/runtime-config` + `/diff` (Stage 3c-1) at `:469-509`.
+> - Login + user management at `:210-214`.
+> - Health, readiness, stats, backends listing.
+>
+> **Revised estimate: ~4 days (not 12, not 6).** Task list below has been updated to reflect what `server.rs` already implements. Also: **delete `src/admin/api.rs`** (recommended — it's pure confusion) or wire it up.
+
+- [~] Real JWT verify (use `jsonwebtoken` crate or `jose` — pick one); token validation, scope check. **2 days.** — **JWT decode + expiry validation already shipped** at `src/admin/server.rs:370-394`. Remaining work: scope/claims check on the decoded `JwtClaims` struct; per-endpoint authorization policy. Revised effort: **~½ day**.
+- [~] `GET /admin/config` returns actual configuration with secrets redacted. **1 day.** — **Summary form already shipped** at `src/admin/server.rs:440-459`. Remaining: expand from summary → full `Config` tree with `SecretRef::Debug` redaction (the pattern is already established by `/api/runtime-config` at `:469-478`). Revised effort: **~1 day** (unchanged).
+- [~] `POST /admin/config` (validated, atomic apply, revert on failure). **3 days.** — `POST /api/config/reload` already exists at `src/admin/server.rs:512` with read-only-mode check; `src/admin/config_persistence.rs` (461 lines) implements `ConfigPersistence` for route/upstream save-to-disk. Remaining: verify atomic-apply semantics + wire `validate_against_config` re-run on this path (same fix as D9 SIGHUP path). Revised effort: **~½ day audit + up to 1 day if gap**.
+- [~] Backend enable/disable, weight changes (live, no restart). **2 days.** — **Likely shipped** via `PUT /api/upstreams/:name` + per-server add/remove + `PUT /api/upstreams/:name/load-balancing` at `server.rs:253-282`. Remaining: audit + smoke-test that live changes apply without restart. Revised effort: **~½ day audit + any gap-fill**.
+- [ ] OpenAPI 3.1 spec generated from handlers. **2 days.** — net-new.
+- [ ] Audit log of admin-API actions (Postgres or sled append-only). **2 days.** — net-new. **Can defer to Phase 1.3** if B2 gets scope-sliced.
+- [ ] **Decide and execute on `src/admin/api.rs`** (added 2026-05-16): either delete the 354-line orphaned file or wire it into `src/admin/mod.rs`. Recommended: delete — `server.rs` supersedes. **½ day.**
 
 #### Workstream 0.H — Discovery quick-fix (UC12)
 
@@ -2701,11 +2803,382 @@ above. See §12 lifecycle entry "fifth revision" for the full list.
     validation-correctness fix and don't gate any release blocker.
   - **§13 status snapshot** gains 1 row recording B6 closure +
     Workstream 0.E ✅.
+- **2026-05-16 (thirty-ninth revision, current):** **Progress
+  ledger refresh + Phase 0 prioritized to-do list landed in §13.**
+  No source code changed in this revision; this is a planning
+  refresh to fix the §13 staleness surfaced during a status review.
+  - **Why this revision exists:** §13.2 ("What's pending") still
+    enumerated all 14 B-blockers as if none had closed, and §13.3
+    ("Next concrete actions") still pointed at Workstream 0.J — both
+    written 2026-05-02 and not refreshed through the Stage 1/2/3a/3b/
+    3c-1/3c-2/3c-3 + B11 + B4 + B5 + B6 commits. The §13.1 ledger
+    was accurate; the §13.2 / §13.3 forward-looking views were not.
+  - **What this revision does:**
+    1. Updates §5 Phase 0 task tickboxes for the four closed
+       blockers — `[ ]` → `[x]` or `[~]` for partial — with commit
+       hashes and explicit deviation notes where shipped scope
+       diverged from spec (B4.1 mode-based XFF trust vs. spec's
+       CIDR allowlist; B4.2 random shard vs. spec's stable hash;
+       B11 final count 5 production sites vs. spec's 8 listed
+       sites with 3 test fixtures excluded by design).
+    2. Adds **§13.5 — Phase 0 priority order (2026-05-16)**, a
+       tiered to-do list (P0a security/correctness → P0b feature
+       blockers → P0c cheap independent wins → P1 long-lead
+       validation) covering the **10 remaining release blockers**
+       (B1, B2, B3, B7, B8, B9, B10, B12-partial, B13, B14-partial)
+       and the residual workstream-level tickets (0.C WAF / per-
+       route / `RateLimiter` trait; 0.E STARTTLS / DB-pool ↔ CB;
+       0.F slowloris / header cap / HTTP/2 GOAWAY; 0.H discovery
+       quick-fix; 0.I UC15 P0 + `GeoProvider` trait).
+    3. Reframes §13.2 to show the **4 closed (B4, B5, B6, B11)
+       plus Workstream 0.J ✅** in their own subsection, and the
+       **10 still-open release blockers** in priority order
+       cross-referencing §13.5.
+    4. Refreshes §13.3 ("Next concrete actions") to point at the
+       new §13.5 instead of the now-stale "begin with Workstream
+       0.J" instruction.
+  - **Architectural deviations surfaced during this review** (not
+    fixed by this revision; tracked in §13.5 as flagged items):
+    - **D1 §0.1 enforcement gap.** Workstream 0.J landed Stage 3a
+      with the xtask lint **hard-failing on 4 paths only**
+      (`src/plugin/`, `src/cluster/`, `src/cache/`, `src/ai/`).
+      Project-wide enforcement was *deferred* — ~150 pre-existing
+      literals across `src/proxy/`, `src/middleware/`, `src/http/`,
+      `src/tcp/`, `src/tls/` were surveyed but left as hardcoded
+      values. New code can still introduce hardcoded tunables in
+      those paths without CI catching it. Operational impact: the
+      §0.1 rule isn't yet enforced by the toolchain; relying on
+      reviewer discipline is brittle. Tracked as **§13.5 D-tier**.
+    - **D2 B14 closed only partially.** Stage 3c-3 shipped a
+      shutdown drain *delay* (`HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN`,
+      default 10 s) but did **not** wrap `tokio::spawn` sites in
+      `JoinSet` + `CancellationToken`. The blocker spec
+      (§4.1.1 B14) called for per-task tracking at the HTTP/3
+      worker pool (`http3_quiche.rs:206`) and federation executor
+      (`gateway/graphql/executor.rs:57`). The drain *waits* on
+      timer but does not actively cancel in-flight work — under
+      load a SIGTERM can still truncate requests. **B14 should not
+      be marked closed in §13.2 until per-task tracking ships.**
+      Tracked as **§13.5 P0a item 4**.
+    - **D3 B4.1 deviated from spec on env-var shape.** Spec
+      (`HIGHPER_PROXY_TRUST_CIDRS` comma-separated CIDR list);
+      shipped (`HIGHPER_RATELIMIT_XFF_TRUST=none|first|last`,
+      mode-based). Closes the immediate security hole (default
+      `none` ignores XFF, which is correct) but **does not satisfy
+      multi-LB topologies** where operators legitimately have a
+      finite set of trusted upstream proxies and need to extract
+      the *first non-trusted hop* from XFF. Tracked as
+      **§13.5 P2** (Phase 1.6 hygiene).
+    - **D4 B4.2 deviated on shard selection.** Spec called for
+      stable-hash sharding (per-client locality); shipped uses
+      random selection. Load distribution is identical;
+      observability is worse (per-client traffic spreads across
+      all shards making `redis-cli MONITOR` debugging harder).
+      Tracked as **§13.5 P2**.
+    - **D5 B11 dropped the metrics requirement.** Spec called for
+      `*_queue_dropped_total` + `*_queue_depth_current` per
+      bounded site. Five sites bounded; **zero metrics emitted**.
+      Operators cannot today tell whether their tunables are
+      sized correctly. Tracked as **§13.5 P1 observability**.
+    - **D6 Trait extractions all pending.** §4.4 row 1
+      (`LoadBalancerStrategy`) is bundled into Workstream 0.A
+      (B1); row 3 (`CircuitBreaker`) into Workstream 0.D; row 6
+      (`GeoProvider`) into Workstream 0.I; row 2 (`RateLimiter`)
+      into 0.C. **Recommendation in §13.5:** extract the trait
+      *first* in each workstream and let impls follow, not
+      retrofit after impl lands — this is the std reason refactor
+      effort estimates blow out (cited in §4.4 footer).
+    - **D7 No SIGHUP cross-reload integration test.** Stage 3b
+      added the SIGHUP atomic-swap reload runtime for
+      `RuntimeConfig`; the pre-existing config-file SIGHUP path
+      remained. §11 sign-off question #4 chained them ("existing
+      first, then runtime_config") but **no integration test
+      exercises both paths in one SIGHUP**. Risk: a config-file
+      reload that updates the live YAML *and* an env-driven
+      `RuntimeConfig` field at once may have race / order bugs
+      we haven't observed. Tracked as **§13.5 P1 verification**.
+    - **D8 B12 only 3 hot-path sites migrated.** Stage 3c-2
+      migrated `src/proxy/handler.rs:646/1150/1702` to
+      `runtime_config::current().body.max_request_body`. The
+      original §4.1.1 B12 spec listed 11 distinct body-size knobs
+      across 10+ files; **only `max_request_body` shipped as a
+      `RuntimeConfig` field**. The remaining 10 knobs
+      (`HIGHPER_BODY_MAX_WAF`, `_FASTCGI`, `_STATIC`, `_STREAM`,
+      `_LOG`, `_VALIDATE_STRICT`, `_VALIDATE_RELAXED`,
+      `_VALIDATE_API`, `_WEBSERVER_REQ_BUFFER_MAX`, plus
+      `_PROXIED`) are unshipped — those sites still read
+      `pub const DEFAULT_*` literals. **B12 should not be marked
+      closed in §13.2 until the remaining 10 knobs ship.**
+      Tracked as **§13.5 P0c item 11**.
+  - **Lines of evidence:** new §13.5 priority list adds ~150
+    lines; §5 Phase 0 task list updates add ~12 lines of
+    deviation notes + status markers; §13.2 / §13.3 refresh
+    ~40 lines net. No code touched in this revision.
+- **2026-05-16 (fortieth revision, current):** **§0.2 core-first
+  scoping convention added; Phase 1.4 cross-cutting traits tagged
+  v1.0 GA scope; R1 silent-no-op WARN added to §13.5 P0c; §0.2 R2
+  + R3 mitigations added to §13.5 P1 debt.** No source code
+  changed; this revision codifies the "scaffold UC16 in core,
+  ship vertical later" approach the owner ratified 2026-05-16
+  during the §13.5 priority-list review.
+  - **Why this revision exists:** the §13.5 priority list landed
+    in the thirty-ninth revision was implicitly tied to a scoping
+    decision that had never been written down in convention form
+    — namely, that the env-var configuration scaffold + cluster
+    bootstrap + trait extractions for UC16 ship *in v1.0* even
+    though the UC16 vertical itself ships *in v1.x*. Without
+    §0.2, contributors reading §5 Phase 2 + USECASE_16 would
+    legitimately conclude that `runtime_config::ai.*` should be
+    deferred too — which would unship Workstream 0.J Stage 2
+    work and break the cross-subsystem validator's cluster
+    rules.
+  - **What this revision does:**
+    1. Adds **§0.2 "core-first, vertical-second scoping
+       convention"** between §0.1 and §0.5. Names the pattern
+       (Kubernetes CRDs / Linux loadable modules precedent),
+       enumerates what is in v1.0 GA scope vs. v1.x, lists the
+       three risks (R1 silent no-op, R2 Phase 1.4 slippage, R3
+       UC16 design-doc drift) with tracking refs to §13.5.
+    2. Adds a **v1.0 GA scope subsection to §13.2** explicitly
+       tagging Phase 1.4 cross-cutting traits (`AuthProvider`,
+       `MetricsBackend` / `LogBackend`, `PeerDiscovery` — §4.4
+       rows 4, 7, 12) as v1.0 GA scope even though none is in
+       the B1–B14 release-blocker list. Without this tag, those
+       traits risk perma-defer.
+    3. Adds **R1 to §13.5 P0c as item 14** — startup WARN when
+       `HIGHPER_AI_*` env vars are set but UC16 module is not
+       in the v1.0 build. ~½ day implementation in `src/main.rs`
+       next to the existing `RuntimeConfig loaded and installed`
+       log line. Cheap insurance against silent-no-op support
+       tickets.
+    4. Adds **§0.2 R3 (UC16 design-doc freeze at v1.0 GA) +
+       §0.2 R2 (`docs-keeper` cron extension)** to §13.5 P1 debt
+       tier as items 21 and 22. R3 fires at v1.0 GA tag time
+       (~½ day); R2 is a one-time cron-config change (~1 day)
+       that runs forward perpetually.
+    5. Aggregate-effort tally updated: P0c 29.5 → **30 days**;
+       P1 debt 6 → **7.5 days**; total to v1.0 GA tag 125 →
+       **~127 engineer-days**.
+  - **What this revision does NOT do:**
+    - It does **not** add v1.0 GA scope items beyond the three
+      Phase 1.4 traits already in §4.4. Other §4.4 trait
+      extractions (rows 1, 2, 3, 6) remain bundled into their
+      respective P0a/P0b/P0c workstreams.
+    - It does **not** reopen the UC16 design doc. USECASE_16
+      stays where it is; the §0.2 R3 freeze fires at v1.0 GA
+      tag, not now.
+    - It does **not** add any code. Item 14 (R1 WARN) is in
+      §13.5 P0c queue, not yet implemented; items 21/22 are
+      process items.
+  - **Lines of evidence:** §0.2 ~85 lines added; §13.2 v1.0
+    scope subsection ~6 lines; §13.5 P0c item 14 ~16 lines;
+    §13.5 P1 items 21 + 22 ~28 lines; aggregate-effort updates
+    ~6 lines. Total ~140 lines net to ROADMAP.md.
+- **2026-05-16 (forty-first revision, current):** **Second-pass
+  code-completion verification of §13.5 priority list; corrections
+  + 2 new D-flags + B2 source-citation fix landed.** No source code
+  changed; this revision corrects roadmap-vs-repo drift the prior
+  thirty-ninth + fortieth revisions missed.
+  - **Why this revision exists:** when the §13.5 priority list
+    (39th rev) and §0.2 core-first convention (40th rev) landed,
+    no one had grepped the actual repo to verify the load-bearing
+    factual claims. This revision did that — and found six
+    discrepancies, one of them architecturally significant
+    (`src/admin/api.rs` orphaned).
+  - **Findings and corresponding fixes:**
+    1. **`src/admin/api.rs` is orphaned dead code** (not in
+       `src/admin/mod.rs:12-21` module tree; never compiles).
+       B2 release blocker (§4.1) cited that file as the stub
+       source — wrong target. Real admin surface is
+       `src/admin/server.rs` (2,068 lines) with **working
+       JWT verification at `:370-394`** + API-key check at
+       `:359-367`.
+       - **§4.1 B2 row updated** with citation correction
+         pointing at `server.rs`.
+       - **§5 Workstream 0.G banner added** noting JWT-verify
+         essentially done; each task re-costed against
+         `server.rs` reality (~6 days total, was 12). New
+         task added: decide-and-execute on the orphaned
+         `api.rs` (delete recommended; ~½ day).
+       - **§13.5 P0a item 4 (B2) effort revised 12 → 6 days**
+         with the orphan-discovery narrative.
+       - **Aggregate-effort tally: P0a 31 → 25 days; total 127 →
+         124 days.**
+    2. **D8 phrasing refined.** Originally "Stage 3c-2 shipped
+       1 of 11 knobs"; actual: **3 of 11 fields** in
+       `BodyRuntimeConfig` shipped at
+       `src/runtime_config/sections/body.rs:11-18`
+       (`max_request_body`, `max_streaming_body`,
+       `max_form_body`); only `max_request_body` consumed
+       in hot paths.
+    3. **R1 effort estimate ½ → 1 day.**
+       `derive_enabled_ucs` at `runtime_config/loader.rs:122-160`
+       does **not** detect UC16 today (only UC4 + UC11; UC13–
+       UC16 in TODO comment at `:143-148`). R1's sentinel
+       must be added before the WARN can fire.
+    4. **D9 (new) — Cross-subsystem validator partial on SIGHUP.**
+       `reload_now()` at `reload.rs:131-141` does re-run
+       `validate_cross_subsystem` but does **not** re-run
+       `validate_against_config(&RuntimeConfig, &Config)`. So
+       a SIGHUP can ship a `HIGHPER_AI_CACHE_BACKEND=valkey`
+       change against an incompatible YAML and reload
+       succeeds. Stage 2 §11 Q4 explicitly deferred this
+       revisit to Stage 3; Stage 3 did not revisit.
+       **Added as §13.5 P1 debt item 23 (~1 day).** Should
+       bundle with B2 admin `POST /admin/config` work which
+       has the same validation gap.
+    5. **D10 (new) — No end-to-end env-loader integration test
+       per section.** `for_test()` is used at 3 sites
+       (`runtime_config/mod.rs:62,135,147` +
+       `reload.rs:198,205-206`) — defaults only. No section
+       has a test that runs `loader::load()` against a mutated
+       `HIGHPER_*` environment. Container-image fixtures
+       (`stage1-rc` through `b6-rc`) exercised the loader
+       manually; `cargo test` did not. **Added as §13.5 P1
+       debt item 24 (~2 days).** Test approach: `serial_test`
+       + `temp_env::with_vars`.
+    6. **Dependency graph fixed.** Originally implied 0.I + 0.H
+       gated on P0b. Per §5 Phase 0 (`ROADMAP.md:754`),
+       0.I/0.H are independent and trivial. Revised graph
+       shows them parallel-from-day-1 alongside P0a + P1
+       long-lead.
+    7. **W0.D bundling note added** to §13.5 item 7. B7, B8,
+       B14-finish all touch `src/http/http3_quiche.rs` — one
+       engineer bundles them (~15 days) rather than three
+       separate PRs (~26 days split).
+    8. **Phase 1.4 `SecretRef::Secrets://` resolver tagged
+       v1.0 GA scope** in §13.2. Stage 2 deferred to Phase
+       1.4; not in any §5 phase task list as a concrete
+       ticket before this revision. ~5 days, ships with
+       `AuthProvider` trait work.
+  - **What this revision does NOT do:**
+    - It does **not** delete `src/admin/api.rs`. That's a
+      code action queued in W0.G's new task. The roadmap just
+      flags it.
+    - It does **not** implement the UC16 sentinel in
+      `derive_enabled_ucs`. That's R1 work; the roadmap
+      flags the prerequisite.
+    - It does **not** add a new owner gate. All decisions
+      logged here are corrections within existing scope
+      (B2 citation; B12 phrasing; effort estimates; trait-
+      first discipline applied to discovered gaps).
+  - **Verification artifacts** (grep / Read results from this
+    revision):
+    - `JoinSet` / `CancellationToken` zero hits in
+      `runtime/mod.rs`, `http3_quiche.rs`, `gateway/graphql/
+      executor.rs` → confirms D2.
+    - `*_queue_dropped_total` / `*_queue_depth_current` zero
+      hits in the 5 bounded-channel sites → confirms D5.
+    - `pub mod api` absent from `src/admin/mod.rs:12-21` →
+      confirms orphan.
+    - `pub fn for_test` and `install_for_test` at
+      `runtime_config/mod.rs:62,135` → only 3 test-site
+      usages → confirms D10 framing.
+  - **Lines of evidence:** ~5 lines added to §4.1 B2 row; ~25
+    lines added to §5 Workstream 0.G; ~20 lines added/changed
+    in §13.5 P0a item 4 (B2) and item 7 (W0.D bundling);
+    ~30 lines for D9 + D10 in §13.5 P1 debt tier; ~10 lines
+    in §13.2 v1.0-scope expansion (Secret resolver);
+    aggregate-effort + dependency-graph rewrites ~25 lines.
+    Net ~115 lines to ROADMAP.md.
+- **2026-05-16 (forty-second revision, current):** **Third-pass
+  code-completion review surfaced D11 (CONFIG_ENV.md staleness),
+  expanded B14 scope 2 → ~14 sites, revised B2 downward 6 → 4 days
+  after `server.rs` full audit, added M1–M4 GA-scope tier covering
+  Phase 1.3 docs / Phase 1.5 SAST / Phase 1.3.1 cookbook cells /
+  GA tag-day checklist.** No source code changed; this revision
+  closes a gap between roadmap forward-looking content and the
+  actual `src/admin/server.rs` + `docs/CONFIG_ENV.md` state.
+  - **Why this revision exists:** the forty-first revision corrected
+    `admin/api.rs` orphan but under-credited the real admin
+    surface in `src/admin/server.rs`. Third pass did a full endpoint
+    inventory and found ~60–70% of B2 already shipped. Same pass
+    grepped `runtime_config/sections/*.rs` vs. `docs/CONFIG_ENV.md`
+    and found a 10-section / ~37-env-var documentation gap that
+    silently breaks the §0.1 rule. Same pass also surfaced four
+    Phase 1 GA-scope deliverables (M1–M4) absent from §13.5.
+  - **Five edits landed:**
+    1. **B2 (§13.5 P0a item 4) revised 6 → 4 days.** Narrative
+       expanded to list the endpoints already shipped in
+       `src/admin/server.rs` (full route/upstream CRUD, JWT auth,
+       login/users, runtime-config endpoints). Two additional
+       sub-modules acknowledged: `src/admin/config_persistence.rs`
+       (461 lines, save-to-disk) and `src/admin/dashboard.rs`
+       (631 lines, HTML UI) — both declared in `mod.rs:22-23`,
+       neither flagged before. §5 W0.G banner + per-task entries
+       updated correspondingly.
+    2. **B14 (§13.5 P0b item 7) revised 3 → 5–7 days.** Original
+       §4.1.1 B14 spec named 2 spawn sites; third-pass grep found
+       **~14 in-scope `tokio::spawn` sites** across
+       `src/runtime/mod.rs` (8 sites), `signals.rs`,
+       `http3_quiche.rs`, `graphql/{cache,executor}.rs`, plus
+       3 non-default-feature backends. Approach refined: single
+       `JoinSet<()>` + `CancellationToken` plumbed through
+       `Runtime`; existing `HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN`
+       becomes the `JoinSet::join_all()` timeout.
+    3. **D9 (§13.5 item 23) expanded to two call sites.** SIGHUP
+       path (`reload.rs:131-141 reload_now()`) and admin POST
+       path (`server.rs:512 reload_config`) both miss
+       `validate_against_config`. Same fix; one PR.
+    4. **D11 added (§13.5 P0c item 14a).** `docs/CONFIG_ENV.md`
+       documents only Stage 1 + Stage 2 sections (6); Stage 3a
+       added 9 sections, B5 added `graphql` — total 10 missing
+       sections, ~37 env vars undocumented. **§0.1 rule violated
+       since 2026-05-03.** Fix: backfill the 10 sections in
+       `CONFIG_ENV.md` (~1.5 days mechanical) + xtask
+       `check-config-env` consistency check (~½ day) + extend
+       `docs-keeper` cron to invoke it. 2 days total.
+    5. **M1–M4 new tier added (§13.5 between debt and P2).**
+       Phase 1.3 docs (5 new files, ~18 days), Phase 1.5 SAST
+       stack (~3 days), Phase 1.3.1 cluster-deployment cookbook
+       cells (9 cells, ~6 days), v1.0 GA tag-day checklist
+       (~1 day). All v1.0 GA scope per Phase 1 placement; partially
+       parallelizable with code work.
+  - **Aggregate effort:**
+    - P0a: 25 → **23 days** (B2 −2).
+    - P0b: 26 → **29 days** (B14 +3).
+    - P0c: 30.5 → **32.5 days** (D11 +2).
+    - P1 debt: **10.5 days** (unchanged).
+    - **NEW Tier M (M1–M4): 28 days.**
+    - **Total to v1.0 GA tag: 124 → ~155 engineer-days** (+31).
+    - With two engineers + W0.D bundling: ~10 calendar weeks.
+  - **Verification artifacts:**
+    - `src/admin/mod.rs:12-23` lists 12 sub-modules (server,
+      routes, stats, backends, upstreams, cache, metrics, pool,
+      request_metrics, auth, config_persistence, dashboard) —
+      `api` absent → confirms orphan.
+    - `src/admin/server.rs` endpoint grep returned 23 distinct
+      `(&Method::X, "/api/Y")` match-arms covering route CRUD,
+      upstream CRUD, config, runtime-config, stats, login, users,
+      health/ready — **roughly 5× more endpoints than the B2
+      release-blocker description implied**.
+    - `docs/CONFIG_ENV.md` section headers grep returned 6
+      sections (`Cluster`, `Plugin`, `AI / UC16`, `Body`,
+      `Shutdown`, `Secrets`); `runtime_config/sections/*.rs` ls
+      returned 16 section files — gap of 10.
+    - 88 distinct `env_string("…")` calls in `src/runtime_config/`
+      vs. 54 documented rows in `CONFIG_ENV.md` — gap of ~34.
+    - `tokio::spawn` repo-wide count: **68 sites**;
+      runtime/http3/graphql-executor narrowed: ~14 — confirms
+      B14 scope spread.
+    - `xtask/src/lint_runtime_config.rs:33-36` declares hard-fail
+      scope as exactly 4 paths (`src/plugin/`, `src/cluster/`,
+      `src/cache/`, `src/ai/`) — confirms D1.
+  - **What this revision does NOT do:**
+    - Does **not** delete `src/admin/api.rs` (still a code action
+      in W0.G's task list).
+    - Does **not** update `docs/CONFIG_ENV.md` (that's D11 work
+      in P0c).
+    - Does **not** add new owner gates. All decisions are
+      corrections within existing scope.
+    - Does **not** renumber the §13.5 list (D11 inserted as
+      item 14a, M1–M4 as named items in a new sub-tier — to
+      avoid breaking cross-references in earlier revisions).
 - **Future:** edit in place. Append to Section 12 with each substantive revision (date + one-line summary).
 
 ---
 
-## 13. Current status snapshot (2026-05-02)
+## 13. Current status snapshot (2026-05-02; last refreshed 2026-05-16)
 
 **One-line summary.** All work to date in this 2026-05-02 cycle is **documentation
 and planning**. No source code has changed. Phase 0 has not started.
@@ -2785,24 +3258,34 @@ and planning**. No source code has changed. Phase 0 has not started.
 | `.gitignore` excludes private session notes | `.gitignore` | `docs/reverse-proxy-quick-progress-notes.txt` added |
 | Initial commit landed (2 commits) | git log | `535721a` script relocation, `309cc8f` docs reconciliation + ROADMAP refresh |
 
-### 13.2 What's pending — by priority
+### 13.2 What's pending — by priority (refreshed 2026-05-16)
 
-**P0 — Phase 0 release blockers (14 items, must close before any v1.0 GA tag):**
+> **Closed since 2026-05-02** (4 of 14 release blockers; Workstream 0.J ✅):
+> - **Workstream 0.J — env-driven `RuntimeConfig` scaffold** ✅ (Stage 1 + 2 + 3a + 3b + 3c-1 + 3c-2 + 3c-3 landed 2026-05-03). 15 + 1 = **16 sections** in `src/runtime_config/sections/` (cluster, plugin, ai, body, shutdown, secrets, http3, tls, ratelimit, circuit_breaker, geo, cache, signals, config_watcher, observability, graphql); ~85 `HIGHPER_*` env vars; SIGHUP atomic swap; `/api/runtime-config` + `/api/runtime-config/diff` admin endpoints; cross-subsystem validator; `SecretRef::Debug` redaction.
+> - **B11 — 5 production `unbounded_channel` sites bounded** ✅ (commits `fef5bb4` + `9159aa4`, 2026-05-03). Workstream 0.F's B11 half closed; slowloris / header / GOAWAY still pending.
+> - **B4 — distributed rate-limit safety + XFF trust** ✅ (commits `3d5f4dc` B4.1 + `abd6457` B4.2, 2026-05-03/06). Workstream 0.C's B4 half closed; WAF / per-route / `RateLimiter` trait still pending. **Deviations: D3 (mode vs. CIDR), D4 (random vs. stable-hash shard)** per §12 thirty-ninth revision.
+> - **B5 — GraphQL depth/complexity** ✅ (commit `c0bf716`, 2026-05-06). New `GraphqlRuntimeConfig` section + `analyzer.rs` + 13 unit tests.
+> - **B6 — PostgreSQL pool real validation** ✅ (commit `5c29eb3`, 2026-05-06). Workstream 0.E's release-blocker tickets ✅; STARTTLS + CB-failover are non-blocker follow-ups.
+
+**v1.0 GA scope — non-B-tagged but mandatory** *(added 2026-05-16 per §0.2 core-first convention; expanded same day after second-pass review)*:
+
+- **Phase 1.4 cross-cutting traits** (`AuthProvider`, `MetricsBackend` / `LogBackend`, `PeerDiscovery` — §4.4 rows 4, 7, 12) **must ship in v1.0 GA**. Without them the §0.2 "UC16 inherits not retrofits" guarantee weakens — UC16 v1.x virtual-key auth has no trait to plug into; OTLP exporter has no `MetricsBackend` seam; multi-node HA Type 3/4 has no peer enumeration.
+- **Phase 1.4 `SecretRef::Secrets://` resolver** (added 2026-05-16 after second-pass review). Stage 2 §11 Q5 sign-off deferred resolver implementation to Phase 1.4 — the parse path lands today, the resolution path errors loudly. Concrete clients required for v1.0: Vault (`secrets://vault/<path>`), AWS Secrets Manager (`secrets://aws/<arn>`), Kubernetes Secret mount (`secrets://k8s/<name>`). Without this, any operator using `secrets://` URIs in `HIGHPER_*` values gets a runtime error. Workstream 0.B (TLS honesty) will want this for ACME EAB credentials; UC16 inherits. **Effort: ~5 days** (one resolver impl per backend + trait extraction + integration test). Owner: same engineer who picks up `AuthProvider` (related plumbing).
+
+**Slipping any of the above to post-v1.0 is treated as equivalent to slipping a B-blocker.** Tracked separately so the `docs-keeper` weekly cron catches drift.
+
+**P0 — Phase 0 release blockers still open (10 of 14; must close before any v1.0 GA tag).** See **§13.5** for the detailed tiered priority order with effort estimates, dependency map, and rationale per item.
 
 - B1 UC10 hybrid wiring — Workstream 0.A
 - B2 Admin API truth — Workstream 0.G
 - B3 OCSP / ACME / TLS honesty — Workstream 0.B
-- B4 Distributed rate-limit safety + X-Forwarded-For trust — Workstream 0.C
-- B5 GraphQL depth/complexity enforcement — Workstream 0.E (federation explicitly deferred per `GRAPHQL_FEDERATION.md`)
-- B6 PostgreSQL pool real validation — Workstream 0.E
 - B7 gRPC pooling + trailers + call-type registry — Workstream 0.D
 - B8 HTTP/3 unwrap + buffering + migration — Workstream 0.D
 - B9 cloud validation matrix for 9 UCs — Phase 1.1
 - B10 7-/30-day soak — Phase 1.2
-- B11 8 unbounded_channel sites bounded with env vars — Workstream 0.F
-- B12 body-size centralization — Phase 1.6
+- B12 body-size centralization — Phase 1.6 (partial: only `max_request_body` shipped; **D8** flags remaining 10 knobs)
 - B13 RSA Marvin attack mitigation (`oidc` feature off by default + CI gate) — Phase 1.5
-- B14 graceful drain for spawned tasks — Workstream 0.D
+- B14 graceful drain for spawned tasks — Workstream 0.D (partial: drain *delay* shipped, per-task tracker pending; **D2** flags this)
 
 **Owner gates — all 6 closed 2026-05-03 (see [`OWNER_GATES_2026-05-03.md`](OWNER_GATES_2026-05-03.md)):**
 
@@ -2848,19 +3331,615 @@ JA3/JA4, CT-log monitoring, GitOps controller, all 18 N4.2.N items
 (N3 / N5 / N8 / N10 / N11 / N13–N22 / N25), `ConfigSource` trait, config
 template expansion, profile inheritance, 80-TODO sweep, plugin marketplace.
 
-### 13.3 Next concrete actions
+### 13.3 Next concrete actions (refreshed 2026-05-16)
 
 All 6 owner gates closed 2026-05-03 (see `OWNER_GATES_2026-05-03.md`).
-Phase 0 is operationally unblocked.
+Phase 0 is operationally unblocked. **Workstream 0.J ✅ landed
+2026-05-03.** B11, B4, B5, B6 all closed by 2026-05-06.
 
-1. **Begin Phase 0** — start with Workstream 0.J (env-driven `Settings`
-   scaffold per §0.1) so subsequent workstreams can load defaults from
-   env vars rather than hardcoded literals. Type B default = Valkey;
-   Type C default = etcd.
+1. **Start the §13.5 P0a tier** (TLS honesty B3, HTTP/3 panic B8, RSA
+   Marvin B13, Admin API B2). All four are largely independent per
+   §5 Phase 0 parallelization (`docs/planning/ROADMAP.md:754`) and
+   collectively represent the highest *security and correctness*
+   risk shipping in v1.0 today.
+2. **In parallel, kick off §13.5 P1** (B9 cloud-validation matrix
+   harness + B10 7-day soak rig). These are long-lead — measured in
+   wall-clock days, not engineer-days — and gate v1.0 GA tagging
+   independently of P0a/P0b code work.
+3. **Defer §13.5 P0b** (B1 UC10 hybrid, B7 gRPC, B14 per-task
+   tracker) until P0a is at least partially in flight. §5 Phase 0
+   notes 0.C / 0.E / 0.F / 0.H "need to merge after 0.A" — so 0.A
+   (B1) sequencing affects rebase cost for the residual tickets in
+   the other workstreams.
+4. **Cheap independent wins (§13.5 P0c)** can be slotted into any
+   gap day: 0.I UC15 P0 (~4 days), 0.H discovery quick-fix
+   (~2.5 days). These finish full workstreams without competing
+   for the same files as P0a/P0b.
+5. **Architectural deviations (D1–D8 per §12 thirty-ninth revision)
+   tracked in §13.5** — should be addressed as part of natural
+   workstream touch-ups rather than dedicated PRs, except for
+   **D1 (§0.1 lint enforcement gap)** and **D6 (trait extraction
+   ordering)**, which are *prescriptive* recommendations for how
+   the remaining workstreams should ship.
 
 (The `gap-auditor` monthly cron `trig_012cxCxcDsxugaqdJXB6syj2` and
 `docs-keeper` weekly cron `trig_017YZKK1gLdJNntEAcSqVE7H` are already
 running.)
+
+### 13.5 Phase 0 priority order (added 2026-05-16)
+
+**Premise.** Phase 0 is the v1.0 release-blocker gate. After
+Workstream 0.J + B11 + B4 + B5 + B6 closed, **10 of 14 B-blockers**
+remain. This subsection orders the remaining work by *risk class*
+(security and correctness > feature completeness > validation lead
+time > hygiene) and notes dependency edges that would force a
+particular sequencing.
+
+Effort numbers re-cited from §5 Phase 0 (the source of truth).
+"Workstream" refers to the §5 subsection. "D-flag" refers to the
+architectural deviations recorded in §12 thirty-ninth revision.
+
+---
+
+#### Tier P0a — Security & correctness blockers (start immediately, parallel)
+
+All four items below are independent per §5 Phase 0
+parallelization note (`docs/planning/ROADMAP.md:754`). They are
+ordered by *severity-class-of-thing-shipping-today*, not by effort.
+
+1. **B3 / Workstream 0.B — TLS honesty.** ~12 days.
+   - **Threat class:** the TLS subsystem *looks* fully implemented
+     but several code paths are silent stubs that produce
+     correct-looking objects with no verification.
+     `src/tls/ocsp_fetcher.rs:346-415` never builds a real OCSP
+     request body; `src/tls/ocsp_stapler.rs:97-136` never attaches
+     cached responses into `CertifiedKey.ocsp`;
+     `src/tls/acme.rs:199-204` `needs_renewal()` always returns
+     `false` so ACME certs *never* renew (`ROADMAP.md:368`).
+   - **Why this is P0a:** an operator deploying with ACME today
+     gets a certificate that silently expires 90 days later with
+     no warning. An OCSP stapler that never staples means
+     CRL-aware clients refuse the cert under certain trust
+     policies.
+   - **Tasks (§5 Workstream 0.B):** pull real OCSP library
+     (5 days); wire `OcspStapler.ocsp` into rustls (2 days);
+     `needs_renewal()` against notBefore/notAfter (1 day); CRL
+     extensions parser (2 days); `tokio::fs::read` swap (½ day);
+     ACME log-strip (½ day); TLS staging-URL field (½ day); CI
+     Let's Encrypt staging (2 days).
+   - **D-flag intersections:** none direct.
+
+2. **B8 / Workstream 0.D — HTTP/3 panic + buffered body + migration.** ~6 days.
+   - **Threat class:** `unwrap()` in receive loop at
+     `src/http/http3_quiche.rs:403`, full
+     `body.collect().await` at `:944`, connection migration
+     disabled at `:1053` (`ROADMAP.md:373`).
+   - **Why this is P0a:** any malformed packet that drives the
+     receive loop into the unwrap path **crashes the worker**
+     and (depending on supervisor config) the whole process.
+     `body.collect()` defeats the streaming model that the rest
+     of the HTTP/3 path implements — large responses materialise
+     in memory.
+   - **Tasks (§5 Workstream 0.D B8):** replace receive-loop
+     `unwrap` with safe drop + counter; re-enable connection
+     migration with anti-amp checks; stream backend response
+     (no `body.collect()`); wire actually-emitting metrics.
+   - **D-flag intersections:** **D2** (B14 per-task tracker is
+     also in 0.D — bundle if same hands).
+
+3. **B13 / Phase 1.5 — RSA Marvin attack mitigation.** ~1 day.
+   - **Threat class:** transitive `rsa` dep (RUSTSEC-2023-0071)
+     is feature-gated by `oidc`; the feature exists and operators
+     can opt in (`ROADMAP.md:378`).
+   - **Why this is P0a:** cheap fix; defence in depth.
+     Postponing means someone enables `oidc` in production
+     before the gate exists.
+   - **Tasks (§4.1.1 B13):** confirm `oidc` not in default-features
+     (already true at `Cargo.toml:191`); new CI job runs
+     `cargo tree --no-default-features` and asserts `rsa` absent;
+     `HIGHPER_FEATURE_OIDC=1` runtime probe; write
+     `docs/SECURITY_SCANNING.md`.
+   - **D-flag intersections:** none.
+
+4. **B2 / Workstream 0.G — Admin API truth.** ~4 days (revised 2026-05-16 third pass; was 6 days, originally 12 days).
+   - **Threat class (corrected 2026-05-16, third pass):** the
+     2026-05-16 second pass corrected the citation from the
+     orphaned `src/admin/api.rs` to `src/admin/server.rs` but
+     under-credited `server.rs` content. Third-pass inventory
+     of `server.rs` (2,068 lines) found **~60–70% of the B2
+     task list is already shipped**:
+     - JWT decode + expiry + API-key auth at `:359-394` (real,
+       not stub).
+     - **Full route CRUD** (`GET/POST/PUT/DELETE /api/routes/*`)
+       at `:237-251`.
+     - **Full upstream CRUD** + per-server add/remove +
+       load-balancing config at `:253-282`.
+     - `GET /api/config` real (summary form) at `:440-459`.
+     - `POST /api/config/reload` real with read-only-mode
+       check at `:512`.
+     - `GET /api/runtime-config` + `/diff` from Stage 3c-1 at
+       `:469-509`.
+     - **Login + user management** at `:210-214` (`POST /api/auth/login`,
+       `GET/POST /api/users`).
+     - Health/readiness, stats, backends listing — all real.
+   - **Additional admin sub-modules** not flagged in prior B2
+     analysis but present in `src/admin/mod.rs:22-23`:
+     **`config_persistence.rs`** (461 lines — `ConfigPersistence`
+     struct with route/upstream save-to-disk; likely satisfies
+     the "atomic apply, revert on failure" sub-task) and
+     **`dashboard.rs`** (631 lines — HTML UI surface; not
+     mentioned anywhere in roadmap prior to this revision).
+   - **Tasks remaining (revised, ~4 days total):**
+     - Expand `get_config` from summary form → full `Config`
+       tree with `SecretRef::Debug` redaction (~1 day).
+     - JWT scope/claims check on decoded `JwtClaims` —
+       per-endpoint authorization policy (~½ day).
+     - Verify / wire `POST /api/config/reload` atomic-apply
+       semantics if not already done by `config_persistence.rs`
+       (~½ day audit + up to 1 day fix if gap).
+     - OpenAPI 3.1 spec generation from handlers (~2 days, net-new).
+     - Audit log of admin-API actions (~2 days, net-new — but
+       can be deferred to Phase 1.3 deliverables if scope-sliced).
+     - Delete orphaned `src/admin/api.rs` (~½ day).
+   - **D-flag intersections:**
+     - **D2 partial** — admin `POST /api/config/reload`
+       needs drain semantics from B14.
+     - **D9 (refined)** — both SIGHUP path (`reload.rs:131-141`)
+       and admin POST path (`server.rs:512 reload_config`)
+       need `validate_against_config` re-run. Same fix, two
+       call sites.
+     `GET /admin/config` redacted (1 day); `POST /admin/config`
+     atomic apply (3 days); backend enable/disable, weight
+     changes (2 days); OpenAPI 3.1 spec (2 days); audit log
+     (2 days).
+   - **D-flag intersections:** **D2 partial** — admin
+     `POST /admin/config` will need the `JoinSet` /
+     `CancellationToken` model from B14 to drain in-flight
+     requests during atomic apply; if B2 ships first it must
+     declare its own drain model and B14 inherits.
+
+#### Tier P0b — Feature blockers (start after P0a is in flight)
+
+5. **B1 / Workstream 0.A — UC10 hybrid + `LoadBalancerStrategy` trait.** ~7 days + 10 days trait. (Total ~17 days.)
+   - **Sequencing note:** §5 Phase 0 says 0.C / 0.E / 0.F / 0.H
+     "need to merge after 0.A and other Runtime-touching changes"
+     (`ROADMAP.md:754`). So B1 sequencing affects rebase cost for
+     the residual W0.C / W0.E / W0.F / W0.H tickets.
+   - **What this is:** `Runtime::run` never calls
+     `TcpProxyServer::start()` (`ROADMAP.md:366`). UC10 (hybrid
+     multi-protocol) is marketed as a use case but is wired only
+     for HTTP/HTTP3/admin/metrics. TCP listeners exist
+     (`src/tcp/server.rs`) but aren't part of the runtime tree.
+   - **D-flag intersection D6:** §4.4 row 1
+     `LoadBalancerStrategy` trait extraction is bundled into this
+     workstream. **Extract the trait first, migrate impls
+     second, then wire the new listener** — inverting that order
+     creates rebase pain because all 8 HTTP + 5 TCP LB algorithms
+     touch the same dispatch surface.
+
+6. **B7 / Workstream 0.D — gRPC pool + trailers + call-type registry.** ~6 days.
+   - **What this is:** fresh `hyper` client per request (no
+     pooling); call-type heuristic only; trailers passed as
+     headers (`ROADMAP.md:372`).
+   - **Why P0b not P0a:** doesn't crash; doesn't lie about
+     security; just slow and protocol-non-compliant.
+     Real gRPC clients tolerate header-passed trailers in many
+     cases, but strict clients refuse.
+
+7. **B14 finish / Workstream 0.D — per-task `JoinSet` + `CancellationToken`.** ~5–7 days (revised 2026-05-16 third pass; was 3 days).
+   - **Scope spread revealed in third-pass audit:** the original
+     §4.1.1 B14 spec named **2 spawn sites**
+     (`http3_quiche.rs:206`, `executor.rs:57`). Repo-wide grep on
+     2026-05-16 found **68 `tokio::spawn` sites** total. Even
+     narrowing to the in-scope long-lived task paths:
+     - `src/runtime/mod.rs` has **8 spawn sites** at
+       `:172,179,186,190,207,222,245,266` (reloader, signals,
+       listeners, admin, http, http3 — every long-lived runtime
+       task).
+     - `src/runtime/signals.rs:240` — signal listener.
+     - `src/http/http3_quiche.rs:215` — H3 worker pool.
+     - `src/gateway/graphql/cache.rs:42` — graph cache refresh.
+     - `src/gateway/graphql/executor.rs:57` — federation
+       executor.
+     - `src/runtime/{epoll_backend,hybrid_stream,io_uring_shim}`
+       have 3 more for non-default-feature backends.
+   - **Revised approach:** wrap the **~14 in-scope sites** in
+     a single `JoinSet<()>` + `CancellationToken` plumbed
+     through the `Runtime` struct. Effort: ~5 days for the
+     core wiring + ~2 days for testing under load (pkill-TERM
+     during traffic, assert no silent truncation). Existing
+     `HIGHPER_SHUTDOWN_SPAWN_TASK_DRAIN` (Stage 3c-3) becomes
+     the timeout for `JoinSet::join_all()` rather than a bare
+     sleep.
+   - **Bundling recommendation (added 2026-05-16):** items 2 (B8),
+     6 (B7), and 7 (B14-finish) **all touch `src/http/http3_quiche.rs`
+     and the same Workstream 0.D**. One engineer bundles them into
+     a single branch (~17–19 days combined) rather than three
+     separate PRs. The tier split in this priority list reflects
+     *risk ordering* (B8 panic > B7 protocol-noncompliance > B14
+     graceful-drain), not *sequencing*. Verified 2026-05-16: zero
+     `JoinSet` / `CancellationToken` hits anywhere in the repo.
+   - **D-flag D2 (refined 2026-05-16, third pass):** Stage 3c-3
+     shipped drain *delay* only. Original §4.1.1 B14 spec named
+     2 sites; reality is ~14 in-scope sites. Under SIGTERM today,
+     in-flight requests on any of those spawn paths may still be
+     **silently truncated** — the drain delay only waits;
+     nothing cancels.
+   - **Bundle hint:** schedule with B8 (same file
+     `http3_quiche.rs`) and B7 (same workstream 0.D).
+
+#### Tier P0c — Cheap independent wins (slot into any gap day)
+
+8. **Workstream 0.I — UC15 P0 fixes + `GeoProvider` trait.** ~4 days.
+   - `src/proxy/geographic.rs:20` blocking `Mutex` → `RwLock`
+     (½ day); log poisoned-lock event (½ day); `GeoProvider`
+     trait extraction (3 days). §4.4 row 6.
+   - **D6:** extract trait first.
+
+9. **Workstream 0.H — Discovery quick-fix.** ~2.5 days.
+   - `should_refresh = true` always at
+     `src/discovery/registry.rs:41` (½ day); Consul ACL token
+     + mTLS (2 days). No B-blocker but unblocks live discovery
+     correctness.
+
+10. **Workstream 0.C residue — WAF + per-route + `RateLimiter` trait.** ~2 weeks.
+    - Per-route DSL/YAML wiring (1 day); custom WAF regex sets +
+      Coraza validation (5 days); WAF body decompression
+      (3 days); WAF hot-reload (2 days); `RateLimiter` trait
+      (1 week, §4.4 row 2). Not in P0a/P0b because the *safety*
+      half (B4) closed.
+
+11. **Workstream 0.E residue — STARTTLS + DB-pool ↔ CB.** ~5 days.
+    - PostgreSQL STARTTLS / SSLRequest (3 days); DB pool failover
+      wired to circuit breaker (2 days). Both non-blockers.
+
+12. **Workstream 0.F residue — Slowloris + header cap + GOAWAY.** ~5 days.
+    - Per-request read/idle timeouts → 408 (2 days);
+      `HIGHPER_HTTP_MAX_HEADER_BYTES` → 431 (1 day); HTTP/2
+      GOAWAY drain on shutdown (2 days; overlaps with B14).
+
+13. **B12 finish / Phase 1.6 — remaining body-size knobs.** ~3 days.
+    - **D8 (refined 2026-05-16):** Stage 2 shipped **3 of 11 fields**
+      in `BodyRuntimeConfig` at
+      `src/runtime_config/sections/body.rs:11-18`
+      (`max_request_body`, `max_streaming_body`, `max_form_body`).
+      Stage 3c-2 wired **1 of those 3** into hot paths
+      (`max_request_body` at `src/proxy/handler.rs:646/1150/1702`).
+      Remaining work: (a) ship the 8 unshipped §4.1.1 B12 fields
+      (`HIGHPER_BODY_MAX_WAF`, `_FASTCGI`, `_STATIC`, `_LOG`,
+      `_VALIDATE_STRICT`, `_VALIDATE_RELAXED`, `_VALIDATE_API`,
+      `_WEBSERVER_REQ_BUFFER_MAX`) as new fields in
+      `body.rs`; (b) wire `max_streaming_body` + `max_form_body`
+      + all 8 new fields into their consumer call sites. Each
+      consumer site is a 2–4-line
+      `runtime_config::current().body.*.get()` migration following
+      the Stage 3c-2 template.
+
+14. **R1 — Silent-no-op WARN for UC16 env vars in v1.0 builds.** ~1 day (revised 2026-05-16; was ½ day).
+    - **§0.2 risk R1:** UC16 (`src/ai/`) is out of v1.0 GA scope per
+      owner gate #3, but `AiRuntimeConfig` ships in v1.0 with 25
+      `HIGHPER_AI_*` env vars (Stage 2 `67bf863`). Operator sets
+      `HIGHPER_AI_RETRY_BUDGET=5` in v1.0; `RuntimeConfig loaded and
+      installed` succeeds; nothing reads it. Produces silent-no-op
+      support tickets.
+    - **Code-completion finding 2026-05-16:** the planned sentinel
+      via `derive_enabled_ucs` doesn't exist yet for UC16.
+      `runtime_config/loader.rs:122-160 derive_enabled_ucs` currently
+      handles **only UC4 + UC11** (per Stage 3c-3 commit `7c00488`);
+      UC13/UC14/UC15/UC16 are in a TODO comment at `:143-148`.
+      So R1 must **first add a UC16 detection sentinel** (per-route
+      `ai_route` block scan, or compile-time `cfg!(feature = "uc16")`
+      gate, or runtime-time enum variant on `EnabledUcs`) before the
+      WARN can fire. Effort therefore ~1 day, not ½ day.
+    - **Fix:** at startup, after `runtime_config::install()`, if
+      UC16 sentinel reports absent AND any `HIGHPER_AI_*` env var is
+      set, log once at WARN level: "UC16 env vars set but module not
+      built into this binary; values ignored". Implement in
+      `src/main.rs` next to the existing `RuntimeConfig loaded and
+      installed` log line.
+    - **Cheap insurance.** ~1 day total: sentinel addition + WARN
+      emit + unit test that sets `HIGHPER_AI_RETRY_BUDGET=3` in a
+      `serial_test`-gated env and asserts the WARN is emitted
+      exactly once.
+
+14a. **D11 — `docs/CONFIG_ENV.md` staleness (§0.1 rule violation).** ~2 days. *(Added 2026-05-16, third pass.)*
+    - **Finding:** `docs/CONFIG_ENV.md` (228 lines, last touched
+      2026-05-03 alongside Stage 1) documents only **6 sections**
+      (cluster, plugin, ai, body, shutdown, secrets) — the
+      Stage 1 + Stage 2 set. The file self-states "Stage 1 (this
+      revision)" and "Stage 3 (queued)" — never updated when
+      Stage 3a + post-Stage-3 sections shipped.
+    - **Coverage gap:** ~88 distinct `env_string("…")` calls in
+      `src/runtime_config/sections/*.rs`; ~54 documented rows in
+      `CONFIG_ENV.md`. **~37 env vars in production code with
+      no operator-facing docs.** Missing sections: `http3`
+      (Stage 3a + B11.4/B11.5), `tls` (Stage 3a + B11.1),
+      `ratelimit` (Stage 3a + B4.1 + B4.2), `circuit_breaker`,
+      `geo`, `cache`, `signals`, `config_watcher`, `observability`
+      (all Stage 3a), `graphql` (B5).
+    - **§0.1 rule:** "every new env var is documented in
+      `docs/CONFIG_ENV.md` before the PR introducing it can
+      merge" (`ROADMAP.md:46-47`). **This rule has been silently
+      broken since 2026-05-03** — 10 PRs landed env vars without
+      updating the file.
+    - **Fix:** (a) add the 10 missing sections to `CONFIG_ENV.md`
+      with one row per env var (default / valid range / reload
+      tier), mirroring the existing Stage 1 + Stage 2 layout
+      (~1.5 days, mechanical); (b) add an xtask check
+      (`cargo xtask check-config-env`) that fails CI when a
+      section file references an `env_string("…")` not present
+      in `CONFIG_ENV.md` (~½ day). Extend `docs-keeper` weekly
+      cron to invoke this check.
+    - **D-flag intersections:**
+      - **D1 (§0.1 lint)** — same enforcement surface. Bundle.
+      - **§0.2 R2 cron extension** (item 22 below, was queued
+        for UC16-only) — broaden cron scope to include all
+        `runtime_config` sections, not just `ai.*`.
+
+#### Tier P1 — Long-lead validation (kick off in parallel; wall-clock-bound)
+
+15. **B9 / Phase 1.1 — Cloud validation matrix for 9 UCs.** ~3 weeks elapsed.
+    - Pre-build container images for all 15-scenario backend
+      mocks; CI pipeline; cloud test pass on real VM
+      (`ROADMAP.md:758-763`). **Start now** — the harness is
+      the bottleneck, not the code under test.
+
+16. **B10 / Phase 1.2 — 7-day soak + chaos pass + per-cluster RPS.** ~2 weeks elapsed.
+    - 7-day stability at 1M concurrent connections (7 days);
+      30-day soak (parallel); chaos pass (3 days);
+      per-cluster-type RPS benchmark (5 days). Cannot *finish*
+      until P0a/P0b code is stable, but the rig + harness can
+      be built now.
+
+#### Tier P1 — Architectural / verification debt (track during workstreams)
+
+17. **D1 — §0.1 lint enforcement gap.** ~2 days.
+    - Widen xtask lint from 4 paths (`src/plugin/`, `src/cluster/`,
+      `src/cache/`, `src/ai/`) to project-wide. ~150 pre-existing
+      literals tagged with `// allow:` waivers during widening
+      (mechanical sweep, no functional change). **Recommended
+      timing:** as part of the *last* P0c workstream finish so
+      all consumer migrations land before enforcement tightens.
+
+18. **D5 — B11 metrics emission.** ~2 days.
+    - Add `*_queue_dropped_total` and `*_queue_depth_current`
+      counters at each of the 5 bounded sites
+      (`cert_watcher`, `config/reloader`, `config/watcher`,
+      `http3_quiche` req, `http3_quiche` resp). Operators today
+      cannot size their tunables empirically. Bundle with B8
+      (same file `http3_quiche.rs`).
+
+19. **D7 — SIGHUP cross-reload integration test.** ~2 days.
+    - End-to-end test that fires one SIGHUP while both a live
+      YAML config-file change AND a `HIGHPER_*` env change are
+      pending; assert order of application (existing-config first,
+      then runtime_config per §11 sign-off Q4) and absence of
+      race conditions. Bundle with W0.G B2 work (same admin
+      surface).
+
+20. **D6 — trait-extraction-first discipline.** *(process item, not effort.)*
+    - For every remaining workstream that bundles a §4.4 trait
+      extraction (0.A row 1; 0.C row 2; 0.D row 3; 0.I row 6),
+      **extract the trait first, migrate impls second, then add
+      the new feature**. This is the std reason refactor effort
+      estimates blow out — folding new behaviour into an
+      ad-hoc-shaped concrete type and *then* trying to thread a
+      trait through it costs 2–3× the from-scratch number.
+
+21. **§0.2 R3 — UC16 design-doc freeze at v1.0 GA tag time.** *(process item, ~½ day execution at tag time.)*
+    - Per §0.2 R3 mitigation. At the v1.0 GA tag commit, snapshot
+      `USECASE_16_AI_LLM_GATEWAY.md` to
+      `docs/planning/archive/USECASE_16_AI_LLM_GATEWAY_v1.0-GA.md`
+      and pin the §12 lifecycle entry at that revision. Resume
+      v1.x UC16 work against the frozen baseline so the
+      §4.4 row 9–11 trait extraction effort estimates (folded
+      into Phase 2.1) stay valid. Without freeze, USECASE_16
+      keeps accumulating decisions against not-yet-shipped
+      infrastructure during the v1.0 → v1.x interval; the
+      original ~10-day estimate blows out 2–3×.
+    - **Trigger:** v1.0 GA tag commit. **Owner:** release
+      manager (cross-referenced from `OWNER_GATES_*.md` at tag
+      time per gate #6).
+
+22. **§0.2 R2 — `docs-keeper` cron extended to UC16 design-vs-code drift.** *(process item, ~1 day to configure.)*
+    - The existing `docs-keeper` weekly cron
+      (`trig_017YZKK1gLdJNntEAcSqVE7H`) verifies docs internal
+      consistency. Extend its check set to: (a) every
+      `runtime_config::ai.*` field has a matching
+      `HIGHPER_AI_*` row in `docs/CONFIG_ENV.md`;
+      (b) every `HIGHPER_AI_*` env var referenced in
+      `USECASE_16_AI_LLM_GATEWAY.md` exists in
+      `runtime_config::sections::ai.rs`; (c) §4.4 row 9–11
+      trait names (`AiStateStore`, `AiProvider`,
+      `VectorIndex`) referenced in USECASE_16 § match the
+      `RuntimeConfig` selector enum variants
+      (`HIGHPER_AI_STATE_BACKEND`, etc.). Catches drift
+      between v1.0 GA and v1.x UC16 implementation.
+
+23. **D9 — Cross-subsystem validator partially re-runs on reload paths.** ~1 day (covers both call sites).
+    - **Code-completion finding 2026-05-16 (refined third pass):**
+      `runtime_config/reload.rs:131-141 reload_now()` calls
+      `super::load()?` which runs `validate_cross_subsystem(&RuntimeConfig)`
+      at `loader.rs:44` — **good**. But the second validator
+      `validate_against_config(&RuntimeConfig, &Config)` at
+      `loader.rs:85` (the *Config*-aware one that closes §11.2 rules
+      1/2/3/5) is **only called from `main.rs` at startup** and
+      **not** by either reload path. So an operator can either
+      `kill -HUP <pid>` OR `POST /api/config/reload` against a
+      `HIGHPER_AI_CACHE_BACKEND=valkey` env with `cluster.typeb=none`
+      YAML → reload succeeds → §11.2 invariant violated silently.
+    - **Two call sites for the same gap** (third-pass discovery):
+      - `runtime_config/reload.rs:131-141 reload_now()` — SIGHUP path.
+      - `src/admin/server.rs:512 reload_config` — admin
+        `POST /api/config/reload` path.
+      Same fix applies to both. Bundle into one PR.
+    - **Sign-off backstory:** Stage 2 §11 Q4 explicitly noted "revisit
+      when Tier 1 SIGHUP runtime ships in Stage 3"; Stage 3 did **not**
+      revisit. This is unfinished work, not new scope.
+    - **Fix:** thread the most-recently-loaded `Arc<Config>` into
+      both reload paths (via a parameter or a parallel `OnceLock`) and
+      call `validate_against_config` after `validate_cross_subsystem`
+      succeeds and before `arc_swap.store()`. Reject the reload (keep
+      the old snapshot) on validation failure; log the diff at WARN.
+      Bundle with W0.G B2 (item 4) — admin `POST /api/config/reload`
+      uses the same validator path.
+
+24. **D10 — No end-to-end env-loader integration test per section.** ~2 days.
+    - **Code-completion finding 2026-05-16:** `for_test()` is used at
+      `runtime_config/mod.rs:62,135,147` and `reload.rs:198,205-206`
+      (3 distinct sites — module bootstrap + diff-helper tests).
+      **No section has a test that runs `loader::load()` against a
+      mutated `HIGHPER_*` environment** (e.g., no `serial_test`-gated
+      module that sets `HIGHPER_AI_RETRY_BUDGET=11` and asserts
+      `RuntimeConfigError::OutOfRange`).
+    - **Why this matters:** the Stage 1/2/3 end-to-end image-based
+      tests (`stage1-rc` through `b6-rc`) *did* exercise the loader
+      against real env vars — but only manually, against one fixture
+      per stage. Cross-subsystem misconfigurations
+      (`HIGHPER_AI_CACHE_BACKEND=valkey` + `HIGHPER_CLUSTER_TYPEB_BACKEND=none`)
+      get tested at container-build time but not at `cargo test`
+      time. A regression in `validate_cross_subsystem` or
+      `validate_against_config` wouldn't surface until container CI.
+    - **Fix:** add a `tests/runtime_config_e2e.rs` integration test
+      module (one `serial_test::serial` block per cross-subsystem
+      rule); use `temp_env::with_vars` for env mutation; cover at
+      minimum: §11.2 rules 1/2/3/5; AI cache-backend / cluster-typeb
+      crosswire; UC4 + UC11 `derive_enabled_ucs` gating; SIGHUP-path
+      validation (after D9 fix). ~2 days including fixtures.
+
+#### Tier P1 — v1.0 GA-scope documentation + process (added 2026-05-16, third pass)
+
+*Phase 1 deliverables that the prior §13.5 priority list omitted. All are v1.0 GA scope by §5 Phase 1.3 placement; none is a B-blocker; **slipping any to post-v1.0 is treated as equivalent to slipping a B-blocker** per the §13.2 v1.0-scope subsection convention.*
+
+**M1. Phase 1.3 documentation deliverables.** ~18 engineer-days total.
+- `docs/MONITORING.md` (NEW; Prometheus + Grafana quickstart with importable dashboards — RED + USE for every UC) — **5 days** (`ROADMAP.md:776`).
+- `docs/TROUBLESHOOTING.md` (NEW; common errors → root cause → fix) — **3 days** (`ROADMAP.md:777`).
+- `docs/UPGRADE.md` (NEW; config migration matrix beta → v1.0) — **2 days** (`ROADMAP.md:778`).
+- `docs/SECURITY_CLUSTER_BASELINE.md` (NEW; per-cluster-type security hardening templates per `HA_ARCHITECTURE.md` §7.4) — **3 days** (`ROADMAP.md:781`).
+- `docs/INTEGRATION_GUIDE.md` (NEW; 6 sections per UC16 §11.5 + gap-audit R6) — **5 days** (`ROADMAP.md:782-788`).
+- **Sequencing:** can run in parallel with P0a/P0b code work — different hands. **Owner can be a tech writer or part-time engineer.**
+
+**M2. Phase 1.5 SAST stack** (owner-gate #1 closed 2026-05-03; not previously scheduled in §13.5). ~3 engineer-days.
+- Tier A local: `cargo-clippy` (already on) + `cargo-audit` + `cargo-deny` (already on per `deny.toml`) + `cargo-geiger` + Semgrep (Rust ruleset). ~1.5 days to wire all 5 into CI.
+- Tier B cloud: CodeQL via GitHub Actions. ~1 day.
+- Tier C optional: `cargo-vet` + custom `dylint` rules. Deferred to post-v1.0 unless cheap.
+- See `ROADMAP.md` §1.5.SAST for full per-tool rationale.
+
+**M3. Phase 1.3.1 cluster-deployment cookbook cells.** ~9 cells × ~½–1 day each = ~6 engineer-days total.
+- 9 cells (4 cluster types × {k8s, vm, baremetal} matrix per `ROADMAP.md:790-808`).
+- Each cell: `examples/configs/clusters/<type>-<infra>/` directory with `README.md` + manifest/unit/playbook + a sanity-check that `cargo run` loads the example config.
+- **Decision-flow README** at `examples/configs/clusters/README.md` mapping operator's deployment context → which cell to pick.
+
+**M4. v1.0 GA tag-day checklist.** ~½ day to draft; ~½ day to execute at tag time. Net-new doc.
+- Create `docs/planning/GA_CHECKLIST.md` documenting everything that fires at the v1.0 GA tag commit:
+  - Snapshot `USECASE_16_AI_LLM_GATEWAY.md` → `docs/planning/archive/USECASE_16_AI_LLM_GATEWAY_v1.0-GA.md` (§13.5 item 21 / §0.2 R3).
+  - Re-baseline §0.5 reconciliation banners against then-current docs (gate #6).
+  - Tag `Cargo.toml` version + push the git tag.
+  - Snapshot `docs/CONFIG_ENV.md` → `docs/planning/archive/CONFIG_ENV_v1.0-GA.md` (so v1.x can diff).
+  - Cut `docs/planning/RELEASE_NOTES_v1.0.md` listing all closed B-blockers + new env vars + breaking changes.
+  - Trigger `gap-auditor` monthly cron + verify no open items.
+  - Verify all 14 B-blockers closed + Phase 1.4 traits shipped + M1–M3 above complete + D11 closed.
+- Owner: release manager. Add to `OWNER_GATES_*.md` cross-ref as gate #6 implementation.
+
+#### Tier P2 — Hygiene + spec-compliance deviation cleanup (Phase 1.6)
+
+25. **D3 — B4.1 deviation: CIDR list shape.** ~1 day.
+    - Add `HIGHPER_PROXY_TRUST_CIDRS` as an *additional* mode
+      alongside the existing `XffTrustMode = none|first|last`;
+      when set, takes precedence and extracts first-non-trusted
+      hop from XFF. Backward-compatible.
+
+26. **D4 — B4.2 deviation: stable-hash shard.** ~½ day.
+    - Replace `rand::random::<u32>() % N` in
+      `src/gateway/ratelimit/distributed.rs:120` with a
+      stable hash of the rate-limit key. Same load
+      distribution; restores per-client locality for
+      observability.
+
+27. **Cookbook: `scenario-04-rate-limit-hot-key.yaml`.** ~½ day.
+    - Originally folded into B4.2 (`ROADMAP.md:677`); not
+      shipped. Add the cookbook entry demonstrating the
+      hot-key sharding pattern.
+
+28. **Per-UC P1 polish (folded into Phase 3.2):** `DefaultHasher`
+    swap; `Alt-Svc` auto-inject; rate-limit metrics; DDoS
+    geo-block wiring; `Retry-After` precision; empty
+    `gateway/rate_limit/` dir delete; `compression_old.rs.backup`
+    delete; `deny.toml.backup` delete (carried verbatim from
+    pre-refresh §13.2).
+
+---
+
+#### Dependency graph (revised 2026-05-16, third pass)
+
+Parallel-from-day-1 (no inter-dependencies; different hands can own each lane):
+
+```
+P0a {B3, B8, B13, B2}              ─ security/correctness; engineers
+P0c.indep {W0.I, W0.H, D11}        ─ small/independent; can be slotted
+P1 long-lead {B9, B10}             ─ rig + harness; wall-clock-bound
+M1 Phase 1.3 docs (NEW)            ─ tech writer or part-time eng
+M3 Phase 1.3.1 cookbook cells (NEW) ─ ops/eng hybrid
+```
+
+Sequenced (B1 in W0.A touches `Runtime::run`, blocks the 0.C/E/F/H
+residue rebase per `ROADMAP.md:754`):
+
+```
+P0b B1 (W0.A)                      ─ ↓
+P0b {B7, B8, B14-finish}           ─ all in W0.D; bundle into one branch (~17–19 days)
+                                   ↓
+P0c residue {W0.C, W0.E, W0.F}     ─ rebase after B1
+P0c {B12-finish, R1}               ─ independent within P0c
+                                   ↓
+P1 debt {D1, D5, D6, D7, D9, D10,  ─ track during workstream touch-ups
+         §0.2 R2/R3}
+                                   ↓
+M2 Phase 1.5 SAST stack (NEW)      ─ depends on stable code surface
+                                   ↓
+P2 {D3, D4, cookbook, hygiene}     ─ Phase 1.6 cleanup
+                                   ↓
+M4 GA tag-day execution            ─ owner: release manager
+```
+
+**v1.0 GA scope guards** (per §0.2 + §13.2 v1.0-scope subsection):
+- Phase 1.4 cross-cutting traits (`AuthProvider`, `MetricsBackend` /
+  `LogBackend`, `PeerDiscovery`) ship in v1.0 even though non-B-tagged.
+- Phase 1.4 `SecretRef::Secrets://` resolver ships in v1.0.
+- M1 (Phase 1.3 docs) + M2 (SAST) + M3 (cookbook cells) + M4
+  (GA-checklist) all ship in v1.0 by Phase 1 placement; not B-tagged
+  but treated as equivalent.
+- UC16 (`src/ai/`) does **not** ship in v1.0.
+
+#### Aggregate effort (one engineer, no context-switching; revised 2026-05-16, third pass)
+
+- **P0a:** 12 + 6 + 1 + **4** = **23 engineer-days** *(B2 revised
+  6 → 4 after third-pass `server.rs` audit found ~60–70% already
+  shipped: full route/upstream CRUD, JWT decode, login/users,
+  health, runtime-config endpoints)*
+- **P0b:** 17 + 6 + **6** = **29 engineer-days** *(B14 revised
+  3 → 6 days mid-point after scope spread from 2 sites → ~14 sites;
+  or ~17–19 days W0.D bundle if owned by one engineer)*
+- **P0c:** 4 + 2.5 + 10 + 5 + 5 + 3 + 1 + **2** = **32.5 engineer-days**
+  *(+D11 CONFIG_ENV.md staleness, 2 days)*
+- **P1 long-lead:** ~5 weeks wall-clock; ~25 engineer-days
+- **P1 debt:** 2 + 2 + 2 + 0 + 0.5 + 1 + 1 + 2 = **10.5 engineer-days**
+- **P1 GA-scope docs + process (NEW):** **18 + 3 + 6 + 1 = 28 engineer-days** *(M1 docs + M2 SAST + M3 cookbook cells + M4 GA-checklist; partially parallelizable with code work — different hands)*
+- **P2 cleanup:** 1 + 0.5 + 0.5 + ~5 = **~7 engineer-days**
+
+**Total to v1.0 GA tag: ~155 engineer-days** (was 124 — net **+31 days**:
+B2 −2; B14 +3; D11 +2; M1–M4 +28). The big jump comes from
+surfacing **M1–M4** (Phase 1.3 docs + Phase 1.5 SAST + Phase 1.3.1
+cookbooks + GA-checklist), which the prior §13.5 priority list
+missed entirely. None of M1–M4 are B-blockers but **all are v1.0 GA
+scope by §13.2 v1.0-scope subsection**.
+
+**Two-engineer pace cuts wall-clock by ~50 %** given that M1 (docs)
++ M3 (cookbooks) can fully parallelize with code work — different
+skill sets, different files. **Bundling W0.D items 2/6/7 saves
+~10 days** if owned by one engineer. Realistic best-case wall-clock
+with two engineers + bundling: **~10 calendar weeks** to v1.0 GA
+from 2026-05-16.
 
 ### 13.4 Lines of evidence
 
