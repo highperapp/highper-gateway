@@ -92,6 +92,22 @@ See [Security Features Guide](docs/SECURITY_FEATURES.md) for complete documentat
 
 ### Build from Source
 
+**System build dependencies.** These are already declared in `deploy/docker/Dockerfile`; a source
+build needs the same set, and `cargo` will not say which one is missing until the build script that
+needs it panics.
+
+```bash
+sudo apt-get install -y     liburing-dev pkg-config cmake nasm perl libssl-dev ca-certificates
+```
+
+| package | needed by |
+|---|---|
+| `liburing-dev` | the `io-uring` crate (Linux-only async I/O) |
+| `pkg-config` | link-step tooling for `*-sys` crates |
+| `cmake`, `nasm`, `perl` | `quiche` v0.24+ builds bundled BoringSSL: cmake drives it, nasm assembles x86 crypto, perl runs the codegen scripts |
+| `libssl-dev`, `ca-certificates` | any `*-sys` crate preferring system OpenSSL over a vendored copy |
+| `protobuf-compiler` | **only for `--all-features`**: `etcd-client` builds through `prost-build`/`tonic-build`, which shell out to `protoc` |
+
 ```bash
 git clone https://github.com/highperapp/highper-gateway.git
 cd highper-gateway

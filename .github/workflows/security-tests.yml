@@ -49,6 +49,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install system build dependencies
+        run: sudo apt-get update && sudo apt-get install -y liburing-dev pkg-config cmake nasm perl libssl-dev ca-certificates protobuf-compiler
       - name: Install security tools
         run: |
           cargo install cargo-audit || true
@@ -99,6 +101,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install system build dependencies
+        run: sudo apt-get update && sudo apt-get install -y liburing-dev pkg-config cmake nasm perl libssl-dev ca-certificates protobuf-compiler
       - name: Build gateway
         run: cargo build --release
         working-directory: highper-gateway
@@ -137,6 +141,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install system build dependencies
+        run: sudo apt-get update && sudo apt-get install -y liburing-dev pkg-config cmake nasm perl libssl-dev ca-certificates protobuf-compiler
       - name: Run scenario ${{ matrix.scenario }} tests
         run: |
           cargo test --test security_pentest scenario_${{ matrix.scenario }} -- --ignored --nocapture

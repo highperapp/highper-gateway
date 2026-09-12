@@ -368,7 +368,11 @@ Windows native testing (without WSL2) has limited support. WSL2 is recommended f
 **Current Status:**
 - ✅ WSL2 support excellent
 - ✅ Linux support excellent
-- ⚠️ Windows native builds work but testing limited
+- ❌ Windows native builds do **not** work. `io-uring` is an unconditional dependency and does
+  not type-check on Windows at all (`cannot find function syscall`, `MSG_TRUNC` missing from
+  `libc`), so `cargo check` fails there with any flag combination. Separately, the default
+  `jemalloc` feature fails its autoconf step on Windows. Measured 2026-09-11,
+  x86_64-pc-windows-msvc, rustc 1.94.1
 - ⚠️ Some shell scripts require bash (not cmd/PowerShell)
 
 **Workaround:**
