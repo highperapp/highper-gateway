@@ -230,7 +230,13 @@ mod tests {
     async fn test_signal_handler_setup() {
         // This test verifies that the signal handler can be set up without panicking
         // We can't actually test signal handling in unit tests, but we can verify setup
-        let (tx, _rx) = mpsc::unbounded_channel();
+        //
+        // BOUNDED, matching production. `setup_signals_with_reload` takes
+        // `mpsc::Sender<ReloadTrigger>` and uses `try_send` (B11.2: dropping on full is
+        // correct because duplicate triggers fold to one), and `config/reloader.rs:82`
+        // builds the real channel with `mpsc::channel(capacity.max(1))`. An unbounded
+        // sender here is a different type, so the whole `--lib` target failed to compile.
+        let (tx, _rx) = mpsc::channel(1);
 
         // Spawn signal handler in background
         let handle = tokio::spawn(async move {
